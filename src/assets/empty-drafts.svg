@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" width="160" height="120" fill="none">
+  <!-- Subtle Background Disc -->
+  <circle cx="80" cy="60" r="48" fill="#f1f5f9" />
+  
+  <!-- Inbox / Paper Tray Base -->
+  <path d="M40 76 L52 42 Q54 36 60 36 L100 36 Q106 36 108 42 L120 76 Q122 82 116 82 L44 82 Q38 82 40 76 Z" fill="#ffffff" stroke="#cbd5e1" stroke-width="2" stroke-linejoin="round" />
+  
+  <!-- Front Tray Inset Opening -->
+  <path d="M40 76 L62 76 Q66 76 68 80 L72 86 Q74 90 80 90 L80 90 Q86 90 88 86 L92 80 Q94 76 98 76 L120 76" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" />
+
+  <!-- Clean Floating Checkmark (Indicating All Clear) -->
+  <circle cx="80" cy="52" r="14" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5" />
+  <path d="M74 52 L78 56 L86 48" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

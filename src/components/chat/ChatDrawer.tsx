@@ -1,0 +1,265 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  X, Send, Sparkles, Bot, Shield, User, Copy, Check, 
+  ArrowDownCircle, RefreshCw, MessageSquare
+} from 'lucide-react';
+import type { ContactItemDto, MessageItemDto, RoutingRuleDto } from '@/api/contracts';
+
+interface ChatDrawerProps {
+  isOpen: boolean;
+  onClose: () => void;
+  contact: ContactItemDto | null;
+  messages: MessageItemDto[];
+  onSendMessage: (targetType: string, targetId: string, content: string) => Promise<void>;
+  onTriggerAiReply?: (targetId: string, contextSnippet: string) => Promise<string>;
+  onUpdateMode?: (targetId: string, mode: RoutingRuleDto['mode']) => void;
+}
+
+export const ChatDrawer: React.FC<ChatDrawerProps> = ({
+  isOpen,
+  onClose,
+  contact,
+  messages,
+  onSendMessage,
+  onTriggerAiReply,
+  onUpdateMode,
+}) => {
+  const [inputText, setInputText] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [isAiDrafting, setIsAiDrafting] = useState(false);
+  const [copiedUin, setCopiedUin] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto scroll to bottom
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      scrollToBottom();
+    }
+  }, [isOpen, messages]);
+
+  if (!isOpen || !contact) return null;
+
+  const isTestContact = contact.targetId === '1739677116';
+
+  const handleSend = async () => {
+    const text = inputText.trim();
+    if (!text || isSending) return;
+
+    setIsSending(true);
+    try {
+      await onSendMessage(contact.targetType, contact.targetId, text);
+      setInputText('');
+    } catch (err) {
+      console.error('Failed to send message:', err);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleAskAiDraft = async () => {
+    if (isAiDrafting || !onTriggerAiReply) return;
+    setIsAiDrafting(true);
+    try {
+      const lastIncoming = [...messages].reverse().find(m => !m.isFromMe)?.content || '你好！';
+      const aiGenerated = await onTriggerAiReply(contact.targetId, lastIncoming);
+      if (aiGenerated) {
+        setInputText(aiGenerated);
+      }
+    } catch (err) {
+      console.error('Failed to generate AI draft:', err);
+    } finally {
+      setIsAiDrafting(false);
+    }
+  };
+
+  const copyUin = () => {
+    navigator.clipboard.writeText(contact.targetId);
+    setCopiedUin(true);
+    setTimeout(() => setCopiedUin(false), 1500);
+  };
+
+  const formatTime = (ts: number) => {
+    const d = new Date(ts);
+    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-hidden flex justify-end">
+      {/* Backdrop */}
+      <div 
+        className="fixed inset-0 bg-slate-900/20 backdrop-blur-xs transition-opacity" 
+        onClick={onClose} 
+      />
+
+      {/* Slide-over panel */}
+      <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 h-full shadow-2xl flex flex-col z-10 border-l border-slate-200 dark:border-slate-800 animate-in slide-in-from-right duration-200">
+        
+        {/* Header */}
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-full bg-sky-100 dark:bg-sky-950/50 text-sky-600 flex items-center justify-center font-bold text-sm overflow-hidden shrink-0 border border-sky-200/60 dark:border-sky-800">
+              {contact.avatarUrl ? (
+                <img src={contact.avatarUrl} alt={contact.name} className="w-full h-full object-cover" />
+              ) : (
+                <User className="w-5 h-5" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                  {contact.name}
+                </h3>
+                {isTestContact && (
+                  <span className="text-[10px] bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300 font-semibold px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 shrink-0">
+                    唯一指定测试联系人
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
+                <span>QQ: {contact.targetId}</span>
+                <button onClick={copyUin} className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors" title="复制 QQ 号">
+                  {copiedUin ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Mode selector */}
+            {onUpdateMode && (
+              <select
+                value={contact.rule?.mode || 'ignore'}
+                onChange={(e) => onUpdateMode(contact.targetId, e.target.value as any)}
+                className="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-700 dark:text-slate-300 font-medium outline-none focus:border-sky-500"
+              >
+                <option value="ignore">直通忽略 (未入白名单)</option>
+                <option value="copilot">草稿审核模式 (人机协同)</option>
+                <option value="auto_reply">全自动接管 (自动秒回)</option>
+              </select>
+            )}
+
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Message Stream */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/30 dark:bg-slate-950/20">
+          {messages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400">
+              <div className="w-12 h-12 rounded-2xl bg-sky-50 dark:bg-sky-950/40 text-sky-500 flex items-center justify-center mb-3">
+                <MessageSquare className="w-6 h-6" />
+              </div>
+              <h4 className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                暂无历史对话记录
+              </h4>
+              <p className="text-[11px] text-slate-400 max-w-xs">
+                在此发送一条私聊消息，或等待对方在 QQ 发来信息，即可实时在此查看交互与 AI 构思过程
+              </p>
+            </div>
+          ) : (
+            messages.map((msg) => {
+              const isMe = msg.isFromMe;
+              const isAiAuto = msg.aiReplyStatus === 'auto_replied';
+              const isAiDraft = msg.aiReplyStatus === 'draft_pending' || (msg as any).msgType === 'ai_draft_sent';
+
+              return (
+                <div 
+                  key={msg.id} 
+                  className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} gap-1`}
+                >
+                  {/* Sender & Badge Info */}
+                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400 px-1 font-sans">
+                    <span>{isMe ? '我' : (msg.senderName || contact.name)}</span>
+                    {isAiAuto && (
+                      <span className="bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400 font-semibold px-1 py-0.2 rounded text-[9px] border border-sky-200/60 dark:border-sky-800 flex items-center gap-0.5">
+                        <Sparkles className="w-2.5 h-2.5" /> AI 秒回 (qwen3.8-flash)
+                      </span>
+                    )}
+                    {isAiDraft && (
+                      <span className="bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400 font-semibold px-1 py-0.2 rounded text-[9px] border border-emerald-200/60 dark:border-emerald-800 flex items-center gap-0.5">
+                        <Check className="w-2.5 h-2.5" /> 草稿审核放行
+                      </span>
+                    )}
+                    <span>{formatTime(msg.timestamp)}</span>
+                  </div>
+
+                  {/* Message Bubble */}
+                  <div 
+                    className={`max-w-[85%] rounded-2xl p-3 text-xs leading-relaxed shadow-xs select-text ${
+                      isMe 
+                        ? isAiAuto 
+                          ? 'bg-sky-600 text-white rounded-tr-xs' 
+                          : isAiDraft
+                            ? 'bg-emerald-600 text-white rounded-tr-xs'
+                            : 'bg-sky-600 text-white rounded-tr-xs'
+                        : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 rounded-tl-xs'
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                  </div>
+                </div>
+              );
+            })
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input & Quick AI Bar */}
+        <div className="p-3 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2">
+          {/* Quick AI Trigger */}
+          <div className="flex items-center justify-between">
+            <button
+              onClick={handleAskAiDraft}
+              disabled={isAiDrafting}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/50 hover:bg-sky-100 dark:hover:bg-sky-900/50 border border-sky-200/60 dark:border-sky-800 transition-colors disabled:opacity-50"
+            >
+              <Sparkles className={`w-3.5 h-3.5 ${isAiDrafting ? 'animate-spin' : ''}`} />
+              <span>{isAiDrafting ? 'Qwen 正在推演拟答...' : '✨ 让 AI 替我构思一条回复'}</span>
+            </button>
+
+            <span className="text-[10px] text-slate-400 font-mono">
+              Enter 发送 / Shift+Enter 换行
+            </span>
+          </div>
+
+          {/* Textarea and Send button */}
+          <div className="flex items-end gap-2 bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2 border border-slate-200 dark:border-slate-700 focus-within:border-sky-500 focus-within:bg-white dark:focus-within:bg-slate-800 transition-all">
+            <textarea
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={`给 ${contact.name} 发送私聊消息...`}
+              rows={2}
+              className="flex-1 bg-transparent text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 resize-none outline-none leading-relaxed"
+            />
+            <button
+              onClick={handleSend}
+              disabled={!inputText.trim() || isSending}
+              className="p-2 rounded-lg bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white disabled:opacity-40 transition-colors shrink-0 shadow-xs"
+              title="发送"
+            >
+              <Send className={`w-4 h-4 ${isSending ? 'animate-pulse' : ''}`} />
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+};

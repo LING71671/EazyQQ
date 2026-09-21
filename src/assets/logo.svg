@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none">
+  <defs>
+    <linearGradient id="eazyqq-grad-primary" x1="16" y1="16" x2="112" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0ea5e9" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="eazyqq-grad-sparkle" x1="60" y1="40" x2="100" y2="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <filter id="eazyqq-glow" x="-10%" y="-10%" width="120%" height="120%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0284c7" flood-opacity="0.25" />
+    </filter>
+  </defs>
+
+  <!-- Main Chat Bubble Body -->
+  <rect x="18" y="24" width="80" height="64" rx="20" fill="url(#eazyqq-grad-primary)" filter="url(#eazyqq-glow)" />
+  
+  <!-- Bubble Tail Indicator -->
+  <path d="M34 88 L34 104 Q34 108 38 106 L56 88 Z" fill="#0284c7" />
+
+  <!-- Inner Contrast Card / Message Window -->
+  <rect x="28" y="34" width="60" height="44" rx="12" fill="#ffffff" fill-opacity="0.95" />
+
+  <!-- Abstract Dynamic Audio / Chat Lines -->
+  <rect x="38" y="46" width="22" height="4" rx="2" fill="#0284c7" />
+  <rect x="38" y="56" width="38" height="4" rx="2" fill="#94a3b8" />
+  <rect x="38" y="66" width="30" height="4" rx="2" fill="#cbd5e1" />
+
+  <!-- AI Sparkle Orb Overlay (Top-Right Intersecting) -->
+  <g transform="translate(68, 16)">
+    <!-- Sparkle Glow Circle -->
+    <circle cx="28" cy="28" r="22" fill="#ffffff" filter="url(#eazyqq-glow)" />
+    <!-- 4-Point AI Star -->
+    <path d="M28 14 Q28 28 42 28 Q28 28 28 42 Q28 28 14 28 Q28 28 28 14 Z" fill="url(#eazyqq-grad-sparkle)" />
+  </g>
+</svg>
