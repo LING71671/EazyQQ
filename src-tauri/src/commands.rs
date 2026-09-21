@@ -12,6 +12,13 @@ pub struct AppState {
     pub ai: Arc<crate::services::ai::AiService>,
 }
 
+/// QQ exposes avatars by account number; NapCat's login payload does not include one, so
+/// derive it here to satisfy the Phase 1 "avatar + nickname echo" acceptance item.
+fn qq_avatar(uin: Option<&String>) -> Option<String> {
+    uin.filter(|s| !s.is_empty())
+        .map(|s| format!("https://q1.qlogo.cn/g?b=qq&nk={}&s=100", s))
+}
+
 #[command]
 pub async fn get_protocol_status(state: State<'_, AppState>) -> Result<ApiResponse<ProtocolStatusDto>, String> {
     // 1. First probe OneBot HTTP for active session
@@ -20,13 +27,14 @@ pub async fn get_protocol_status(state: State<'_, AppState>) -> Result<ApiRespon
             let uin = data.get("user_id").and_then(|v| v.as_i64()).map(|n| n.to_string());
             let nickname = data.get("nickname").and_then(|v| v.as_str()).map(|s| s.to_string());
             if uin.is_some() {
+                let avatar_url = qq_avatar(uin.as_ref());
                 return Ok(ApiResponse::ok(ProtocolStatusDto {
                     is_connected: true,
                     login_status: "logged_in".to_string(),
                     qrcode_base64: None,
                     qq_number: uin,
                     nickname,
-                    avatar_url: None,
+                    avatar_url,
                 }));
             }
         }
@@ -50,13 +58,14 @@ pub async fn get_protocol_status(state: State<'_, AppState>) -> Result<ApiRespon
             let is_login = data.get("isLogin").and_then(|v| v.as_bool()).unwrap_or(false);
             let uin = data.get("uin").and_then(|v| v.as_str()).map(|s| s.to_string());
             if is_login {
+                let avatar_url = qq_avatar(uin.as_ref());
                 return Ok(ApiResponse::ok(ProtocolStatusDto {
                     is_connected: true,
                     login_status: "logged_in".to_string(),
                     qrcode_base64: None,
                     qq_number: uin,
                     nickname: None,
-                    avatar_url: None,
+                    avatar_url,
                 }));
             }
             if let Some(qr) = data.get("qrcodeurl").and_then(|v| v.as_str()) {
