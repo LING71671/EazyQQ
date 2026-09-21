@@ -35,6 +35,7 @@ pub fn run() {
         "f7376db3d59d".to_string(),
         napcat_dir_str,
     ));
+    let onebot = Arc::new(OneBotClient::new("http://127.0.0.1:3000".to_string()));
     let api_key = std::env::var("TOKENRHYTHM_API_KEY")
         .or_else(|_| std::env::var("AI_API_KEY"))
         .ok()
