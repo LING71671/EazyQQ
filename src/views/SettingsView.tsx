@@ -27,13 +27,6 @@ const AI_PRESETS: Record<
   AiProviderId,
   { baseUrl: string; model: string; label: string; sub: string; local: boolean }
 > = {
-  opencode: {
-    baseUrl: 'http://127.0.0.1:4096/v1',
-    model: 'opencode-default',
-    label: '本地 OpenCode',
-    sub: '零配置、免买 Key',
-    local: true,
-  },
   ollama: {
     baseUrl: 'http://127.0.0.1:11434/v1',
     model: 'qwen2.5:7b',
@@ -46,6 +39,20 @@ const AI_PRESETS: Record<
     model: 'local-model',
     label: 'LM Studio',
     sub: '本地 GUI 推理',
+    local: true,
+  },
+  llamacpp: {
+    baseUrl: 'http://127.0.0.1:8080/v1',
+    model: 'local-model',
+    label: 'llama.cpp',
+    sub: '轻量本地服务',
+    local: true,
+  },
+  vllm: {
+    baseUrl: 'http://127.0.0.1:8000/v1',
+    model: 'local-model',
+    label: 'vLLM',
+    sub: '高吞吐本地推理',
     local: true,
   },
   deepseek: {
@@ -72,9 +79,10 @@ const AI_PRESETS: Record<
 };
 
 const AI_PROVIDER_ORDER: AiProviderId[] = [
-  'opencode',
   'ollama',
   'lmstudio',
+  'llamacpp',
+  'vllm',
   'deepseek',
   'openai',
   'tokenrhythm',

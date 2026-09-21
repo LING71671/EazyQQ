@@ -45,10 +45,14 @@ pub struct ObGroupFileInfo {
 
 impl OneBotClient {
     pub fn new(http_base_url: String) -> Self {
+        // OneBot is always a loopback service, so the proxy must be bypassed: with
+        // `http_proxy` set, a loopback call would otherwise be routed through it.
         let client = Client::builder()
             .timeout(Duration::from_secs(6))
+            .no_proxy()
             .build()
             .unwrap_or_default();
+        // Group files are fetched from a remote CDN, where a proxy may well be required.
         let download_client = Client::builder()
             .timeout(Duration::from_secs(180))
             .build()

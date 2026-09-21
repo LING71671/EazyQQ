@@ -24,8 +24,11 @@ pub struct NapCatService {
 
 impl NapCatService {
     pub fn new(webui_base_url: String, fallback_token: String, napcat_dir: String) -> Self {
+        // NapCat's WebUI is a loopback service; bypass any configured proxy so a
+        // machine-level `http_proxy` cannot break local protocol control.
         let client = Client::builder()
             .timeout(Duration::from_secs(5))
+            .no_proxy()
             .build()
             .unwrap_or_default();
 

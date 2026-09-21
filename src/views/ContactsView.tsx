@@ -1,18 +1,98 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Search, Filter, Sparkles, Shield, Clock, Check, MessageSquare } from 'lucide-react';
-import type { ContactItemDto } from '@/api/contracts';
+import type { ContactItemDto, RoutingRuleDto } from '@/api/contracts';
+
+/** Patch shape for the trigger/cooldown controls. */
+export interface RuleTriggerPatch {
+  triggerCondition?: 'all' | 'at_me' | 'keyword';
+  keywords?: string[];
+  cooldownSeconds?: number;
+}
 
 interface ContactsViewProps {
   contacts: ContactItemDto[];
   onUpdateMode: (targetId: string, mode: 'auto_reply' | 'copilot' | 'summary_only' | 'ignore') => void;
   onToggleSummaryWhitelist?: (targetId: string, isWhitelist: boolean, intervalHours?: number) => void;
+  onUpdateTrigger?: (targetId: string, patch: RuleTriggerPatch) => void;
   onOpenChat: (contact: ContactItemDto) => void;
 }
+
+/**
+ * Trigger condition + reply cooldown for one rule.
+ *
+ * These values are enforced by the backend (`services::trigger`, `services::cooldown`)
+ * and were previously not editable anywhere in the UI, which made `at_me` - the sane
+ * default for a group - impossible to set.
+ */
+const TriggerControls: React.FC<{
+  rule: RoutingRuleDto;
+  onPatch: (patch: RuleTriggerPatch) => void;
+}> = ({ rule, onPatch }) => {
+  const [keywordText, setKeywordText] = useState((rule.keywords || []).join(','));
+  const [cooldown, setCooldown] = useState(String(rule.cooldownSeconds ?? 5));
+
+  // Re-sync when the rule changes underneath us (e.g. after a reload).
+  useEffect(() => {
+    setKeywordText((rule.keywords || []).join(','));
+    setCooldown(String(rule.cooldownSeconds ?? 5));
+  }, [rule.keywords, rule.cooldownSeconds]);
+
+  const commitKeywords = () => {
+    const list = keywordText
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    onPatch({ keywords: list });
+  };
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <select
+        value={rule.triggerCondition}
+        onChange={(e) => onPatch({ triggerCondition: e.target.value as RuleTriggerPatch['triggerCondition'] })}
+        title="触发条件：决定什么样的消息才会被响应"
+        className="text-xs py-1.5 px-2 rounded-xl border border-slate-200 bg-white text-slate-700 focus:outline-none focus:border-sky-500 shadow-2xs"
+      >
+        <option value="all">全部消息</option>
+        <option value="at_me">仅 @我</option>
+        <option value="keyword">命中关键词</option>
+      </select>
+
+      {rule.triggerCondition === 'keyword' && (
+        <input
+          value={keywordText}
+          onChange={(e) => setKeywordText(e.target.value)}
+          onBlur={commitKeywords}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitKeywords();
+          }}
+          placeholder="关键词,逗号分隔"
+          title="输入后回车或点击别处保存"
+          className="w-40 text-xs py-1.5 px-2 rounded-xl border border-slate-200 bg-white text-slate-700 focus:outline-none focus:border-sky-500"
+        />
+      )}
+
+      <div className="flex items-center gap-1" title="两次回复之间的最小间隔，防止连发消息导致刷屏">
+        <input
+          type="number"
+          min={0}
+          max={3600}
+          value={cooldown}
+          onChange={(e) => setCooldown(e.target.value)}
+          onBlur={() => onPatch({ cooldownSeconds: Math.max(0, Number(cooldown) || 0) })}
+          className="w-14 text-xs py-1.5 px-2 rounded-xl border border-slate-200 bg-white text-slate-700 focus:outline-none focus:border-sky-500"
+        />
+        <span className="text-[10px] text-slate-400">秒</span>
+      </div>
+    </div>
+  );
+};
 
 export const ContactsView: React.FC<ContactsViewProps> = ({
   contacts,
   onUpdateMode,
   onToggleSummaryWhitelist,
+  onUpdateTrigger,
   onOpenChat,
 }) => {
   const [search, setSearch] = useState('');
@@ -228,6 +308,14 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                         <option value="auto_reply">自动秒回 (消息白名单)</option>
                       </select>
                     </div>
+
+                    {/* 3. Trigger condition + cooldown (only meaningful once whitelisted) */}
+                    {contact.rule.mode !== 'ignore' && onUpdateTrigger && (
+                      <TriggerControls
+                        rule={contact.rule}
+                        onPatch={(patch) => onUpdateTrigger(contact.targetId, patch)}
+                      />
+                    )}
                   </div>
                 </div>
               );

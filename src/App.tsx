@@ -5,6 +5,7 @@ import { ManualDrawer } from '@/components/manual/ManualDrawer';
 import { BootSplash } from '@/components/common/BootSplash';
 import { LoginView } from '@/views/LoginView';
 import { ContactsView } from '@/views/ContactsView';
+import type { RuleTriggerPatch } from '@/views/ContactsView';
 import { DraftsView } from '@/views/DraftsView';
 import { FilesView } from '@/views/FilesView';
 import { SummariesView } from '@/views/SummariesView';
@@ -62,10 +63,10 @@ export const App: React.FC = () => {
 
   const [config, setConfig] = useState<AppConfig>({
     ai: {
-      activeProvider: 'opencode',
-      model: 'opencode-default',
+      activeProvider: 'tokenrhythm',
+      model: 'qwen3.8-flash',
       temperature: 0.7,
-      maxContextMessages: 20,
+      maxContextMessages: 10,
     },
     napcat: {
       wsPort: 3001,
@@ -292,7 +293,19 @@ export const App: React.FC = () => {
     }
   };
 
-  // 2. Group Summary Whitelist Toggle
+  // 2. Trigger condition + cooldown (enforced by services::trigger / services::cooldown)
+  const handleUpdateTrigger = async (targetId: string, patch: RuleTriggerPatch) => {
+    setContacts((prev) =>
+      prev.map((c) => (c.targetId === targetId ? { ...c, rule: { ...c.rule, ...patch } } : c))
+    );
+    try {
+      await api.updateRule({ targetId, ...patch });
+    } catch (e) {
+      console.error('Failed to persist trigger settings', e);
+    }
+  };
+
+  // 3. Group Summary Whitelist Toggle
   const handleToggleSummaryWhitelist = async (targetId: string, isWhitelist: boolean, intervalHours = 6) => {
     setContacts((prev) =>
       prev.map((c) =>
@@ -617,6 +630,7 @@ export const App: React.FC = () => {
               contacts={contacts}
               onUpdateMode={handleUpdateMode}
               onToggleSummaryWhitelist={handleToggleSummaryWhitelist}
+              onUpdateTrigger={handleUpdateTrigger}
               onOpenChat={handleOpenChat}
             />
           )}

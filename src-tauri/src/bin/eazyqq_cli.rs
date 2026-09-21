@@ -245,6 +245,7 @@ fn cmd_help() {
   config [--json]                 打印当前配置
   set-config --key <k> --value <v> 写入 app_settings
   ai-config                       查看实际生效的大模型供应商配置
+  ai-detect                       探测本机可用的 OpenAI 兼容推理端点
   ai-set --provider <p>           切换供应商（省 token 可指向本地端点）
          [--base-url <u>] [--model <m>] [--key <k>]
          [--temperature <t>] [--max-context <n>]
@@ -1553,6 +1554,7 @@ fn cmd_ai_set(svc: &Services, args: &Args) -> Result<(), String> {
     }
 
     let mut changed: Vec<String> = Vec::new();
+    let mut custom_provider = false;
 
     if let Some(v) = args.flag("provider") {
         let provider = v.trim().to_lowercase();
@@ -1561,13 +1563,21 @@ fn cmd_ai_set(svc: &Services, args: &Args) -> Result<(), String> {
         // Refresh the endpoint and model from the preset unless the caller pinned them
         // in this same call. Without this, a previously stored explicit baseUrl keeps
         // winning and the provider switch silently does nothing.
-        let (preset_url, preset_model) =
-            eazyqq_lib::services::ai::provider_preset(&provider);
-        if args.flag("base-url").is_none() {
-            ai["baseUrl"] = serde_json::json!(preset_url);
-        }
-        if args.flag("model").is_none() {
-            ai["model"] = serde_json::json!(preset_model);
+        let (preset_url, preset_model) = eazyqq_lib::services::ai::provider_preset(&provider);
+        match (preset_url, preset_model) {
+            (Some(url), Some(model)) => {
+                if args.flag("base-url").is_none() {
+                    ai["baseUrl"] = serde_json::json!(url);
+                }
+                if args.flag("model").is_none() {
+                    ai["model"] = serde_json::json!(model);
+                }
+            }
+            _ => {
+                // Custom provider: nothing to derive from, so whatever is stored stays.
+                // Flag it so the user is told what still has to be filled in.
+                custom_provider = true;
+            }
         }
         changed.push(format!("provider={}", provider));
     }
@@ -1641,8 +1651,139 @@ fn cmd_ai_set(svc: &Services, args: &Args) -> Result<(), String> {
 
     println!("已更新: {}", changed.join(", "));
     println!("实际生效: {}", effective.describe());
+    if let Err(e) = effective.validate() {
+        println!("⚠ 配置尚不完整: {}", e);
+    }
+    if custom_provider {
+        println!("⚠ 自定义供应商没有内置默认端点，请用 --base-url 与 --model 指定。");
+    }
     println!();
     println!("提示: 已运行的客户端需要重启，或在设置页保存一次配置以热生效。");
+    Ok(())
+}
+
+/// Probe the usual local inference ports and report which ones really speak the
+/// OpenAI-compatible protocol.
+///
+/// This exists because guessing is not acceptable here: a port that answers HTTP 200
+/// with an HTML page (OpenCode's web UI, for instance) is *not* a usable endpoint, and
+/// the user should not have to discover that by watching requests fail.
+async fn cmd_ai_detect(svc: &Services, args: &Args) -> Result<(), String> {
+    const CANDIDATES: &[(&str, &str)] = &[
+        ("http://127.0.0.1:11434/v1", "Ollama"),
+        ("http://127.0.0.1:1234/v1", "LM Studio"),
+        ("http://127.0.0.1:8080/v1", "llama.cpp server"),
+        ("http://127.0.0.1:8000/v1", "vLLM"),
+        ("http://127.0.0.1:4096/v1", "OpenCode (预期不兼容)"),
+    ];
+
+    // Probe the endpoint that is actually configured first - that is the one that matters.
+    let configured = svc.ai.current();
+    let mut targets: Vec<(String, String)> = Vec::new();
+    if !configured.base_url.trim().is_empty() {
+        targets.push((
+            configured.base_url.clone(),
+            format!("当前配置 ({})", configured.provider),
+        ));
+    }
+    for (url, label) in CANDIDATES {
+        if !targets.iter().any(|(u, _)| u == url) {
+            targets.push((url.to_string(), label.to_string()));
+        }
+    }
+
+    // Two clients: loopback probes must bypass the proxy (otherwise a machine-level
+    // http_proxy turns "nothing is listening" into a misleading 502 from the proxy).
+    let client_direct = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(4))
+        .no_proxy()
+        .build()
+        .map_err(|e| e.to_string())?;
+    let client_proxied = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut results: Vec<serde_json::Value> = Vec::new();
+
+    if !args.json() {
+        hr();
+        println!("探测大模型端点是否可用（OpenAI 兼容）");
+        hr();
+    }
+
+    for (url, label) in &targets {
+        let probe = format!("{}/models", url.trim_end_matches('/'));
+        let client = if eazyqq_lib::services::ai::is_local_endpoint(url) {
+            &client_direct
+        } else {
+            &client_proxied
+        };
+        let verdict = match client.get(&probe).send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                let trimmed = body.trim_start();
+
+                if status.as_u16() == 401 || status.as_u16() == 403 {
+                    // The endpoint speaks the protocol but wants credentials - still a
+                    // usable endpoint, just needs a key.
+                    ("需鉴权", "是 OpenAI 兼容端点，但需要 API Key".to_string())
+                } else if status.is_success() && trimmed.starts_with('{') {
+                    match serde_json::from_str::<serde_json::Value>(trimmed) {
+                        Ok(json) if json.get("data").is_some() => {
+                            let count = json
+                                .get("data")
+                                .and_then(|d| d.as_array())
+                                .map(|a| a.len())
+                                .unwrap_or(0);
+                            ("可用", format!("OpenAI 兼容，检测到 {} 个模型", count))
+                        }
+                        _ => ("不兼容", "返回了 JSON 但不是模型列表结构".to_string()),
+                    }
+                } else if status.is_success() {
+                    (
+                        "不兼容",
+                        "返回的是 HTML 页面（很可能是 Web UI，不是推理接口）".to_string(),
+                    )
+                } else {
+                    ("不可用", format!("HTTP {}", status))
+                }
+            }
+            Err(e) => {
+                // Distinguish "nothing there" from "there but not answering".
+                let detail = if e.is_connect() {
+                    "端口未监听或拒绝连接".to_string()
+                } else if e.is_timeout() {
+                    "端口有服务但无响应（超时）".to_string()
+                } else {
+                    format!("连接失败: {}", e)
+                };
+                ("未监听", detail)
+            }
+        };
+
+        if args.json() {
+            results.push(serde_json::json!({
+                "label": label,
+                "url": url,
+                "verdict": verdict.0,
+                "detail": verdict.1,
+            }));
+        } else {
+            println!("[{}] {:<24} {:<32} {}", verdict.0, label, url, verdict.1);
+        }
+    }
+
+    if args.json() {
+        print_json(&serde_json::json!({ "results": results }));
+    } else {
+        hr();
+        println!("说明: 标记为「可用」或「需鉴权」的端点才能填入 ai-set --base-url。");
+        println!("本地推理推荐 Ollama / LM Studio / llama.cpp / vLLM；");
+        println!("OpenCode 是编码智能体框架，其 serve 端口返回 Web UI，不提供 OpenAI 兼容接口。");
+        hr();
+    }
     Ok(())
 }
 
@@ -1771,6 +1912,7 @@ async fn main() -> ExitCode {
                 "ai-config" => cmd_ai_config(&svc, &args),
                 "ai-set" => cmd_ai_set(&svc, &args),
                 "ai-test" => cmd_ai_test(&svc, &args).await,
+                "ai-detect" => cmd_ai_detect(&svc, &args).await,
                 "export" => cmd_export(&svc, &args).await,
                 "simulate" => cmd_simulate(&svc, &args).await,
                 other => {

@@ -18,15 +18,22 @@ use serde_json::Value;
 use tracing::{error, info};
 
 /// Default endpoints per provider. Any explicit `baseUrl` in the config overrides these.
-const PRESET_OPENCODE: &str = "http://127.0.0.1:4096/v1";
+///
+/// Only genuinely OpenAI-compatible endpoints belong here. OpenCode was originally
+/// assumed to expose one; probing a live `opencode serve` shows `/v1/*` and `/api/*`
+/// fall through to its HTML web UI, so it is an agent framework rather than an inference
+/// server and has deliberately been removed from this list. Local inference should go
+/// through Ollama / LM Studio / llama.cpp / vLLM, all of which do implement the protocol.
 const PRESET_OLLAMA: &str = "http://127.0.0.1:11434/v1";
 const PRESET_LM_STUDIO: &str = "http://127.0.0.1:1234/v1";
+const PRESET_LLAMACPP: &str = "http://127.0.0.1:8080/v1";
+const PRESET_VLLM: &str = "http://127.0.0.1:8000/v1";
 const PRESET_DEEPSEEK: &str = "https://api.deepseek.com/v1";
 const PRESET_OPENAI: &str = "https://api.openai.com/v1";
 const PRESET_TOKENRHYTHM: &str = "https://tokenrhythm.studio/v1";
 
-const DEFAULT_MODEL_OPENCODE: &str = "opencode-default";
 const DEFAULT_MODEL_OLLAMA: &str = "qwen2.5:7b";
+const DEFAULT_MODEL_LM_STUDIO: &str = "local-model";
 const DEFAULT_MODEL_DEEPSEEK: &str = "deepseek-chat";
 const DEFAULT_MODEL_OPENAI: &str = "gpt-4o-mini";
 const DEFAULT_MODEL_TOKENRHYTHM: &str = "qwen3.8-flash";
@@ -64,52 +71,67 @@ pub fn is_local_endpoint(base_url: &str) -> bool {
         || lower.contains("host.docker.internal")
 }
 
-fn preset_base_url(provider: &str) -> &'static str {
+/// Preset endpoint for a provider, or `None` when the provider is a custom one whose
+/// endpoint the user must supply.
+fn preset_base_url(provider: &str) -> Option<&'static str> {
     match provider {
-        "opencode" => PRESET_OPENCODE,
-        "ollama" => PRESET_OLLAMA,
-        "lmstudio" | "lm-studio" => PRESET_LM_STUDIO,
-        "deepseek" => PRESET_DEEPSEEK,
-        "openai" => PRESET_OPENAI,
-        _ => PRESET_TOKENRHYTHM,
+        "ollama" => Some(PRESET_OLLAMA),
+        "lmstudio" | "lm-studio" => Some(PRESET_LM_STUDIO),
+        "llamacpp" | "llama.cpp" => Some(PRESET_LLAMACPP),
+        "vllm" => Some(PRESET_VLLM),
+        "deepseek" => Some(PRESET_DEEPSEEK),
+        "openai" => Some(PRESET_OPENAI),
+        "tokenrhythm" => Some(PRESET_TOKENRHYTHM),
+        _ => None,
     }
 }
 
-fn preset_model(provider: &str) -> &'static str {
+fn preset_model(provider: &str) -> Option<&'static str> {
     match provider {
-        "opencode" => DEFAULT_MODEL_OPENCODE,
-        "ollama" => DEFAULT_MODEL_OLLAMA,
-        "lmstudio" | "lm-studio" => DEFAULT_MODEL_OLLAMA,
-        "deepseek" => DEFAULT_MODEL_DEEPSEEK,
-        "openai" => DEFAULT_MODEL_OPENAI,
-        _ => DEFAULT_MODEL_TOKENRHYTHM,
+        "ollama" => Some(DEFAULT_MODEL_OLLAMA),
+        "lmstudio" | "lm-studio" => Some(DEFAULT_MODEL_LM_STUDIO),
+        "llamacpp" | "llama.cpp" | "vllm" => Some(DEFAULT_MODEL_LM_STUDIO),
+        "deepseek" => Some(DEFAULT_MODEL_DEEPSEEK),
+        "openai" => Some(DEFAULT_MODEL_OPENAI),
+        "tokenrhythm" => Some(DEFAULT_MODEL_TOKENRHYTHM),
+        _ => None,
     }
 }
 
-/// Public view of a provider's defaults.
+/// Public view of a provider's defaults. `None` values mean "the user must supply it".
 ///
 /// Callers that change the provider **must** use this to refresh the stored `baseUrl`
 /// and `model`, otherwise a previously saved explicit `baseUrl` keeps winning and the
-/// switch silently does nothing - the user picks "local OpenCode" and traffic still goes
+/// switch silently does nothing - the user picks a local endpoint and traffic still goes
 /// to the cloud.
-pub fn provider_preset(provider: &str) -> (String, String) {
+pub fn provider_preset(provider: &str) -> (Option<String>, Option<String>) {
     let p = provider.trim().to_lowercase();
     (
-        preset_base_url(&p).to_string(),
-        preset_model(&p).to_string(),
+        preset_base_url(&p).map(|s| s.to_string()),
+        preset_model(&p).map(|s| s.to_string()),
     )
 }
 
-/// Every provider the UI and CLI can select, with its default endpoint and model.
+/// Every provider with a built-in default, as
+/// `(id, base_url, model, is_local)`.
 pub fn known_providers() -> Vec<(String, String, String, bool)> {
-    ["opencode", "ollama", "lmstudio", "deepseek", "openai", "tokenrhythm"]
-        .iter()
-        .map(|p| {
-            let (url, model) = provider_preset(p);
-            let local = is_local_endpoint(&url);
-            (p.to_string(), url, model, local)
-        })
-        .collect()
+    [
+        "ollama",
+        "lmstudio",
+        "llamacpp",
+        "vllm",
+        "deepseek",
+        "openai",
+        "tokenrhythm",
+    ]
+    .iter()
+    .filter_map(|p| {
+        let url = preset_base_url(p)?;
+        let model = preset_model(p)?;
+        let local = is_local_endpoint(url);
+        Some((p.to_string(), url.to_string(), model.to_string(), local))
+    })
+    .collect()
 }
 
 impl AiRuntimeConfig {
@@ -138,14 +160,16 @@ impl AiRuntimeConfig {
             .and_then(|v| v.as_str())
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| preset_base_url(&provider).to_string());
+            .or_else(|| preset_base_url(&provider).map(|s| s.to_string()))
+            .unwrap_or_default();
 
         cfg.model = ai
             .get("model")
             .and_then(|v| v.as_str())
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| preset_model(&provider).to_string());
+            .or_else(|| preset_model(&provider).map(|s| s.to_string()))
+            .unwrap_or_default();
 
         cfg.api_key = ai
             .get("apiKey")
@@ -173,19 +197,45 @@ impl AiRuntimeConfig {
         !is_local_endpoint(&self.base_url)
     }
 
+    /// A configuration is only usable with both an endpoint and a model. Custom
+    /// providers have no preset, so a missing value must be reported, not silently
+    /// turned into a request to nowhere.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.base_url.trim().is_empty() {
+            return Err(format!(
+                "供应商「{}」没有内置默认接口地址，请在配置中显式填写 baseUrl",
+                self.provider
+            ));
+        }
+        if self.model.trim().is_empty() {
+            return Err(format!(
+                "供应商「{}」没有内置默认模型，请在配置中显式填写 model",
+                self.provider
+            ));
+        }
+        Ok(())
+    }
+
     pub fn describe(&self) -> String {
         format!(
             "provider={}, model={}, endpoint={}{}",
             self.provider,
-            self.model,
-            self.base_url,
+            if self.model.is_empty() { "<未设置>" } else { &self.model },
+            if self.base_url.is_empty() { "<未设置>" } else { &self.base_url },
             if self.requires_api_key() { "" } else { " (本地端点，无需 Key)" }
         )
     }
 }
 
 pub struct AiService {
-    client: Client,
+    /// Honours the environment proxy - used for cloud providers.
+    client_proxied: Client,
+    /// Ignores the environment proxy - used for local endpoints.
+    ///
+    /// Without this, a machine with `http_proxy` set (a very common setup, and this one
+    /// has it) routes `http://127.0.0.1:11434` through the proxy too, which either fails
+    /// outright or adds a pointless hop to a loopback request.
+    client_direct: Client,
     config: RwLock<AiRuntimeConfig>,
 }
 
@@ -197,16 +247,31 @@ pub struct ChatMessage {
 
 impl AiService {
     pub fn new(config: AiRuntimeConfig) -> Self {
-        let client = Client::builder()
+        let client_proxied = Client::builder()
             .timeout(Duration::from_secs(120))
+            .build()
+            .unwrap_or_default();
+        let client_direct = Client::builder()
+            .timeout(Duration::from_secs(120))
+            .no_proxy()
             .build()
             .unwrap_or_default();
 
         info!("AI service configured: {}", config.describe());
 
         Self {
-            client,
+            client_proxied,
+            client_direct,
             config: RwLock::new(config),
+        }
+    }
+
+    /// The client appropriate for the given endpoint.
+    fn client_for(&self, cfg: &AiRuntimeConfig) -> &Client {
+        if is_local_endpoint(&cfg.base_url) {
+            &self.client_direct
+        } else {
+            &self.client_proxied
         }
     }
 
@@ -241,6 +306,7 @@ impl AiService {
     /// Returns `(content, reasoning_content)`.
     async fn post_chat(&self, mut payload: Value) -> Result<(String, Option<String>), String> {
         let cfg = self.current();
+        cfg.validate()?;
 
         if cfg.requires_api_key() && cfg.api_key.trim().is_empty() {
             return Err(format!(
@@ -259,7 +325,7 @@ impl AiService {
         let url = format!("{}/chat/completions", cfg.base_url.trim_end_matches('/'));
 
         let mut request = self
-            .client
+            .client_for(&cfg)
             .post(&url)
             .header("Content-Type", "application/json");
 
@@ -447,7 +513,7 @@ mod tests {
     fn explicit_base_url_and_model_override_the_preset() {
         let cfg = AiRuntimeConfig::from_app_config(
             Some(&json!({
-                "activeProvider": "opencode",
+                "activeProvider": "ollama",
                 "baseUrl": "http://127.0.0.1:9999/v1",
                 "model": "my-local-model"
             })),
@@ -545,25 +611,74 @@ mod tests {
         assert_eq!(service.model(), DEFAULT_MODEL_TOKENRHYTHM);
 
         service.reconfigure(AiRuntimeConfig {
-            provider: "opencode".to_string(),
-            base_url: PRESET_OPENCODE.to_string(),
+            provider: "ollama".to_string(),
+            base_url: PRESET_OLLAMA.to_string(),
             model: "local-llama".to_string(),
             ..AiRuntimeConfig::default()
         });
 
         assert_eq!(service.model(), "local-llama");
-        assert_eq!(service.current().base_url, PRESET_OPENCODE);
+        assert_eq!(service.current().base_url, PRESET_OLLAMA);
         assert!(service.has_api_key(), "local endpoint needs no key");
     }
 
     #[test]
     fn describe_marks_local_endpoints() {
         let local = AiRuntimeConfig {
-            provider: "opencode".to_string(),
-            base_url: PRESET_OPENCODE.to_string(),
+            provider: "ollama".to_string(),
+            base_url: PRESET_OLLAMA.to_string(),
             ..AiRuntimeConfig::default()
         };
         assert!(local.describe().contains("无需 Key"));
         assert!(AiRuntimeConfig::default().describe().contains("tokenrhythm"));
+    }
+
+    #[test]
+    fn opencode_is_not_offered_as_a_provider() {
+        // Probing a live `opencode serve` showed /v1/* and /api/* return its HTML web UI,
+        // so it is not an OpenAI-compatible endpoint and must not be advertised as one.
+        let ids: Vec<String> = known_providers().into_iter().map(|(id, ..)| id).collect();
+        assert!(!ids.contains(&"opencode".to_string()), "got {ids:?}");
+        assert!(ids.contains(&"ollama".to_string()));
+        assert!(ids.contains(&"tokenrhythm".to_string()));
+    }
+
+    #[test]
+    fn local_providers_are_flagged_in_the_catalogue() {
+        for (id, url, model, local) in known_providers() {
+            assert!(!url.is_empty(), "{id} must have a preset endpoint");
+            assert!(!model.is_empty(), "{id} must have a preset model");
+            assert_eq!(local, is_local_endpoint(&url), "mismatch for {id}");
+        }
+    }
+
+    #[test]
+    fn unknown_provider_has_no_preset_and_fails_validation() {
+        let (url, model) = provider_preset("my-custom-gateway");
+        assert!(url.is_none());
+        assert!(model.is_none());
+
+        let cfg = AiRuntimeConfig::from_app_config(
+            Some(&json!({ "activeProvider": "my-custom-gateway" })),
+            "",
+        );
+        let err = cfg.validate().unwrap_err();
+        assert!(err.contains("baseUrl"), "got: {err}");
+    }
+
+    #[test]
+    fn unknown_provider_works_once_an_endpoint_is_supplied() {
+        let cfg = AiRuntimeConfig::from_app_config(
+            Some(&json!({
+                "activeProvider": "my-custom-gateway",
+                "baseUrl": "https://gateway.internal/v1",
+                "model": "internal-model",
+                "apiKey": "sk-x"
+            })),
+            "",
+        );
+        assert!(cfg.validate().is_ok());
+        assert!(cfg.requires_api_key());
+        assert_eq!(cfg.model, "internal-model");
     }
 }

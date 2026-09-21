@@ -28,6 +28,8 @@
 | 18 | **ISSUE-018** | 可观测性 / 日志缺失 | 高 | **已修复** | 后端无任何持久化日志，故障后无从定位；诊断包为假实现 |
 | 19 | **ISSUE-019** | 协议端 / QQ 版本适配 | 高 | **待环境适配** | NapCat packetBackend 不支持当前 QQ 版本，群文件下载不可用 |
 | 20 | **ISSUE-020** | 构建环境 / 工具链 | 中 | **已定位（环境侧）** | MSVC bin 前置到 PATH 会遮蔽系统 CRT，导致测试二进制无法加载 |
+| 21 | **ISSUE-021** | 设计假设 / 本地推理 | 中 | **已修正** | 原设计假设 OpenCode 提供 OpenAI 兼容接口，实测其 serve 端口返回 Web UI |
+| 22 | **ISSUE-022** | 网络 / 代理绕过 | 高 | **已修复** | 系统 http_proxy 会拦截 loopback 请求，导致本地模型与协议端调用异常 |
 
 ---
 
@@ -315,3 +317,39 @@
 ### 附：本次已修正的构建配置
 - `crate-type` 由 `["staticlib", "cdylib", "rlib"]` 收敛为 `["rlib"]`：本项目仅构建桌面端，`rlib` 已足够；保留 `cdylib` 会额外产出 `target/debug/deps/eazyqq_lib.dll`，与同名测试二进制共处一目录，属于不必要的干扰源。
 - 构建时**不要**把 MSVC bin 目录前置到 `PATH`（该目录携带一套 CRT DLL）。改用 `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER` 指向 `link.exe` 完整路径，既避开 Git Bash 的 `/usr/bin/link.exe` 遮蔽，又保持 PATH 干净。详见 README 的「构建与测试」章节。
+
+---
+
+### ISSUE-021: 设计假设有误 —— OpenCode 并不提供 OpenAI 兼容接口
+- **首次发现时间**: 2026-09-22
+- **触发场景**: 按 PRODUCT.md / ROADMAP Phase 3 的原始设计，把「本地 OpenCode」作为一个 OpenAI 兼容供应源接入，预设端点 `http://127.0.0.1:4096/v1`。
+- **排查过程（实测而非推测）**:
+  1. 启动真实服务：`opencode serve --port 4096 --hostname 127.0.0.1`，端口正常监听；
+  2. 探测 `POST /v1/chat/completions` 与 `GET /v1/models`：**均返回 HTTP 200，但响应体是 OpenCode 的 HTML 单页应用**（`<title>OpenCode</title>` 及其前端资源），即 SPA 的 catch-all 回退，而不是 JSON；
+  3. 进一步探测其真实路由：`/api/health` 返回 `{"healthy":true}`，`/api/agent` 返回智能体定义，说明服务端确实存在，但**其对外协议是 OpenCode 自己的会话式 API（`/api/*`），不是 OpenAI 的 `/chat/completions`**；
+  4. 结论：OpenCode 是**编码智能体框架**，不是推理服务器。它自身作为客户端去调用各家模型，并不对外提供 OpenAI 兼容的推理端点。
+- **额外发现**: `opencode serve` 的 `--port` 默认值是 **0（随机端口）**，因此「固定 4096」这一预设本身就不可靠；且实测其服务进程在运行数分钟后内存涨至 633MB 并出现请求无响应。
+- **修复方案与措施**:
+  1. **移除 `opencode` 预设**，不再对外宣称其为可用供应源；
+  2. 供应源列表改为真实 OpenAI 兼容的实现：`ollama` / `lmstudio` / `llamacpp` / `vllm`（本地）+ `deepseek` / `openai` / `tokenrhythm`（云端）；
+  3. 未知 provider 视为**自定义供应商**：不套用任何预设，必须显式提供 `baseUrl` 与 `model`，否则 `validate()` 返回明确错误，而不是把请求发往空地址；
+  4. 新增 `eazyqq_cli ai-detect`：逐一探测常见本地端口，并区分「可用 / 需鉴权 / 不兼容 / 不可用 / 未监听」，其中**专门识别"返回 HTML 的 Web UI"这一情形**并标记为不兼容，避免用户踩同一个坑；
+  5. 前端设置页同步移除 OpenCode 选项，并新增 llama.cpp / vLLM。
+- **说明**: 本项目的 PRODUCT.md 与 ROADMAP Phase 3 中「本地 OpenCode（OpenAI 兼容接口）」的表述属于原始设计假设，与实测不符，已在文档中记录并在实现上纠正。
+
+---
+
+### ISSUE-022: 系统代理会拦截 loopback 请求，破坏本地模型与协议端调用
+- **首次发现时间**: 2026-09-22
+- **触发场景**: 用 `ai-detect` 探测本地端口时，**已确认无服务监听的端口**返回的却是 `HTTP 502 Bad Gateway`，而非"连接被拒绝"；进一步排查发现 `http_proxy` / `https_proxy` 环境变量被设置为 `http://127.0.0.1:9244`。
+- **技术根因剖析**:
+  - `reqwest` 默认读取 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量并**对所有请求生效，包括 `127.0.0.1`**；
+  - 于是对本地推理端点的请求被送到代理，代理再去连本地端口，失败时统一回 502。表现为"本地模型明明起来了却连不上"，或"报错信息完全指错方向"；
+  - 同理，`OneBotClient` 与 `NapCatService` 面向的都是 loopback 服务，一旦用户开启代理（本项目所在机器的 `proxy-on` 会设置 `127.0.0.1:10808`），协议端调用也会被无谓地绕经代理，增加延迟并引入额外故障点。
+- **影响范围**: 所有指向 `127.0.0.1` / `localhost` 的请求。云端请求不受影响，且云端**需要**走代理。
+- **修复方案与措施**:
+  1. `AiService` 持有两个客户端：`client_proxied`（云端，遵循环境代理）与 `client_direct`（`.no_proxy()`，本地端点），按 `is_local_endpoint(base_url)` 逐次选择；
+  2. `OneBotClient` 的控制面客户端加 `.no_proxy()`（始终 loopback）；**文件下载客户端保持走代理**，因为群文件来自远端 CDN，可能确实需要代理；
+  3. `NapCatService` 客户端加 `.no_proxy()`；
+  4. `ai-detect` 同样按目标地址选择客户端，使探测结论不再被代理污染。
+- **验证**: 修复后探测已关闭的本地端口正确返回"端口未监听或拒绝连接"，而云端端点正确返回"需鉴权"（无 Key 时 401），二者不再混淆。

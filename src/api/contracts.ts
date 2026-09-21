@@ -122,10 +122,18 @@ export interface DependencyHealthReport {
   storage: { workspacePath: string; isWritable: boolean; freeSpaceMb: number };
 }
 
+/**
+ * Providers with a built-in default endpoint, mirroring `services/ai.rs`.
+ *
+ * Any other string is treated as a custom provider and requires an explicit `baseUrl`
+ * and `model`. OpenCode is deliberately absent: its `serve` port answers `/v1/*` with
+ * its HTML web UI, so it is not an OpenAI-compatible endpoint.
+ */
 export type AiProviderId =
-  | 'opencode'
   | 'ollama'
   | 'lmstudio'
+  | 'llamacpp'
+  | 'vllm'
   | 'deepseek'
   | 'openai'
   | 'tokenrhythm';
