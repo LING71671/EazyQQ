@@ -1,0 +1,357 @@
+//! Group file silent sync + document summarization (ROADMAP Phase 4).
+//!
+//! * `sync_group_files` mirrors the remote file list into SQLite.
+//! * `download_group_file` resolves the OneBot download URL, enforces a size cap and
+//!   writes the bytes into `EazyQQ_Data/group_files/<group_id>/`.
+//! * `summarize_file` extracts text from plain-text formats and asks the model for a
+//!   structured summary with key takeaways and action items.
+//!
+//! Formats that need a real parser (pdf / docx / xlsx) are reported as unsupported
+//! instead of silently returning an empty summary.
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use serde_json::Value;
+
+use crate::models::FileSummaryResultDto;
+use crate::services::ai::{AiService, ChatMessage};
+use crate::services::db::{Database, GroupFileRecord};
+use crate::services::logging;
+use crate::services::onebot::OneBotClient;
+
+const DEFAULT_MAX_FILE_MB: i64 = 100;
+/// Upper bound on how much document text we send to the model.
+const MAX_PROMPT_CHARS: usize = 20_000;
+
+/// Plain-text formats we can read directly, no parser required.
+const TEXT_EXTS: &[&str] = &[
+    "txt", "md", "markdown", "csv", "tsv", "json", "log", "xml", "yaml", "yml", "ini", "toml",
+    "rs", "ts", "tsx", "js", "jsx", "py", "java", "c", "cpp", "h", "hpp", "go", "sql", "html",
+    "htm", "css", "sh", "bat", "ps1",
+];
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
+pub fn group_dir(group_id: &str) -> PathBuf {
+    logging::data_dir().join("group_files").join(group_id)
+}
+
+/// Strip path separators and reserved characters so a remote filename cannot escape the
+/// workspace or break the filesystem.
+fn sanitize_file_name(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            c if (c as u32) < 0x20 => '_',
+            c => c,
+        })
+        .collect();
+    let trimmed = cleaned.trim().trim_start_matches('.').to_string();
+    if trimmed.is_empty() {
+        "unnamed_file".to_string()
+    } else if trimmed.chars().count() > 120 {
+        trimmed.chars().take(120).collect()
+    } else {
+        trimmed
+    }
+}
+
+fn extension_of(name: &str) -> String {
+    Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase()
+}
+
+fn read_config_i64(db: &Database, key_path: &[&str], fallback: i64) -> i64 {
+    let raw = match db.get_setting("app_config") {
+        Ok(Some(v)) => v,
+        _ => return fallback,
+    };
+    let parsed: Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(_) => return fallback,
+    };
+    let mut cursor = &parsed;
+    for key in key_path {
+        match cursor.get(key) {
+            Some(next) => cursor = next,
+            None => return fallback,
+        }
+    }
+    cursor.as_i64().unwrap_or(fallback)
+}
+
+pub fn max_file_bytes(db: &Database) -> u64 {
+    let mb = read_config_i64(db, &["storage", "maxFileSizeMb"], DEFAULT_MAX_FILE_MB).clamp(1, 4096);
+    (mb as u64) * 1024 * 1024
+}
+
+/// Mirror the remote group file list into SQLite, preserving local download state.
+pub async fn sync_group_files(
+    db: &Arc<Database>,
+    onebot: &Arc<OneBotClient>,
+    group_id: &str,
+) -> Result<Vec<GroupFileRecord>, String> {
+    let remote = onebot.get_group_root_files(group_id).await?;
+    tracing::info!(
+        "group files: OneBot reported {} file(s) in group {}",
+        remote.len(),
+        group_id
+    );
+
+    let mut records = Vec::new();
+    for f in remote {
+        let existing = db.find_group_file(group_id, &f.file_id).ok().flatten();
+        let record = GroupFileRecord {
+            file_id: f.file_id,
+            group_id: group_id.to_string(),
+            file_name: f.file_name,
+            file_size: f.file_size.unwrap_or(0),
+            busid: f.busid.unwrap_or(0),
+            uploader_name: f.uploader_name.unwrap_or_default(),
+            upload_time: f.upload_time.unwrap_or(0),
+            local_path: existing.as_ref().and_then(|e| e.local_path.clone()),
+            download_status: existing
+                .map(|e| e.download_status)
+                .unwrap_or_else(|| "remote".to_string()),
+            updated_at: now_ms(),
+        };
+        if let Err(e) = db.upsert_group_file(&record) {
+            tracing::error!("group files: cannot persist {}: {}", record.file_name, e);
+        }
+        records.push(record);
+    }
+    Ok(records)
+}
+
+/// Download one group file into the workspace and update its record.
+pub async fn download_group_file(
+    db: &Arc<Database>,
+    onebot: &Arc<OneBotClient>,
+    group_id: &str,
+    file_id: &str,
+) -> Result<PathBuf, String> {
+    let mut record = db
+        .find_group_file(group_id, file_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| {
+            format!(
+                "本地没有该文件记录，请先同步群文件列表 (group={}, file={})",
+                group_id, file_id
+            )
+        })?;
+
+    let url = onebot
+        .get_group_file_url(group_id, file_id, record.busid)
+        .await?;
+
+    tracing::info!("group files: downloading {} from OneBot", record.file_name);
+    let bytes = onebot.download_bytes(&url, max_file_bytes(db)).await?;
+
+    let dir = group_dir(group_id);
+    logging::ensure_dir(&dir);
+    let path = dir.join(sanitize_file_name(&record.file_name));
+
+    std::fs::write(&path, &bytes).map_err(|e| format!("写入 {} 失败: {}", path.display(), e))?;
+
+    record.local_path = Some(path.display().to_string());
+    record.download_status = "downloaded".to_string();
+    record.file_size = bytes.len() as i64;
+    record.updated_at = now_ms();
+    let _ = db.upsert_group_file(&record);
+
+    tracing::info!(
+        "group files: saved {} ({} bytes) -> {}",
+        record.file_name,
+        bytes.len(),
+        path.display()
+    );
+
+    Ok(path)
+}
+
+/// Extract plain text from a local document. Returns `Err` for formats that need a
+/// dedicated parser so callers can surface an honest message.
+pub fn extract_text(path: &Path) -> Result<String, String> {
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let ext = extension_of(&name);
+
+    if !path.exists() {
+        return Err(format!("文件不存在: {}", path.display()));
+    }
+
+    if !TEXT_EXTS.contains(&ext.as_str()) {
+        return Err(format!(
+            "暂不支持解析 .{} 格式（当前支持纯文本类文档：{} 等）",
+            if ext.is_empty() { "<无扩展名>" } else { &ext },
+            TEXT_EXTS[..8].join(" / ")
+        ));
+    }
+
+    let bytes = std::fs::read(path).map_err(|e| format!("读取文件失败: {}", e))?;
+    // Lossy decode: group files are frequently GBK-encoded, but a best-effort UTF-8 read
+    // still yields usable content rather than failing outright.
+    let text = String::from_utf8_lossy(&bytes).to_string();
+
+    if text.trim().is_empty() {
+        return Err("文件内容为空或无法解码为文本".to_string());
+    }
+
+    Ok(text)
+}
+
+/// Summarize a downloaded document with the model.
+pub async fn summarize_file(
+    ai: &Arc<AiService>,
+    local_path: &str,
+) -> Result<FileSummaryResultDto, String> {
+    let path = Path::new(local_path);
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("未知文档")
+        .to_string();
+    let file_size = std::fs::metadata(path).map(|m| m.len() as i64).unwrap_or(0);
+
+    let text = extract_text(path)?;
+    let total_chars = text.chars().count();
+    let truncated: String = text.chars().take(MAX_PROMPT_CHARS).collect();
+
+    tracing::info!(
+        "file summary: {} ({} chars, sending {} chars to the model)",
+        file_name,
+        total_chars,
+        truncated.chars().count()
+    );
+
+    let system = "你是一个文档提炼助手。必须只输出一个 JSON 对象，不要输出解释或 Markdown 代码块，格式为：\
+                  {\"summary\":\"150-300 字的整体摘要\",\"key_takeaways\":[\"核心论点\"],\"action_items\":[\"待办事项及责任人\"]}。\
+                  没有内容的字段返回空数组。不要编造文档中没有的信息。";
+
+    let messages = vec![ChatMessage {
+        role: "user".to_string(),
+        content: format!(
+            "文件名：{}\n字符数：{}\n\n以下是文档内容：\n{}",
+            file_name, total_chars, truncated
+        ),
+    }];
+
+    let (raw, _thinking) = ai
+        .generate_with_system(system, &messages, 0.3)
+        .await
+        .map_err(|e| format!("文档摘要生成失败: {}", e))?;
+
+    let cleaned = raw
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim()
+        .to_string();
+
+    let (summary_text, key_takeaways, action_items) =
+        match serde_json::from_str::<Value>(&cleaned) {
+            Ok(v) => {
+                let summary = v
+                    .get("summary")
+                    .and_then(|s| s.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| cleaned.clone());
+                let takeaways = string_vec(v.get("key_takeaways"));
+                let actions = string_vec(v.get("action_items"));
+                (summary, takeaways, actions)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "file summary: model returned non-JSON ({}), storing raw text",
+                    e
+                );
+                (cleaned.clone(), Vec::new(), Vec::new())
+            }
+        };
+
+    Ok(FileSummaryResultDto {
+        file_name,
+        file_size,
+        total_chars: total_chars.min(i32::MAX as usize) as i32,
+        summary_text,
+        key_takeaways,
+        action_items,
+    })
+}
+
+fn string_vec(value: Option<&Value>) -> Vec<String> {
+    value
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| match item {
+                    Value::String(s) => Some(s.trim().to_string()),
+                    Value::Object(o) => o
+                        .get("text")
+                        .or_else(|| o.get("content"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.trim().to_string()),
+                    _ => None,
+                })
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Handle a live `group_upload` notice: record the file and download it if the group is
+/// on the summary whitelist (i.e. the user explicitly opted in to tracking it).
+pub async fn handle_upload_notice(
+    db: &Arc<Database>,
+    onebot: &Arc<OneBotClient>,
+    group_id: &str,
+    file_id: &str,
+    file_name: &str,
+    file_size: i64,
+    busid: i64,
+    uploader_name: &str,
+) {
+    let policy = crate::services::policy::load(db, group_id);
+    if !policy.tracked() {
+        tracing::debug!(
+            "group upload in {} ignored - group not whitelisted [{}]",
+            group_id,
+            policy.describe()
+        );
+        return;
+    }
+
+    let record = GroupFileRecord {
+        file_id: file_id.to_string(),
+        group_id: group_id.to_string(),
+        file_name: file_name.to_string(),
+        file_size,
+        busid,
+        uploader_name: uploader_name.to_string(),
+        upload_time: now_ms(),
+        local_path: None,
+        download_status: "remote".to_string(),
+        updated_at: now_ms(),
+    };
+    let _ = db.upsert_group_file(&record);
+
+    match download_group_file(db, onebot, group_id, file_id).await {
+        Ok(path) => tracing::info!("group upload auto-saved to {}", path.display()),
+        Err(e) => tracing::warn!("group upload download failed for {}: {}", file_name, e),
+    }
+}

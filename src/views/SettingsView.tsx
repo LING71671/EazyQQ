@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Settings,
   Cpu,
@@ -22,6 +22,8 @@ interface SettingsViewProps {
   onUpdateConfig: (cfg: Partial<AppConfig>) => void;
   onCheckHealth: () => void;
   onExportDiagnostics: () => void;
+  /** Set once a diagnostics bundle has been produced, so the path can be shown. */
+  diagnosticsPath?: string;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -30,6 +32,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onUpdateConfig,
   onCheckHealth,
   onExportDiagnostics,
+  diagnosticsPath,
 }) => {
   // AI Settings
   const [provider, setProvider] = useState(config.ai?.activeProvider || 'opencode');
@@ -54,6 +57,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   );
 
   const [isSaved, setIsSaved] = useState(false);
+
+  // The config arrives asynchronously from SQLite, so the useState initialisers above
+  // only ever see the placeholder defaults. Re-seed whenever the real config lands,
+  // otherwise the page silently shows (and would then save) wrong values.
+  useEffect(() => {
+    setProvider(config.ai?.activeProvider || 'opencode');
+    setModel(config.ai?.model || 'opencode-default');
+    setApiKey(config.ai?.apiKey || '');
+
+    setSummaryEnabled(config.summary?.enabled ?? true);
+    setIntervalType(config.summary?.intervalType || '6h');
+    setCustomIntervalMinutes(config.summary?.customIntervalMinutes || 360);
+    setSlidingWindowHours(config.summary?.slidingWindowHours || 6);
+    setAutoForwardToPhone(config.summary?.autoForwardToPhone ?? false);
+    setCustomPrompt(
+      config.summary?.customPrompt ||
+        '请提取群聊中的核心讨论议题、达成的共识决议、待办行动项及关联责任人，输出清晰简洁的结构化简报。'
+    );
+
+    setMinimizeToTray(config.window?.minimizeToTray ?? true);
+    setCloseToTray(config.window?.closeToTray ?? true);
+  }, [config]);
 
   // Window & Tray Behavior (default: collapse into tray on minimize / close)
   const [minimizeToTray, setMinimizeToTray] = useState(
@@ -426,37 +451,57 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <span className="font-semibold block text-slate-800">本地存储空间</span>
                 <span className="text-slate-400 text-[11px]">
                   {health.storage?.isWritable ? '可正常读写 (WAL已启用)' : '只读不可写'}
+                  {typeof health.storage?.freeSpaceMb === 'number' && health.storage.freeSpaceMb > 0
+                    ? ` · 剩余 ${(health.storage.freeSpaceMb / 1024).toFixed(1)} GB`
+                    : ''}
                 </span>
               </div>
-              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              {health.storage?.isWritable ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-red-500" />
+              )}
             </div>
 
-            {/* Ports */}
+            {/* Overall verdict */}
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
               <div>
-                <span className="font-semibold block text-slate-800">通信端口可用性</span>
-                <span className="text-slate-400 text-[11px]">NapCat: 3000/3001 | WebUI: 6099</span>
+                <span className="font-semibold block text-slate-800">整体就绪状态</span>
+                <span className="text-slate-400 text-[11px]">
+                  {health.isAllReady ? '全部前置条件已满足' : '存在未就绪项，详见上方条目'}
+                </span>
               </div>
-              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              {health.isAllReady ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-amber-500" />
+              )}
             </div>
           </div>
         </div>
 
         {/* 5. Diagnostics Export */}
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <h4 className="text-xs font-semibold text-slate-900">一键导出诊断日志包</h4>
-            <p className="text-[11px] text-slate-400">
-              打包经过安全脱敏的本地运行日志为 ZIP 文件，用于提交开发者查阅定位
-            </p>
+        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-xs font-semibold text-slate-900">一键导出诊断日志包</h4>
+              <p className="text-[11px] text-slate-400">
+                打包经过安全脱敏的本地运行日志、配置快照与崩溃报告为 ZIP，用于提交开发者查阅定位
+              </p>
+            </div>
+            <button
+              onClick={onExportDiagnostics}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
+            >
+              <FileDown className="w-3.5 h-3.5" />
+              <span>导出诊断包</span>
+            </button>
           </div>
-          <button
-            onClick={onExportDiagnostics}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700 hover:bg-slate-100 transition-colors"
-          >
-            <FileDown className="w-3.5 h-3.5" />
-            <span>导出诊断包</span>
-          </button>
+          {diagnosticsPath && (
+            <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-100 text-[11px] text-emerald-900 font-mono break-all">
+              已生成: {diagnosticsPath}
+            </div>
+          )}
         </div>
       </div>
     </div>

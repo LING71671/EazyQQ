@@ -8,6 +8,22 @@ pub struct Database {
     conn: Mutex<Connection>,
 }
 
+/// One group file tracked by the silent-sync pipeline (ROADMAP Phase 4).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupFileRecord {
+    pub file_id: String,
+    pub group_id: String,
+    pub file_name: String,
+    pub file_size: i64,
+    pub busid: i64,
+    pub uploader_name: String,
+    pub upload_time: i64,
+    pub local_path: Option<String>,
+    /// `remote` | `downloaded` | `failed`
+    pub download_status: String,
+    pub updated_at: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContactRuleRecord {
     pub target_id: String,
@@ -107,6 +123,23 @@ impl Database {
                 thinking_content TEXT,
                 model_used TEXT NOT NULL,
                 created_at INTEGER NOT NULL
+            );",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS group_files (
+                file_id TEXT NOT NULL,
+                group_id TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                file_size INTEGER NOT NULL DEFAULT 0,
+                busid INTEGER NOT NULL DEFAULT 0,
+                uploader_name TEXT NOT NULL DEFAULT '',
+                upload_time INTEGER NOT NULL DEFAULT 0,
+                local_path TEXT,
+                download_status TEXT NOT NULL DEFAULT 'remote',
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (group_id, file_id)
             );",
             [],
         )?;
@@ -449,6 +482,79 @@ impl Database {
             list.push(r?);
         }
         Ok(list)
+    }
+
+    // --- Group files (ROADMAP Phase 4) ---
+
+    pub fn upsert_group_file(&self, file: &GroupFileRecord) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO group_files (
+                file_id, group_id, file_name, file_size, busid, uploader_name,
+                upload_time, local_path, download_status, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            ON CONFLICT(group_id, file_id) DO UPDATE SET
+                file_name = excluded.file_name,
+                file_size = excluded.file_size,
+                busid = excluded.busid,
+                uploader_name = excluded.uploader_name,
+                upload_time = excluded.upload_time,
+                local_path = COALESCE(excluded.local_path, group_files.local_path),
+                download_status = excluded.download_status,
+                updated_at = excluded.updated_at",
+            params![
+                file.file_id,
+                file.group_id,
+                file.file_name,
+                file.file_size,
+                file.busid,
+                file.uploader_name,
+                file.upload_time,
+                file.local_path,
+                file.download_status,
+                file.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_group_files(&self, group_id: &str) -> Result<Vec<GroupFileRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT file_id, group_id, file_name, file_size, busid, uploader_name,
+                    upload_time, local_path, download_status, updated_at
+             FROM group_files
+             WHERE group_id = ?1
+             ORDER BY upload_time DESC",
+        )?;
+
+        let rows = stmt.query_map(params![group_id], |row| {
+            Ok(GroupFileRecord {
+                file_id: row.get(0)?,
+                group_id: row.get(1)?,
+                file_name: row.get(2)?,
+                file_size: row.get(3)?,
+                busid: row.get(4)?,
+                uploader_name: row.get(5)?,
+                upload_time: row.get(6)?,
+                local_path: row.get(7)?,
+                download_status: row.get(8)?,
+                updated_at: row.get(9)?,
+            })
+        })?;
+
+        let mut list = Vec::new();
+        for r in rows {
+            list.push(r?);
+        }
+        Ok(list)
+    }
+
+    pub fn find_group_file(&self, group_id: &str, file_id: &str) -> Result<Option<GroupFileRecord>> {
+        Ok(self
+            .get_group_files(group_id)?
+            .into_iter()
+            .find(|f| f.file_id == file_id))
     }
 
     pub fn save_draft(&self, draft: &crate::models::PendingDraftDto) -> Result<()> {

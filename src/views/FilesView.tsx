@@ -1,24 +1,37 @@
 import React, { useState } from 'react';
-import { FolderSync, Download, FileText, CheckCircle2, Loader2, Sparkles, FolderOpen } from 'lucide-react';
-import type { GroupFileItemDto, FileSummaryResultDto } from '@/api/contracts';
+import { FolderSync, Download, FileText, CheckCircle2, Loader2, Sparkles, FolderOpen, RefreshCw } from 'lucide-react';
+import type { ContactItemDto, GroupFileItemDto, FileSummaryResultDto } from '@/api/contracts';
 import emptyFilesUrl from '@/assets/empty-files.svg';
 
 interface FilesViewProps {
   files: GroupFileItemDto[];
+  /** Groups the account is in - used to pick which group's files to sync. */
+  groups: ContactItemDto[];
+  selectedGroupId: string;
+  onSelectGroup: (groupId: string) => void;
+  onSyncFiles: () => void;
+  isSyncing: boolean;
   onDownloadFile: (groupId: string, fileId: string, fileName: string) => void;
   onSummarizeFile: (localPath: string) => void;
   onOpenFolder: (path: string) => void;
   activeSummary?: FileSummaryResultDto;
   isSummarizing: boolean;
+  errorMessage?: string;
 }
 
 export const FilesView: React.FC<FilesViewProps> = ({
   files,
+  groups,
+  selectedGroupId,
+  onSelectGroup,
+  onSyncFiles,
+  isSyncing,
   onDownloadFile,
   onSummarizeFile,
   onOpenFolder,
   activeSummary,
   isSummarizing,
+  errorMessage,
 }) => {
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -34,14 +47,42 @@ export const FilesView: React.FC<FilesViewProps> = ({
           <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">群文件全量同步与文档智能</h2>
           <p className="text-xs text-slate-500">一键将群文件下载至本地知识库，并由 AI 提取结构化要点与待办</p>
         </div>
-        <button
-          onClick={() => onOpenFolder('EazyQQ_Data/files')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-        >
-          <FolderOpen className="w-3.5 h-3.5" />
-          <span>打开本地存储目录</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedGroupId}
+            onChange={(e) => onSelectGroup(e.target.value)}
+            className="max-w-[220px] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+          >
+            <option value="">选择要同步的群聊…</option>
+            {groups.map((g) => (
+              <option key={g.targetId} value={g.targetId}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={onSyncFiles}
+            disabled={!selectedGroupId || isSyncing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? '同步中…' : '同步群文件'}</span>
+          </button>
+          <button
+            onClick={() => onOpenFolder('EazyQQ_Data/group_files')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+            <span>打开本地存储目录</span>
+          </button>
+        </div>
       </div>
+
+      {errorMessage && (
+        <div className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
+          {errorMessage}
+        </div>
+      )}
 
       {/* Main Area (Split: Files list on left, AI Summary on right if active) */}
       <div className="flex-1 flex gap-6 pt-4 overflow-hidden">
@@ -103,7 +144,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                       </span>
                     ) : (
                       <button
-                        onClick={() => onDownloadFile('default', file.fileId, file.fileName)}
+                        onClick={() => onDownloadFile(selectedGroupId, file.fileId, file.fileName)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                       >
                         <Download className="w-3.5 h-3.5" />

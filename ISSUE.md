@@ -26,6 +26,7 @@
 | 16 | **ISSUE-016** | 功能实现 / 空壳桩代码 | 高 | **已修复** | 简报生成与依赖自检为硬编码假实现，未读取任何真实数据 |
 | 17 | **ISSUE-017** | 上下文 / 查询方向错误 | 中 | **已修复** | 消息历史查询取最旧 N 条而非最新 N 条，AI 上下文错位 |
 | 18 | **ISSUE-018** | 可观测性 / 日志缺失 | 高 | **已修复** | 后端无任何持久化日志，故障后无从定位；诊断包为假实现 |
+| 19 | **ISSUE-019** | 协议端 / QQ 版本适配 | 高 | **待环境适配** | NapCat packetBackend 不支持当前 QQ 版本，群文件下载不可用 |
 
 ---
 
@@ -263,3 +264,30 @@
   3. `lib.rs` 在最早时机初始化日志（先于 SQLite 打开），并在窗口创建、托盘构建、关闭请求等关键节点补齐日志；
   4. 新增 `src-tauri/src/services/diagnostics.rs`：真实打包 7 个文件（`system.json` / `health.json` / `config/app_config.json` / `rules/contact_rules.json` / `stats.json` / `logs/eazyqq.log` / `README.txt`），**自实现最小 ZIP 容器**（stored 条目 + CRC32，无新增依赖），并做脱敏（API Key 全量替换、QQ 号中间位打码、不含聊天内容）；`system.json` 额外输出 WebView2 版本与 Windhawk 冲突检测结果；
   5. 验证：用 Python `zipfile` 校验 CRC 通过，且确认原始 API Key 未出现在包内。
+
+---
+
+### ISSUE-019: NapCat packetBackend 不支持当前 QQ 版本，群文件下载不可用
+- **首次发现时间**: 2026-09-21
+- **触发场景**: 执行群文件下载时，OneBot 返回失败。
+- **原始错误**（NapCat 原样返回，已由本项目的 `download_group_file` 完整透出，未吞没）:
+  ```
+  packetBackend不可用，请参照文档 https://napneko.github.io/config/advanced 和启动日志检查packetBackend状态或进行配置！
+  [Core] [Packet] PacketBackend 不支持当前QQ版本架构：9.9.35-52892-x64，
+          请参照 https://github.com/NapNeko/NapCatQQ/releases/tag/v4.9.81 配置正确的QQ版本！
+  ```
+- **技术根因剖析**:
+  - 群文件「列表查询」走的是 WebUI / OneBot 常规接口，可正常返回（实测已成功列出真实群的 30+ 个文件，含 docx / mp4 / jpg / apk / exe）；
+  - 而「获取文件下载地址」(`get_group_file_url`) 需要 NapCat 的 **packetBackend** 参与，该组件与 QQ 客户端版本强绑定。当前安装的 NTQQ 为 `9.9.35-52892-x64`，不在 NapCat v4.9.81 支持的版本矩阵内。
+- **影响范围**: 仅影响群文件**下载**；消息收发、白名单、AI 草稿、群聊简报均不受影响。
+- **解决方案与计划**:
+  1. 由用户侧按 NapCat 官方发布说明，将 NTQQ 降级/升级到 v4.9.81 所支持的版本；
+  2. 代码侧已做的工作：文件列表同步、本地落盘路径规划（`EazyQQ_Data/group_files/<群号>/`）、文件名净化（防止路径穿越）、按配置的 `storage.maxFileSizeMb` 做体积上限校验、下载状态入库（`remote` / `downloaded` / `failed`），协议一旦可用即可直接跑通，无需再改代码；
+  3. 文本类文档的抽取与 AI 综述已独立验证通过（见下），不依赖协议端。
+
+---
+
+### 附：Phase 4 文本综述验证记录
+- 输入：465 字的项目需求评审纪要（含背景、范围、决议、待办四段）。
+- 输出：150 字整体摘要 + 4 条核心论点 + **4 条待办事项（含责任人与时间，全部准确提取）**。
+- 说明：`.txt / .md / .csv / .json / .log / 代码类` 等纯文本格式直接读取；`.pdf / .docx / .xlsx` 需要专用解析器，当前会返回明确的「暂不支持该格式」提示，而不是静默返回空摘要。

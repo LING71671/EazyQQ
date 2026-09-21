@@ -1,5 +1,6 @@
 pub mod db;
 pub mod diagnostics;
+pub mod group_files;
 pub mod napcat;
 pub mod onebot;
 pub mod ai;

@@ -16,6 +16,7 @@ import type {
   ContactItemDto, 
   PendingDraftDto, 
   GroupFileItemDto, 
+  FileSummaryResultDto,
   GroupSummaryDto, 
   AppConfig, 
   DependencyHealthReport,
@@ -40,6 +41,14 @@ export const App: React.FC = () => {
   const [files, setFiles] = useState<GroupFileItemDto[]>([]);
   const [summaries, setSummaries] = useState<GroupSummaryDto[]>([]);
   const [isSummarizing, setIsSummarizing] = useState(false);
+
+  // Group file (Phase 4) state
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [isSyncingFiles, setIsSyncingFiles] = useState(false);
+  const [filesError, setFilesError] = useState<string | undefined>(undefined);
+  const [activeFileSummary, setActiveFileSummary] = useState<FileSummaryResultDto | undefined>(undefined);
+  const [isSummarizingFile, setIsSummarizingFile] = useState(false);
+  const [diagnosticsPath, setDiagnosticsPath] = useState<string | undefined>(undefined);
 
   // Live Chat Drawer States
   const [selectedChatContact, setSelectedChatContact] = useState<ContactItemDto | null>(null);
@@ -407,19 +416,128 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleDownloadFile = (_groupId: string, fileId: string, _fileName: string) => {
+  // --- Group file handlers (Phase 4): all backed by the real Rust commands ---
+
+  const handleSyncFiles = async () => {
+    if (!selectedGroupId) return;
+    setIsSyncingFiles(true);
+    setFilesError(undefined);
+    try {
+      const res = await api.getGroupFiles(selectedGroupId);
+      if (res.success && res.data) {
+        setFiles(res.data);
+      } else {
+        setFilesError(res.error?.message || '同步群文件失败');
+      }
+    } catch (e) {
+      setFilesError(`同步群文件失败: ${String(e)}`);
+      console.error('Failed to sync group files', e);
+    } finally {
+      setIsSyncingFiles(false);
+    }
+  };
+
+  const handleSelectGroup = async (groupId: string) => {
+    setSelectedGroupId(groupId);
+    setActiveFileSummary(undefined);
+    setFilesError(undefined);
+    if (!groupId) {
+      setFiles([]);
+      return;
+    }
+    // Auto-sync on selection so the list is never stale.
+    setIsSyncingFiles(true);
+    try {
+      const res = await api.getGroupFiles(groupId);
+      if (res.success && res.data) {
+        setFiles(res.data);
+      } else {
+        setFilesError(res.error?.message || '同步群文件失败');
+      }
+    } catch (e) {
+      setFilesError(`同步群文件失败: ${String(e)}`);
+    } finally {
+      setIsSyncingFiles(false);
+    }
+  };
+
+  const handleDownloadFile = async (groupId: string, fileId: string, _fileName: string) => {
     setFiles((prev) =>
-      prev.map((f) =>
-        f.fileId === fileId ? { ...f, downloadStatus: 'downloading' } : f
-      )
+      prev.map((f) => (f.fileId === fileId ? { ...f, downloadStatus: 'downloading' } : f))
     );
-    setTimeout(() => {
+    try {
+      const res = await api.downloadFile(groupId, fileId, _fileName);
+      if (res.success && res.data) {
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.fileId === fileId
+              ? { ...f, downloadStatus: 'downloaded', localPath: res.data?.localSavePath }
+              : f
+          )
+        );
+        setFilesError(undefined);
+      } else {
+        setFiles((prev) =>
+          prev.map((f) => (f.fileId === fileId ? { ...f, downloadStatus: 'remote' } : f))
+        );
+        setFilesError(res.error?.message || '下载失败');
+      }
+    } catch (e) {
       setFiles((prev) =>
-        prev.map((f) =>
-          f.fileId === fileId ? { ...f, downloadStatus: 'downloaded' } : f
-        )
+        prev.map((f) => (f.fileId === fileId ? { ...f, downloadStatus: 'remote' } : f))
       );
-    }, 1500);
+      setFilesError(`下载失败: ${String(e)}`);
+      console.error('Failed to download file', e);
+    }
+  };
+
+  const handleSummarizeFile = async (localPath: string) => {
+    setIsSummarizingFile(true);
+    setActiveFileSummary(undefined);
+    try {
+      const res = await api.summarizeFile(localPath);
+      if (res.success && res.data) {
+        setActiveFileSummary(res.data);
+        setFilesError(undefined);
+      } else {
+        setFilesError(res.error?.message || '文档综述失败');
+      }
+    } catch (e) {
+      setFilesError(`文档综述失败: ${String(e)}`);
+      console.error('Failed to summarize file', e);
+    } finally {
+      setIsSummarizingFile(false);
+    }
+  };
+
+  const handleOpenFolder = async (targetPath: string) => {
+    try {
+      await api.openFolder(targetPath);
+    } catch (e) {
+      console.error('Failed to open folder', e);
+    }
+  };
+
+  const handleCheckHealth = async () => {
+    try {
+      const res = await api.checkDependencies();
+      if (res.success && res.data) {
+        setHealth(res.data);
+      }
+    } catch (e) {
+      console.error('Failed to check dependencies', e);
+    }
+  };
+
+  const handleExportDiagnostics = async () => {
+    try {
+      const res = await api.exportDiagnosticsBundle();
+      if (res.success && res.data) {
+        setDiagnosticsPath(res.data.zipFilePath);
+      }
+    } catch (e) {
+      console.error('Failed to export diagnostics bundle', e);
+    }
   };
 
   // 4. Generate Real Summary (Persisted to SQLite, zero mock data)
@@ -513,10 +631,17 @@ export const App: React.FC = () => {
           {currentView === 'files' && (
             <FilesView
               files={files}
+              groups={contacts.filter((c) => c.targetType === 'group')}
+              selectedGroupId={selectedGroupId}
+              onSelectGroup={handleSelectGroup}
+              onSyncFiles={handleSyncFiles}
+              isSyncing={isSyncingFiles}
               onDownloadFile={handleDownloadFile}
-              onSummarizeFile={() => {}}
-              onOpenFolder={() => {}}
-              isSummarizing={false}
+              onSummarizeFile={handleSummarizeFile}
+              onOpenFolder={handleOpenFolder}
+              activeSummary={activeFileSummary}
+              isSummarizing={isSummarizingFile}
+              errorMessage={filesError}
             />
           )}
           {currentView === 'summaries' && (
@@ -533,8 +658,9 @@ export const App: React.FC = () => {
               config={config}
               health={health}
               onUpdateConfig={handleUpdateConfig}
-              onCheckHealth={() => {}}
-              onExportDiagnostics={() => {}}
+              onCheckHealth={handleCheckHealth}
+              onExportDiagnostics={handleExportDiagnostics}
+              diagnosticsPath={diagnosticsPath}
             />
           )}
         </main>

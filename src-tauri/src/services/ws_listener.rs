@@ -142,7 +142,7 @@ pub async fn handle_onebot_event(
             handle_message_event(app_handle, event, db, onebot, ai, inline_ai).await
         }
         "notice" => {
-            handle_notice_event(event);
+            handle_notice_event(app_handle, event, db, onebot).await;
             MessageOutcome::ignored()
         }
         "meta_event" => {
@@ -160,9 +160,14 @@ pub async fn handle_onebot_event(
     }
 }
 
-/// Group file uploads (Phase 4 groundwork): log the event and hand it to the file sync
-/// service. Unknown notice types are simply logged.
-fn handle_notice_event(event: &Value) {
+/// Group file uploads (ROADMAP Phase 4): record the file and silently download it when
+/// the group is whitelisted. Unknown notice types are simply logged.
+async fn handle_notice_event(
+    _app_handle: Option<&AppHandle>,
+    event: &Value,
+    db: &Arc<Database>,
+    onebot: &Arc<OneBotClient>,
+) {
     let notice_type = event.get("notice_type").and_then(|v| v.as_str()).unwrap_or("");
     match notice_type {
         "group_upload" => {
@@ -171,12 +176,47 @@ fn handle_notice_event(event: &Value) {
                 .map(|v| v.to_string().replace('"', ""))
                 .unwrap_or_default();
             let file = event.get("file").cloned().unwrap_or(Value::Null);
-            let name = file.get("name").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+            let file_id = file
+                .get("id")
+                .or_else(|| file.get("file_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let name = file
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string();
             let size = file.get("size").and_then(|v| v.as_i64()).unwrap_or(0);
-            info!(
-                "group file uploaded: group={} name={} size={}B",
-                group_id, name, size
+            let busid = file.get("busid").and_then(|v| v.as_i64()).unwrap_or(0);
+            let uploader = event
+                .get("user_id")
+                .map(|v| v.to_string().replace('"', ""))
+                .unwrap_or_default();
+
+            if file_id.is_empty() {
+                tracing::warn!("group_upload notice without a usable file id: {}", event);
+                return;
+            }
+
+            tracing::info!(
+                "group file uploaded: group={} name={} size={}B busid={}",
+                group_id,
+                name,
+                size,
+                busid
             );
+
+            // Download off the event loop so a large file cannot stall the listener.
+            let db = db.clone();
+            let onebot = onebot.clone();
+            let task = async move {
+                crate::services::group_files::handle_upload_notice(
+                    &db, &onebot, &group_id, &file_id, &name, size, busid, &uploader,
+                )
+                .await;
+            };
+            tauri::async_runtime::spawn(task);
         }
         "group_recall" | "friend_recall" => {
             tracing::debug!("recall notice received");
