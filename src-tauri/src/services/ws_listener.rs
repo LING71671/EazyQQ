@@ -536,3 +536,170 @@ async fn execute_draft(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    struct Fixture {
+        db: Arc<Database>,
+        onebot: Arc<OneBotClient>,
+        ai: Arc<AiService>,
+    }
+
+    /// Deliberately points every endpoint at a dead port: any accidental network call in a
+    /// bypass test would show up as an error outcome instead of a clean skip.
+    fn fixture(tag: &str) -> Fixture {
+        let dir = std::env::temp_dir().join("eazyqq_ws_tests");
+        crate::services::logging::ensure_dir(&dir);
+        let path = dir.join(format!("{}_{}.db", tag, std::process::id()));
+        let _ = std::fs::remove_file(&path);
+
+        Fixture {
+            db: Arc::new(Database::init(&path).expect("temp db")),
+            onebot: Arc::new(OneBotClient::new("http://127.0.0.1:1".to_string())),
+            ai: Arc::new(AiService::new(
+                "http://127.0.0.1:1/v1".to_string(),
+                String::new(),
+                "test-model".to_string(),
+            )),
+        }
+    }
+
+    fn group_message(group_id: &str, text: &str) -> Value {
+        json!({
+            "post_type": "message",
+            "message_type": "group",
+            "group_id": group_id,
+            "user_id": "10001",
+            "self_id": "462564834",
+            "sender": { "nickname": "测试者", "card": "测试者" },
+            "raw_message": text,
+            "message": text
+        })
+    }
+
+    #[tokio::test]
+    async fn unwhitelisted_group_is_bypassed_without_touching_storage() {
+        let f = fixture("bypass");
+        let outcome =
+            handle_onebot_event(None, &group_message("555000111", "这条不该被处理"), &f.db, &f.onebot, &f.ai, true)
+                .await;
+
+        assert!(outcome.bypassed, "expected a full bypass");
+        assert!(!outcome.recorded, "nothing may be persisted");
+        assert_eq!(outcome.action, "skipped");
+        assert_eq!(
+            f.db.get_messages_by_target("555000111", 10).unwrap().len(),
+            0,
+            "messages_log must stay empty for a non-whitelisted target"
+        );
+    }
+
+    #[tokio::test]
+    async fn whitelisted_target_is_recorded_and_reaches_the_ai_step() {
+        let f = fixture("whitelisted");
+        f.db.upsert_rule(&crate::services::db::ContactRuleRecord {
+            target_id: "1104661022".to_string(),
+            target_type: "group".to_string(),
+            name: "测试群".to_string(),
+            avatar_url: String::new(),
+            mode: "copilot".to_string(),
+            trigger_condition: "at_me".to_string(),
+            keywords: "[]".to_string(),
+            cooldown_seconds: 5,
+            enabled: true,
+            is_summary_whitelist: true,
+            summary_interval_hours: 2,
+            updated_at: 0,
+        })
+        .unwrap();
+
+        let outcome =
+            handle_onebot_event(None, &group_message("1104661022", "白名单群的消息"), &f.db, &f.onebot, &f.ai, true)
+                .await;
+
+        assert!(!outcome.bypassed);
+        assert!(outcome.recorded, "whitelisted messages must be persisted");
+        assert_eq!(
+            f.db.get_messages_by_target("1104661022", 10).unwrap().len(),
+            1
+        );
+        // The AI call itself fails (no API key / dead endpoint), which is exactly the
+        // proof that the request made it past the whitelist gate.
+        assert_eq!(outcome.action, "error");
+    }
+
+    #[tokio::test]
+    async fn own_messages_are_recorded_but_never_trigger_ai() {
+        let f = fixture("from_me");
+        f.db.upsert_rule(&crate::services::db::ContactRuleRecord {
+            target_id: "1104661022".to_string(),
+            target_type: "group".to_string(),
+            name: "测试群".to_string(),
+            avatar_url: String::new(),
+            mode: "auto_reply".to_string(),
+            trigger_condition: "all".to_string(),
+            keywords: "[]".to_string(),
+            cooldown_seconds: 5,
+            enabled: true,
+            is_summary_whitelist: false,
+            summary_interval_hours: 6,
+            updated_at: 0,
+        })
+        .unwrap();
+
+        // self_id == user_id => this message came from our own account.
+        let event = json!({
+            "post_type": "message",
+            "message_type": "group",
+            "group_id": "1104661022",
+            "user_id": "462564834",
+            "self_id": "462564834",
+            "sender": { "nickname": "我" },
+            "raw_message": "我自己发的",
+            "message": "我自己发的"
+        });
+
+        let outcome = handle_onebot_event(None, &event, &f.db, &f.onebot, &f.ai, true).await;
+        assert!(outcome.recorded);
+        assert_eq!(outcome.action, "skipped", "our own message must not be answered");
+        let stored = f.db.get_messages_by_target("1104661022", 10).unwrap();
+        assert_eq!(stored.len(), 1);
+        assert!(stored[0].is_from_me);
+    }
+
+    #[tokio::test]
+    async fn non_message_events_are_ignored() {
+        let f = fixture("non_message");
+        let event = json!({ "post_type": "meta_event", "meta_event_type": "heartbeat" });
+        let outcome = handle_onebot_event(None, &event, &f.db, &f.onebot, &f.ai, true).await;
+        assert!(outcome.not_a_message);
+        assert_eq!(outcome.action, "skipped");
+    }
+
+    #[tokio::test]
+    async fn empty_message_bodies_are_dropped() {
+        let f = fixture("empty_body");
+        let outcome =
+            handle_onebot_event(None, &group_message("1104661022", "   "), &f.db, &f.onebot, &f.ai, true).await;
+        assert!(!outcome.recorded);
+        assert_eq!(outcome.action, "skipped");
+    }
+
+    #[test]
+    fn outcome_summary_is_human_readable() {
+        let bypassed = MessageOutcome {
+            not_a_message: false,
+            bypassed: true,
+            recorded: false,
+            target_id: "123".to_string(),
+            mode: "ignore".to_string(),
+            action: "skipped",
+            detail: None,
+        };
+        assert!(bypassed.summary().contains("未加入白名单"));
+        assert!(MessageOutcome::ignored().summary().contains("非消息事件"));
+    }
+}

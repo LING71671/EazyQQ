@@ -1,5 +1,7 @@
+pub mod archive;
 pub mod db;
 pub mod diagnostics;
+pub mod document;
 pub mod group_files;
 pub mod napcat;
 pub mod onebot;

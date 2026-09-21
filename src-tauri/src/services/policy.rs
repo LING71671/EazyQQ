@@ -82,3 +82,74 @@ pub fn load(db: &Database, target_id: &str) -> TargetPolicy {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn policy(mode: &str, enabled: bool, summary: bool) -> TargetPolicy {
+        TargetPolicy {
+            exists: true,
+            mode: mode.to_string(),
+            enabled,
+            is_summary_whitelist: summary,
+            summary_interval_hours: 6,
+            name: "t".to_string(),
+        }
+    }
+
+    #[test]
+    fn default_policy_denies_everything() {
+        let p = TargetPolicy::default();
+        assert!(!p.exists);
+        assert!(!p.tracked(), "an unknown target must never be tracked");
+        assert!(
+            !p.ai_execution_allowed(),
+            "an unknown target must never get AI execution"
+        );
+    }
+
+    #[test]
+    fn ignore_without_summary_is_fully_bypassed() {
+        let p = policy("ignore", false, false);
+        assert!(!p.tracked());
+        assert!(!p.ai_execution_allowed());
+    }
+
+    #[test]
+    fn ignore_with_summary_whitelist_is_tracked_but_never_ai() {
+        let p = policy("ignore", false, true);
+        assert!(p.tracked(), "summary whitelist needs the message stream");
+        assert!(
+            !p.ai_execution_allowed(),
+            "summary tracking must never trigger replies"
+        );
+    }
+
+    #[test]
+    fn disabled_rule_is_tracked_but_never_ai() {
+        for mode in ["auto_reply", "copilot"] {
+            let p = policy(mode, false, false);
+            assert!(p.tracked());
+            assert!(
+                !p.ai_execution_allowed(),
+                "mode {mode} with enabled=false must not execute AI"
+            );
+        }
+    }
+
+    #[test]
+    fn enabled_ai_modes_execute() {
+        for mode in ["auto_reply", "copilot"] {
+            let p = policy(mode, true, false);
+            assert!(p.tracked());
+            assert!(p.ai_execution_allowed(), "mode {mode} should execute");
+        }
+    }
+
+    #[test]
+    fn enabled_ignore_still_never_executes() {
+        let p = policy("ignore", true, false);
+        assert!(!p.ai_execution_allowed());
+    }
+}

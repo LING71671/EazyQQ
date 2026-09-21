@@ -306,3 +306,77 @@ pub async fn generate(
         skipped_reason: None,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn noise_filter_drops_emoji_and_punctuation_only() {
+        assert!(is_noise(""));
+        assert!(is_noise("   "));
+        assert!(is_noise("。。。"));
+        assert!(is_noise("！！！？？？"));
+        assert!(is_noise("[图片]"));
+        assert!(is_noise("🎉🎉🎉"));
+        assert!(is_noise("a"));
+    }
+
+    #[test]
+    fn noise_filter_keeps_real_content() {
+        assert!(!is_noise("好的"));
+        assert!(!is_noise("ok"));
+        assert!(!is_noise("这个方案我同意"));
+        assert!(!is_noise("2026-09-21 的会议纪要"));
+    }
+
+    #[test]
+    fn flood_dedup_keeps_at_most_two_identical_consecutive_lines() {
+        let msg = |s: &str| ("张三".to_string(), s.to_string(), "0".to_string());
+        let input = vec![
+            msg("刷屏"),
+            msg("刷屏"),
+            msg("刷屏"),
+            msg("刷屏"),
+            msg("换一句"),
+        ];
+        let out = dedupe_flood(&input);
+        assert_eq!(out.len(), 3, "two copies of the flood plus the new line");
+        assert_eq!(out[0].1, "刷屏");
+        assert_eq!(out[1].1, "刷屏");
+        assert_eq!(out[2].1, "换一句");
+    }
+
+    #[test]
+    fn flood_dedup_does_not_merge_different_senders() {
+        let input = vec![
+            ("张三".to_string(), "在".to_string(), "0".to_string()),
+            ("李四".to_string(), "在".to_string(), "0".to_string()),
+            ("张三".to_string(), "在".to_string(), "0".to_string()),
+        ];
+        assert_eq!(dedupe_flood(&input).len(), 3);
+    }
+
+    #[test]
+    fn code_fences_are_stripped() {
+        assert_eq!(strip_code_fences("```json\n{\"a\":1}\n```"), "{\"a\":1}");
+        assert_eq!(strip_code_fences("```\n{\"a\":1}\n```"), "{\"a\":1}");
+        assert_eq!(strip_code_fences("{\"a\":1}"), "{\"a\":1}");
+    }
+
+    #[test]
+    fn string_vec_accepts_plain_and_object_shapes() {
+        let value = serde_json::json!(["a", {"text": "b"}, {"content": "c"}, "", 5]);
+        assert_eq!(as_string_vec(Some(&value)), vec!["a", "b", "c"]);
+        assert!(as_string_vec(None).is_empty());
+        assert!(as_string_vec(Some(&serde_json::json!("not-an-array"))).is_empty());
+    }
+
+    #[test]
+    fn default_prompt_is_used_when_none_is_supplied() {
+        let req = SummaryRequest::new("1104661022", 6);
+        assert!(req.custom_prompt.is_none());
+        assert_eq!(req.sliding_window_hours, 6);
+        assert!(req.min_messages >= 1);
+    }
+}

@@ -189,3 +189,128 @@ pub fn start_summary_scheduler(
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_db(tag: &str) -> std::sync::Arc<Database> {
+        let dir = std::env::temp_dir().join("eazyqq_scheduler_tests");
+        crate::services::logging::ensure_dir(&dir);
+        let path = dir.join(format!("{}_{}.db", tag, std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        std::sync::Arc::new(Database::init(&path).expect("temp db"))
+    }
+
+    #[test]
+    fn settings_fall_back_to_defaults_without_config() {
+        let db = temp_db("no_config");
+        let s = read_settings(&db);
+        assert!(s.enabled);
+        assert_eq!(s.sliding_window_hours, 6);
+        assert_eq!(s.custom_prompt, DEFAULT_PROMPT);
+    }
+
+    #[test]
+    fn settings_are_read_from_app_config() {
+        let db = temp_db("with_config");
+        db.set_setting(
+            "app_config",
+            r#"{"summary":{"enabled":false,"slidingWindowHours":90,"customPrompt":"只要待办"}}"#,
+        )
+        .unwrap();
+
+        let s = read_settings(&db);
+        assert!(!s.enabled);
+        assert_eq!(s.sliding_window_hours, 90);
+        assert_eq!(s.custom_prompt, "只要待办");
+    }
+
+    #[test]
+    fn sliding_window_is_clamped_to_a_sane_range() {
+        let db = temp_db("clamp");
+        db.set_setting("app_config", r#"{"summary":{"slidingWindowHours":99999}}"#)
+            .unwrap();
+        assert_eq!(read_settings(&db).sliding_window_hours, 720);
+
+        db.set_setting("app_config", r#"{"summary":{"slidingWindowHours":0}}"#)
+            .unwrap();
+        assert_eq!(read_settings(&db).sliding_window_hours, 1);
+    }
+
+    #[test]
+    fn blank_custom_prompt_falls_back_to_the_default() {
+        let db = temp_db("blank_prompt");
+        db.set_setting("app_config", r#"{"summary":{"customPrompt":"   "}}"#)
+            .unwrap();
+        assert_eq!(read_settings(&db).custom_prompt, DEFAULT_PROMPT);
+    }
+
+    #[test]
+    fn malformed_config_does_not_panic() {
+        let db = temp_db("bad_json");
+        db.set_setting("app_config", "{not json").unwrap();
+        let s = read_settings(&db);
+        assert!(s.enabled);
+        assert_eq!(s.sliding_window_hours, 6);
+    }
+
+    #[test]
+    fn policy_load_denies_an_unknown_target_against_a_real_database() {
+        let db = temp_db("policy_unknown");
+        let p = crate::services::policy::load(&db, "999999999");
+        assert!(!p.exists);
+        assert!(!p.tracked());
+        assert!(!p.ai_execution_allowed());
+    }
+
+    #[test]
+    fn policy_load_respects_a_persisted_rule() {
+        let db = temp_db("policy_rule");
+        db.upsert_rule(&crate::services::db::ContactRuleRecord {
+            target_id: "1104661022".to_string(),
+            target_type: "group".to_string(),
+            name: "测试群".to_string(),
+            avatar_url: String::new(),
+            mode: "copilot".to_string(),
+            trigger_condition: "at_me".to_string(),
+            keywords: "[]".to_string(),
+            cooldown_seconds: 5,
+            enabled: true,
+            is_summary_whitelist: true,
+            summary_interval_hours: 2,
+            updated_at: 0,
+        })
+        .unwrap();
+
+        let p = crate::services::policy::load(&db, "1104661022");
+        assert!(p.exists);
+        assert!(p.tracked());
+        assert!(p.ai_execution_allowed());
+        assert_eq!(p.summary_interval_hours, 2);
+    }
+
+    #[test]
+    fn summary_whitelist_groups_are_queryable() {
+        let db = temp_db("whitelist_query");
+        db.upsert_rule(&crate::services::db::ContactRuleRecord {
+            target_id: "123".to_string(),
+            target_type: "group".to_string(),
+            name: "g".to_string(),
+            avatar_url: String::new(),
+            mode: "ignore".to_string(),
+            trigger_condition: "at_me".to_string(),
+            keywords: "[]".to_string(),
+            cooldown_seconds: 5,
+            enabled: false,
+            is_summary_whitelist: true,
+            summary_interval_hours: 3,
+            updated_at: 0,
+        })
+        .unwrap();
+
+        let groups = db.get_summary_whitelist_groups().unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].summary_interval_hours, 3);
+    }
+}

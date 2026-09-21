@@ -36,7 +36,8 @@ fn crc32(data: &[u8]) -> u32 {
     !crc
 }
 
-fn build_zip(entries: &[(String, Vec<u8>)]) -> Vec<u8> {
+/// Exposed to the crate so `archive` tests can round-trip writer against reader.
+pub(crate) fn build_zip(entries: &[(String, Vec<u8>)]) -> Vec<u8> {
     let mut out: Vec<u8> = Vec::new();
     let mut central: Vec<u8> = Vec::new();
     let mut offset: u32 = 0;
@@ -434,4 +435,61 @@ pub async fn export_bundle(
         entries: names,
         bytes: zip_bytes.len(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn crc32_matches_the_standard_check_value() {
+        // The canonical CRC-32 check value for "123456789".
+        assert_eq!(crc32(b"123456789"), 0xCBF4_3926);
+        assert_eq!(crc32(b""), 0);
+    }
+
+    #[test]
+    fn zip_container_is_structurally_valid() {
+        let zip = build_zip(&[("a.txt".to_string(), b"abc".to_vec())]);
+        // Local header signature, then the EOCD at the very end.
+        assert_eq!(&zip[0..4], &[0x50, 0x4b, 0x03, 0x04]);
+        assert_eq!(&zip[zip.len() - 22..zip.len() - 18], &[0x50, 0x4b, 0x05, 0x06]);
+        // One entry recorded in the EOCD.
+        assert_eq!(u16::from_le_bytes([zip[zip.len() - 14], zip[zip.len() - 13]]), 1);
+    }
+
+    #[test]
+    fn redact_removes_a_supplied_secret() {
+        let secret = "sk_tr_test_dummy_mock_secret_key_1234567890".to_string();
+        let input = format!("key={} and more", secret);
+        let out = redact(&input, &[secret.clone()]);
+        assert!(!out.contains(&secret));
+        assert!(out.contains("***REDACTED***"));
+    }
+
+    #[test]
+    fn redact_catches_generic_api_key_shapes() {
+        let out = redact("token sk-abcdefghijklmnop end", &[]);
+        assert!(!out.contains("sk-abcdefghijklmnop"), "got: {out}");
+    }
+
+    #[test]
+    fn redact_leaves_ordinary_text_alone() {
+        let text = "群聊简报：今天讨论了白名单策略与定时任务";
+        assert_eq!(redact(text, &[]), text);
+    }
+
+    #[test]
+    fn mask_id_keeps_ends_only() {
+        assert_eq!(mask_id("1104661022"), "11***22");
+        assert_eq!(mask_id("12345"), "12345");
+    }
+
+    #[test]
+    fn free_space_probe_returns_a_sane_value() {
+        let root = logging::workspace_root();
+        if let Some(mb) = free_space_mb(&root) {
+            assert!(mb > 0, "expected a positive free-space figure, got {mb}");
+        }
+    }
 }

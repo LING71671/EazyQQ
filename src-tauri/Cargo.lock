@@ -812,6 +812,7 @@ name = "eazyqq"
 version = "0.10.0"
 dependencies = [
  "base64 0.22.1",
+ "flate2",
  "futures-util",
  "reqwest 0.12.28",
  "rusqlite",

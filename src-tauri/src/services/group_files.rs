@@ -179,8 +179,11 @@ pub async fn download_group_file(
     Ok(path)
 }
 
-/// Extract plain text from a local document. Returns `Err` for formats that need a
-/// dedicated parser so callers can surface an honest message.
+/// Extract plain text from a local document.
+///
+/// Plain-text formats are read directly; Office formats go through the ZIP + XML
+/// extractor; everything else (including PDFs whose text cannot be recovered) returns an
+/// explicit error so the caller can surface an honest message instead of an empty summary.
 pub fn extract_text(path: &Path) -> Result<String, String> {
     let name = path
         .file_name()
@@ -193,15 +196,41 @@ pub fn extract_text(path: &Path) -> Result<String, String> {
         return Err(format!("文件不存在: {}", path.display()));
     }
 
+    let bytes = std::fs::read(path).map_err(|e| format!("读取文件失败: {}", e))?;
+
+    match ext.as_str() {
+        "docx" => {
+            tracing::info!("extract_text: {} -> docx extractor", name);
+            return crate::services::document::extract_docx(&bytes);
+        }
+        "xlsx" => {
+            tracing::info!("extract_text: {} -> xlsx extractor", name);
+            return crate::services::document::extract_xlsx(&bytes);
+        }
+        "pptx" => {
+            tracing::info!("extract_text: {} -> pptx extractor", name);
+            return crate::services::document::extract_pptx(&bytes);
+        }
+        "pdf" => {
+            tracing::info!("extract_text: {} -> best-effort pdf extractor", name);
+            return crate::services::document::extract_pdf(&bytes);
+        }
+        "doc" | "xls" | "ppt" => {
+            return Err(format!(
+                "旧版二进制 .{} 格式需要专用解析器，请另存为 .{}x 后重试",
+                ext, ext
+            ));
+        }
+        _ => {}
+    }
+
     if !TEXT_EXTS.contains(&ext.as_str()) {
         return Err(format!(
-            "暂不支持解析 .{} 格式（当前支持纯文本类文档：{} 等）",
-            if ext.is_empty() { "<无扩展名>" } else { &ext },
-            TEXT_EXTS[..8].join(" / ")
+            "暂不支持解析 .{} 格式（支持纯文本类文档、docx/xlsx/pptx、以及部分未压缩的 pdf）",
+            if ext.is_empty() { "<无扩展名>" } else { &ext }
         ));
     }
 
-    let bytes = std::fs::read(path).map_err(|e| format!("读取文件失败: {}", e))?;
     // Lossy decode: group files are frequently GBK-encoded, but a best-effort UTF-8 read
     // still yields usable content rather than failing outright.
     let text = String::from_utf8_lossy(&bytes).to_string();
@@ -353,5 +382,88 @@ pub async fn handle_upload_notice(
     match download_group_file(db, onebot, group_id, file_id).await {
         Ok(path) => tracing::info!("group upload auto-saved to {}", path.display()),
         Err(e) => tracing::warn!("group upload download failed for {}: {}", file_name, e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_strips_path_separators() {
+        // A malicious remote filename must not be able to escape the group directory.
+        assert_eq!(sanitize_file_name("../../etc/passwd"), ".._.._etc_passwd");
+        assert_eq!(sanitize_file_name("..\\..\\windows\\system32"), ".._.._windows_system32");
+        assert_eq!(sanitize_file_name("a/b/c.txt"), "a_b_c.txt");
+    }
+
+    #[test]
+    fn sanitize_strips_leading_dots_and_reserved_chars() {
+        assert_eq!(sanitize_file_name(".hidden"), "hidden");
+        assert_eq!(sanitize_file_name("re:port?.txt"), "re_port_.txt");
+        assert_eq!(sanitize_file_name("a<b>c|d\"e"), "a_b_c_d_e");
+    }
+
+    #[test]
+    fn sanitize_handles_empty_and_control_chars() {
+        assert_eq!(sanitize_file_name("   "), "unnamed_file");
+        assert_eq!(sanitize_file_name(""), "unnamed_file");
+        assert_eq!(sanitize_file_name("a\u{0}b"), "a_b");
+    }
+
+    #[test]
+    fn sanitize_caps_length() {
+        let long = "x".repeat(500);
+        assert_eq!(sanitize_file_name(&long).chars().count(), 120);
+    }
+
+    #[test]
+    fn extension_detection_is_case_insensitive() {
+        assert_eq!(extension_of("Report.DOCX"), "docx");
+        assert_eq!(extension_of("no_extension"), "");
+        assert_eq!(extension_of("archive.tar.gz"), "gz");
+    }
+
+    #[test]
+    fn missing_file_reports_clearly() {
+        let err = extract_text(Path::new("B:/definitely/not/here.txt")).unwrap_err();
+        assert!(err.contains("文件不存在"), "got: {err}");
+    }
+
+    #[test]
+    fn unsupported_binary_format_is_reported_not_silently_empty() {
+        let dir = std::env::temp_dir().join("eazyqq_extract_test");
+        logging::ensure_dir(&dir);
+        let path = dir.join("clip.mp4");
+        std::fs::write(&path, b"\x00\x01\x02\x03binary").unwrap();
+
+        let err = extract_text(&path).unwrap_err();
+        assert!(err.contains("暂不支持"), "got: {err}");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn legacy_office_formats_get_an_actionable_message() {
+        let dir = std::env::temp_dir().join("eazyqq_extract_test");
+        logging::ensure_dir(&dir);
+        let path = dir.join("old.doc");
+        std::fs::write(&path, b"\xd0\xcf\x11\xe0legacy").unwrap();
+
+        let err = extract_text(&path).unwrap_err();
+        assert!(err.contains("另存为"), "got: {err}");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn plain_text_round_trips() {
+        let dir = std::env::temp_dir().join("eazyqq_extract_test");
+        logging::ensure_dir(&dir);
+        let path = dir.join("notes.md");
+        std::fs::write(&path, "# 标题\n正文内容").unwrap();
+
+        let text = extract_text(&path).unwrap();
+        assert!(text.contains("标题"));
+        assert!(text.contains("正文内容"));
+        let _ = std::fs::remove_file(&path);
     }
 }

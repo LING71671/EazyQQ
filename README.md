@@ -1,0 +1,184 @@
+# EazyQQ
+
+零命令行的个人 QQ 智能助手客户端。Tauri 2 (Rust) + React 19 + Tailwind v4，本地 SQLite 持久化，通过 NapCat (OneBot 11) 接管真实 QQ 会话。
+
+---
+
+## 当前状态（v0.10）
+
+| 阶段 | 内容 | 状态 |
+| :--- | :--- | :---: |
+| Phase 0 | 窗口外壳与视觉基调 | 已完成 |
+| Phase 1 | 真实 QQ 协议与扫码鉴权 | 已完成 |
+| Phase 2 | 联系人同步与双重白名单（默认拒绝） | 已完成 |
+| Phase 3 | AI 草稿箱（生成 / 微调 / 真实发送） | 已完成 |
+| Phase 4 | 群文件同步与文档综述 | 部分完成（下载受协议端版本阻塞） |
+| Phase 5 | 定时群聊智能简报 | 已完成 |
+| Phase 6 | 托盘常驻、健康自检、诊断包导出 | 已完成 |
+
+### ⚠️ 两个已知阻塞（均非代码问题）
+
+**1. GUI 窗口黑屏 → 白屏 → 卡死（必须处理，否则界面不可用）**
+
+根因：Windhawk 默认对**所有进程**注入 `windhawk.dll`，其中包括 `msedgewebview2.exe`。注入破坏了 WebView2 浏览器进程，触发 `msedge.dll` 内的 Chromium CHECK 断言，浏览器进程崩溃 → 窗口只剩背景色且不再响应。
+
+修复（需管理员权限，然后重启 Windhawk 服务或在 Windhawk UI 中把 `msedgewebview2.exe` 加入排除列表）：
+
+```
+reg add "HKLM\SOFTWARE\Windhawk\Engine\Settings" /v Exclude /t REG_SZ /d "msedgewebview2.exe" /f
+```
+
+排查证据见 [ISSUE.md](ISSUE.md) 的 ISSUE-013。在修复之前，**请使用下方 CLI 通道**，后端功能完全不受影响。
+
+**2. 群文件下载不可用**
+
+`get_group_file_url` 需要 NapCat 的 packetBackend，当前 NTQQ `9.9.35-52892-x64` 不在 NapCat v4.9.81 支持矩阵内。文件列表同步、落盘、文本抽取与 AI 综述均已实现，调整 QQ 版本后即可直接使用。详见 ISSUE-019。
+
+---
+
+## 快速开始
+
+### 前置
+
+1. **NapCat 协议端**运行中，且 QQ 已登录（HTTP `127.0.0.1:3000`、WebSocket `127.0.0.1:3001`、WebUI `127.0.0.1:6099`）。
+2. **大模型 API Key**（默认使用 TokenRhythm），写入 `app_settings.tokenrhythm_api_key` 或环境变量 `TOKENRHYTHM_API_KEY`。
+
+### 图形界面
+
+```powershell
+pnpm install
+pnpm tauri dev
+```
+
+### 命令行通道（推荐，无需点击界面）
+
+```bash
+cd src-tauri
+cargo build --bin eazyqq_cli
+./target/debug/eazyqq_cli.exe            # 查看全部命令
+```
+
+常用命令：
+
+```bash
+# 协议与登录
+eazyqq_cli status                         # 协议进程 / 登录态一览
+eazyqq_cli login-info                     # 当前登录账号
+eazyqq_cli qr --save qr.txt               # 获取真实登录二维码
+
+# 联系人与白名单（默认全部拒绝）
+eazyqq_cli contacts                       # 同步真实好友/群并列出规则
+eazyqq_cli contacts --type group --search EazyQQ
+eazyqq_cli rule --target 1104661022 --mode copilot --summary on --interval-hours 2
+
+# 消息与 AI
+eazyqq_cli send --target 1104661022 --text "你好"       # 真实发送
+eazyqq_cli ask --target 1104661022 --text "对方问：进度如何？"  # 生成候选回复（不发送）
+eazyqq_cli drafts                                        # 待审核草稿
+eazyqq_cli draft-regenerate --id <草稿ID> --instruction "再简短些"
+eazyqq_cli draft-send --id <草稿ID>                      # 放行并真实发送
+
+# 群聊简报
+eazyqq_cli summarize --target 1104661022 --hours 6       # 立即生成真实简报
+eazyqq_cli scheduler-tick                                # 强制执行一次定时调度
+eazyqq_cli whitelist-groups
+
+# 群文件
+eazyqq_cli files --target <群号>
+eazyqq_cli file-summarize --path <本地文件路径>            # 支持 txt/md/docx/xlsx/pptx
+
+# 诊断
+eazyqq_cli health --deep                                 # 全链路自检（含真实模型调用）
+eazyqq_cli export                                        # 导出脱敏诊断包 zip
+eazyqq_cli log-tail --lines 100
+
+# 调试后门：注入模拟消息，走完整处理链路（无需第二个账号）
+eazyqq_cli simulate --target 1104661022 --text "测试内容" --sender-name "测试者"
+```
+
+所有命令都支持 `--json`，便于脚本消费。
+
+---
+
+## 安全模型（重要）
+
+**默认拒绝。** 所有好友与群聊初始状态均为「直通忽略」，既不接管消息也不记录流水。
+
+- **未入白名单的会话完全旁路**：不落库、不产生草稿、不调用大模型。
+- 两条白名单**彼此独立**：
+  - **消息接管白名单**：`mode` 设为 `auto_reply`（自动秒回）或 `copilot`（草稿审核）才会介入。
+  - **群总结白名单**：`is_summary_whitelist` 独立开关 + 独立的 `summary_interval_hours` 周期。
+- 安全边界**只由数据库规则决定**，代码中不存在任何写死的账号或群号。
+
+---
+
+## 构建与测试
+
+> **Windows + Git Bash 注意**：Git Bash 自带的 `/usr/bin/link.exe` 会遮蔽 MSVC 链接器。请**不要**把 MSVC bin 目录前置到 `PATH`（该目录携带一套 CRT DLL，会遮蔽 System32 的系统库，导致测试二进制 `STATUS_ENTRYPOINT_NOT_FOUND`）。改用显式链接器路径：
+
+```bash
+cd src-tauri
+export RUSTUP_HOME="A:/DevEnv/Rust/Rustup"
+export CARGO_HOME="A:/DevEnv/Rust/Cargo"
+export LIB="C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.44.35207\\lib\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\Lib\\10.0.26100.0\\ucrt\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\Lib\\10.0.26100.0\\um\\x64"
+export CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER="C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64\\link.exe"
+
+cargo build --bins      # GUI + CLI
+cargo test --lib        # 单元测试
+```
+
+在 PowerShell 中直接使用 `pnpm tauri dev` 无需上述处理。
+
+### 测试覆盖
+
+`cargo test --lib` 覆盖安全关键与易错逻辑：
+
+- 白名单策略真值表（默认拒绝、简报白名单不触发 AI、`enabled=false` 不执行）
+- 消息链路不变量（未白名单零落库、我方消息不触发 AI、非消息事件忽略）
+- 噪声过滤与刷屏去重
+- 文件名净化（防路径穿越）
+- ZIP 读写往返、CRC32 标准校验值、脱敏规则
+- 调度配置解析（缺省回退、区间钳制、非法 JSON 不 panic）
+- Office 文档 XML 文本抽取与实体解码
+
+---
+
+## 目录结构
+
+```
+src/                     前端 (React 19 + Tailwind v4)
+  components/layout/     侧边栏、顶部标题栏（拖拽 + 窗口控制）
+  components/common/     BootSplash（启动动画）、ErrorBoundary
+  hooks/useWindowDrag    无边框窗口拖拽
+  views/                 各功能页面
+  api/                   与 Rust 通信的类型化客户端
+src-tauri/src/
+  lib.rs                 应用装配：日志、托盘、监听器、调度器
+  commands.rs            暴露给前端的 IPC 命令
+  services/
+    policy.rs            ★ 唯一白名单策略出口
+    ws_listener.rs       OneBot 事件处理（消息 / 通知）
+    contacts.rs          名册同步（默认拒绝落库）
+    summarizer.rs        真实简报生成
+    scheduler.rs         配置驱动定时调度
+    group_files.rs       群文件同步与文档综述
+    document.rs          docx/xlsx/pptx/pdf 文本抽取
+    archive.rs           最小 ZIP 读取器
+    diagnostics.rs       脱敏诊断包（自实现 ZIP 写入）
+    logging.rs           文件日志 + panic 崩溃报告
+  bin/eazyqq_cli.rs      无界面控制通道
+```
+
+---
+
+## 文档索引
+
+| 文档 | 内容 |
+| :--- | :--- |
+| [ISSUE.md](ISSUE.md) | 20 条缺陷归档：现象、根因、修复、验证 |
+| [ROADMAP.md](ROADMAP.md) | 阶段规划、验收标准、v0.10 交付说明 |
+| [PRODUCT.md](PRODUCT.md) | 产品定位与需求 |
+| [DESIGN.md](DESIGN.md) | 设计规范 |
+| [docs/ARCHITECTURE_AND_DEV_SPEC.md](docs/ARCHITECTURE_AND_DEV_SPEC.md) | 架构与开发规范 |
+| [docs/API_SPECIFICATION.md](docs/API_SPECIFICATION.md) | 接口契约 |
+| [docs/SYSTEM_EXPANSION_AND_SAFETY_SPEC.md](docs/SYSTEM_EXPANSION_AND_SAFETY_SPEC.md) | 安全与扩展规范 |

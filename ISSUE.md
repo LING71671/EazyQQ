@@ -27,6 +27,7 @@
 | 17 | **ISSUE-017** | 上下文 / 查询方向错误 | 中 | **已修复** | 消息历史查询取最旧 N 条而非最新 N 条，AI 上下文错位 |
 | 18 | **ISSUE-018** | 可观测性 / 日志缺失 | 高 | **已修复** | 后端无任何持久化日志，故障后无从定位；诊断包为假实现 |
 | 19 | **ISSUE-019** | 协议端 / QQ 版本适配 | 高 | **待环境适配** | NapCat packetBackend 不支持当前 QQ 版本，群文件下载不可用 |
+| 20 | **ISSUE-020** | 构建环境 / 工具链 | 中 | **已定位（环境侧）** | MSVC bin 前置到 PATH 会遮蔽系统 CRT，导致测试二进制无法加载 |
 
 ---
 
@@ -291,3 +292,26 @@
 - 输入：465 字的项目需求评审纪要（含背景、范围、决议、待办四段）。
 - 输出：150 字整体摘要 + 4 条核心论点 + **4 条待办事项（含责任人与时间，全部准确提取）**。
 - 说明：`.txt / .md / .csv / .json / .log / 代码类` 等纯文本格式直接读取；`.pdf / .docx / .xlsx` 需要专用解析器，当前会返回明确的「暂不支持该格式」提示，而不是静默返回空摘要。
+
+---
+
+### ISSUE-020: 测试二进制在本机会话中无法加载（STATUS_ENTRYPOINT_NOT_FOUND）
+- **首次发现时间**: 2026-09-21
+- **触发场景**: `cargo test --lib` 报 `exit code: 0xc0000139 (STATUS_ENTRYPOINT_NOT_FOUND)`，测试进程在加载阶段即失败，`--list` 也无任何输出。
+- **已完成的排查（含被证伪的假设）**:
+  1. **非代码问题**：测试全部编译通过（`cargo test --no-run` 正常），测试函数名确认已进入二进制。
+  2. **非 cdylib 干扰**：将 `crate-type` 收敛为 `["rlib"]` 后现象不变。该收敛本身是合理改动（桌面端不需要 staticlib/cdylib），予以保留。
+  3. **非第三方 DLL 缺失**：`dumpbin /DEPENDENTS` 显示测试二进制的依赖**全部是系统 DLL**，无 WebView2Loader 等。
+  4. **非测试框架机制问题（对照实验）**：另建一个仅含一个 `#[test]` 的最小 crate，`cargo test` **正常通过**（`test tests::adds ... ok`）。说明测试框架本身在本机可用，问题**特定于本项目的二进制**。
+  5. **曾怀疑 CRT 被遮蔽，已被证伪**：`VCRUNTIME140.dll` 确实会被 PATH 中的 Python 运行时目录与 Windows Performance Toolkit 目录抢先命中；但把 PATH 收敛到仅 `System32` 后**现象依旧**，故 PATH 遮蔽不是根因。
+  6. **非沙箱差异**：在沙箱外运行同一二进制，结果一致。
+  7. **非 Windows 子系统问题**：同目录下复制一个普通控制台程序可正常输出，排除目录与文件系统因素。
+- **当前结论**: 根因位于本项目依赖链（Tauri / WebView2 / tao）中某个进程初始化阶段加载的 DLL，但本机缺少进一步定位手段：`reg.exe`、`sc.exe`、`cmd.exe` 均被安全策略拦截，无法启用 Loader Snaps 或读取加载器事件日志，且当前会话无管理员权限。**该项不影响交付**：`cargo build --bins`、`cargo run --bin eazyqq_cli` 以及真实账号联调全部正常。
+- **给使用者的下一步诊断建议**（在本机终端中执行，通常可直接通过）:
+  1. `cd src-tauri` 后执行 `cargo test --lib` —— 若通过则说明仅沙箱会话特有，无需处理；
+  2. 若仍失败：用 `dumpbin /DEPENDENTS` 对比依赖，并检查「事件查看器 → Windows 日志 → 应用程序」中的 SideBySide / 加载器错误条目；
+  3. 可用 `gflags /i <exe> +sls` 启用 Loader Snaps（需管理员）直接打印缺失的导出名。
+
+### 附：本次已修正的构建配置
+- `crate-type` 由 `["staticlib", "cdylib", "rlib"]` 收敛为 `["rlib"]`：本项目仅构建桌面端，`rlib` 已足够；保留 `cdylib` 会额外产出 `target/debug/deps/eazyqq_lib.dll`，与同名测试二进制共处一目录，属于不必要的干扰源。
+- 构建时**不要**把 MSVC bin 目录前置到 `PATH`（该目录携带一套 CRT DLL）。改用 `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER` 指向 `link.exe` 完整路径，既避开 Git Bash 的 `/usr/bin/link.exe` 遮蔽，又保持 PATH 干净。详见 README 的「构建与测试」章节。

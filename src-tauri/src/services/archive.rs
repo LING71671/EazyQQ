@@ -1,0 +1,257 @@
+//! Minimal ZIP reader.
+//!
+//! Office documents (`.docx`, `.xlsx`, `.pptx`) are ZIP containers holding XML, so a
+//! small reader is all that is needed to get their text out. Entries are located through
+//! the central directory, which is authoritative even when the writer used data
+//! descriptors (bit 3 of the general purpose flags).
+//!
+//! Deliberately defensive: every field is bounds-checked, and the uncompressed size is
+//! capped so a crafted archive cannot be used as a memory bomb.
+
+use std::io::Read;
+
+const EOCD_SIG: u32 = 0x0605_4b50;
+const CENTRAL_SIG: u32 = 0x0201_4b50;
+const LOCAL_SIG: u32 = 0x0403_4b50;
+const EOCD_MIN_LEN: usize = 22;
+const CENTRAL_MIN_LEN: usize = 46;
+const LOCAL_MIN_LEN: usize = 30;
+
+/// Refuse to expand any single entry beyond this.
+pub const MAX_ENTRY_BYTES: usize = 32 * 1024 * 1024;
+
+#[derive(Debug, Clone)]
+pub struct ZipEntry {
+    pub name: String,
+    pub method: u16,
+    pub compressed_size: usize,
+    pub uncompressed_size: usize,
+    pub local_header_offset: usize,
+}
+
+fn read_u16(data: &[u8], at: usize) -> Option<u16> {
+    let slice = data.get(at..at + 2)?;
+    Some(u16::from_le_bytes([slice[0], slice[1]]))
+}
+
+fn read_u32(data: &[u8], at: usize) -> Option<u32> {
+    let slice = data.get(at..at + 4)?;
+    Some(u32::from_le_bytes([slice[0], slice[1], slice[2], slice[3]]))
+}
+
+/// Locate the End Of Central Directory record. The trailing comment is variable length,
+/// so scan backwards from the end (the comment is limited to 64 KiB).
+fn find_eocd(data: &[u8]) -> Option<usize> {
+    if data.len() < EOCD_MIN_LEN {
+        return None;
+    }
+    let search_start = data.len().saturating_sub(EOCD_MIN_LEN + 0xFFFF);
+    let mut pos = data.len() - EOCD_MIN_LEN;
+    loop {
+        if read_u32(data, pos) == Some(EOCD_SIG) {
+            return Some(pos);
+        }
+        if pos == search_start {
+            return None;
+        }
+        pos -= 1;
+    }
+}
+
+/// Parse the central directory into a list of entries.
+pub fn list_entries(data: &[u8]) -> Result<Vec<ZipEntry>, String> {
+    let eocd = find_eocd(data).ok_or_else(|| "不是有效的 ZIP 文件（找不到中央目录）".to_string())?;
+
+    let total = read_u16(data, eocd + 10).unwrap_or(0) as usize;
+    let cd_size = read_u32(data, eocd + 12).unwrap_or(0) as usize;
+    let cd_offset = read_u32(data, eocd + 16).unwrap_or(0) as usize;
+
+    if cd_offset == 0xFFFF_FFFF || cd_size == 0xFFFF_FFFF {
+        return Err("暂不支持 ZIP64 格式的文档".to_string());
+    }
+
+    let cd_end = cd_offset
+        .checked_add(cd_size)
+        .filter(|end| *end <= data.len())
+        .ok_or_else(|| "ZIP 中央目录越界".to_string())?;
+
+    let mut entries = Vec::new();
+    let mut cursor = cd_offset;
+
+    while cursor + CENTRAL_MIN_LEN <= cd_end && entries.len() < total.max(1) {
+        if read_u32(data, cursor) != Some(CENTRAL_SIG) {
+            break;
+        }
+
+        let method = read_u16(data, cursor + 10).unwrap_or(0);
+        let compressed_size = read_u32(data, cursor + 20).unwrap_or(0) as usize;
+        let uncompressed_size = read_u32(data, cursor + 24).unwrap_or(0) as usize;
+        let name_len = read_u16(data, cursor + 28).unwrap_or(0) as usize;
+        let extra_len = read_u16(data, cursor + 30).unwrap_or(0) as usize;
+        let comment_len = read_u16(data, cursor + 32).unwrap_or(0) as usize;
+        let local_header_offset = read_u32(data, cursor + 42).unwrap_or(0) as usize;
+
+        let name_start = cursor + CENTRAL_MIN_LEN;
+        let name_bytes = data
+            .get(name_start..name_start + name_len)
+            .ok_or_else(|| "ZIP 条目名称越界".to_string())?;
+        // Entry names are documented as UTF-8 or CP437; UTF-8 lossy keeps CJK names usable.
+        let name = String::from_utf8_lossy(name_bytes).to_string();
+
+        entries.push(ZipEntry {
+            name,
+            method,
+            compressed_size,
+            uncompressed_size,
+            local_header_offset,
+        });
+
+        cursor = name_start + name_len + extra_len + comment_len;
+    }
+
+    if entries.is_empty() {
+        return Err("ZIP 中央目录为空".to_string());
+    }
+
+    Ok(entries)
+}
+
+fn read_local_payload(data: &[u8], entry: &ZipEntry) -> Result<Vec<u8>, String> {
+    let base = entry.local_header_offset;
+    if read_u32(data, base) != Some(LOCAL_SIG) {
+        return Err(format!("条目 {} 的本地头无效", entry.name));
+    }
+
+    let name_len = read_u16(data, base + 26).unwrap_or(0) as usize;
+    let extra_len = read_u16(data, base + 28).unwrap_or(0) as usize;
+    let data_start = base + LOCAL_MIN_LEN + name_len + extra_len;
+
+    // When a data descriptor was used the local header sizes are zero; the central
+    // directory values are authoritative, so prefer those.
+    let take = if entry.compressed_size > 0 {
+        entry.compressed_size
+    } else {
+        let local_comp = read_u32(data, base + 18).unwrap_or(0) as usize;
+        local_comp
+    };
+
+    let end = data_start
+        .checked_add(take)
+        .filter(|e| *e <= data.len())
+        .ok_or_else(|| format!("条目 {} 数据越界", entry.name))?;
+
+    Ok(data[data_start..end].to_vec())
+}
+
+/// Extract one entry by exact name (case-insensitive), returning its decompressed bytes.
+pub fn read_entry(data: &[u8], wanted: &str) -> Result<Option<Vec<u8>>, String> {
+    let entries = list_entries(data)?;
+    let entry = match entries
+        .iter()
+        .find(|e| e.name.eq_ignore_ascii_case(wanted))
+    {
+        Some(e) => e.clone(),
+        None => return Ok(None),
+    };
+
+    if entry.uncompressed_size > MAX_ENTRY_BYTES {
+        return Err(format!(
+            "文档内部条目过大（{} MB），已拒绝解压",
+            entry.uncompressed_size / 1024 / 1024
+        ));
+    }
+
+    let payload = read_local_payload(data, &entry)?;
+
+    match entry.method {
+        // Stored
+        0 => Ok(Some(payload)),
+        // Deflate
+        8 => {
+            let mut out = Vec::new();
+            let mut decoder = flate2::read::DeflateDecoder::new(payload.as_slice());
+            // Read at most MAX_ENTRY_BYTES + 1 so an oversized stream is detectable.
+            let mut limited = (&mut decoder).take((MAX_ENTRY_BYTES + 1) as u64);
+            limited
+                .read_to_end(&mut out)
+                .map_err(|e| format!("解压条目 {} 失败: {}", entry.name, e))?;
+            if out.len() > MAX_ENTRY_BYTES {
+                return Err(format!("条目 {} 解压后过大，已中止", entry.name));
+            }
+            Ok(Some(out))
+        }
+        other => Err(format!(
+            "条目 {} 使用了不支持的压缩方式（method={}）",
+            entry.name, other
+        )),
+    }
+}
+
+/// All entry names, for diagnostics and for finding `ppt/slides/slideN.xml` style paths.
+pub fn entry_names(data: &[u8]) -> Result<Vec<String>, String> {
+    Ok(list_entries(data)?.into_iter().map(|e| e.name).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Round-trip against the ZIP writer in `diagnostics`: whatever that writes must be
+    /// readable here, which is exactly the relationship the Office extractor relies on.
+    fn sample_zip() -> Vec<u8> {
+        crate::services::diagnostics::build_zip(&[
+            ("hello.txt".to_string(), b"hello world".to_vec()),
+            (
+                "nested/dir/中文.xml".to_string(),
+                b"<a>\xe4\xb8\xad\xe6\x96\x87</a>".to_vec(),
+            ),
+            ("empty.txt".to_string(), Vec::new()),
+        ])
+    }
+
+    #[test]
+    fn reads_back_what_was_written() {
+        let zip = sample_zip();
+        let names = entry_names(&zip).unwrap();
+        assert_eq!(names.len(), 3);
+        assert!(names.contains(&"hello.txt".to_string()));
+
+        let hello = read_entry(&zip, "hello.txt").unwrap().unwrap();
+        assert_eq!(hello, b"hello world");
+
+        let nested = read_entry(&zip, "nested/dir/中文.xml").unwrap().unwrap();
+        assert!(String::from_utf8_lossy(&nested).contains("中文"));
+
+        let empty = read_entry(&zip, "empty.txt").unwrap().unwrap();
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn lookup_is_case_insensitive() {
+        let zip = sample_zip();
+        assert!(read_entry(&zip, "HELLO.TXT").unwrap().is_some());
+    }
+
+    #[test]
+    fn missing_entry_is_none_not_an_error() {
+        let zip = sample_zip();
+        assert!(read_entry(&zip, "absent.bin").unwrap().is_none());
+    }
+
+    #[test]
+    fn rejects_non_zip_input() {
+        assert!(list_entries(b"this is definitely not a zip archive").is_err());
+        assert!(list_entries(&[]).is_err());
+        assert!(list_entries(b"PK").is_err());
+    }
+
+    #[test]
+    fn rejects_truncated_archive() {
+        let zip = sample_zip();
+        let truncated = &zip[..zip.len() / 2];
+        // Either the central directory is gone or the entry data is out of bounds; both
+        // must surface as an error rather than a panic.
+        let result = read_entry(truncated, "hello.txt");
+        assert!(result.is_err() || result.unwrap().is_none());
+    }
+}
