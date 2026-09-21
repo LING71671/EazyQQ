@@ -3,6 +3,7 @@ pub mod commands;
 pub mod services;
 
 use std::sync::Arc;
+use tauri::Manager;
 use commands::*;
 use services::db::Database;
 use services::napcat::NapCatService;
@@ -61,6 +62,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(move |app| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
             let handle = app.handle().clone();
             services::ws_listener::start_onebot_ws_listener(
                 handle,
