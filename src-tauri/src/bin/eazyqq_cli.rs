@@ -229,6 +229,7 @@ fn cmd_help() {
   draft-dismiss --id <草稿ID>     丢弃草稿
   draft-regenerate --id <草稿ID> --instruction <微调指令>  按指令重新生成
   history --target <id> [--limit N] 查看本地消息流水
+  mark-read --target <id> [--at <毫秒时间戳>]  清除该会话未读标记
 
 简报
   summarize --target <群号> [--hours N] [--prompt <提示词>]   立即生成真实 AI 简报
@@ -415,8 +416,9 @@ async fn cmd_contacts(svc: &Services, args: &Args) -> Result<(), String> {
             "keyword" => "关键词",
             _ => "全部",
         };
+        let unread = svc.db.count_unread(&r.target_id).unwrap_or(0);
         println!(
-            "[{}] {:<28} {}  {:<8} 触发:{} 冷却:{}s{}{}",
+            "[{}] {:<28} {}  {:<8} 触发:{} 冷却:{}s{}{}{}",
             kind,
             truncate(&r.name, 28),
             r.target_id,
@@ -430,6 +432,11 @@ async fn cmd_contacts(svc: &Services, args: &Args) -> Result<(), String> {
             },
             if r.keywords != "[]" && !r.keywords.is_empty() {
                 format!("  关键词:{}", r.keywords)
+            } else {
+                String::new()
+            },
+            if unread > 0 {
+                format!("  未读:{}", unread)
             } else {
                 String::new()
             }
@@ -1831,6 +1838,42 @@ async fn cmd_ai_test(svc: &Services, args: &Args) -> Result<(), String> {
     }
 }
 
+/// Clear a conversation's unread badge.
+fn cmd_mark_read(svc: &Services, args: &Args) -> Result<(), String> {
+    let target = args
+        .flag("target")
+        .ok_or_else(|| "缺少 --target <目标ID>".to_string())?;
+
+    let before = svc.db.count_unread(target).unwrap_or(0);
+    let at = args
+        .flag("at")
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or_else(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64
+        });
+
+    svc.db
+        .mark_read(target, at)
+        .map_err(|e| format!("标记已读失败: {}", e))?;
+
+    let after = svc.db.count_unread(target).unwrap_or(0);
+
+    if args.json() {
+        print_json(&serde_json::json!({
+            "targetId": target,
+            "markedAt": at,
+            "unreadBefore": before,
+            "unreadAfter": after,
+        }));
+    } else {
+        println!("已标记 {} 为已读（未读 {} -> {}）", target, before, after);
+    }
+    Ok(())
+}
+
 fn cmd_log_path() -> Result<(), String> {
     println!("{}", logging::active_log_path().display());
     let (dir, crash_count, last) = logging::diagnostics();
@@ -1899,6 +1942,7 @@ async fn main() -> ExitCode {
                 "draft-dismiss" => cmd_draft_dismiss(&svc, &args),
                 "draft-regenerate" => cmd_draft_regenerate(&svc, &args).await,
                 "history" => cmd_history(&svc, &args).await,
+                "mark-read" => cmd_mark_read(&svc, &args),
                 "files" => cmd_files(&svc, &args).await,
                 "file-download" => cmd_file_download(&svc, &args).await,
                 "file-summarize" => cmd_file_summarize(&svc, &args).await,

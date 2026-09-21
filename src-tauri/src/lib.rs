@@ -170,6 +170,7 @@ pub fn run() {
             refresh_qrcode,
             logout,
             get_contacts,
+            mark_read,
             update_rule,
             batch_update_mode,
             get_messages,

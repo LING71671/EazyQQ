@@ -186,15 +186,31 @@ export const App: React.FC = () => {
     }).then((fn) => { unlistenDraft = fn; });
 
     api.onMessageReceived((msg) => {
+      const isOpenTarget = selectedTargetIdRef.current === msg.targetId;
+
       setChatMessages((prev) => {
-        if (selectedTargetIdRef.current === msg.targetId) {
+        if (isOpenTarget) {
           if (prev.some((m) => m.id === msg.id)) return prev;
           return [...prev, msg];
         }
         return prev;
       });
+
+      if (isOpenTarget) {
+        // The conversation is on screen, so it counts as read straight away.
+        api.markRead(msg.targetId, msg.timestamp).catch(() => {});
+      }
+
       setContacts((prev) =>
-        prev.map((c) => (c.targetId === msg.targetId ? { ...c, lastMessageSnippet: msg.content } : c))
+        prev.map((c) =>
+          c.targetId === msg.targetId
+            ? {
+                ...c,
+                lastMessageSnippet: msg.content,
+                unreadCount: isOpenTarget || msg.isFromMe ? c.unreadCount : c.unreadCount + 1,
+              }
+            : c
+        )
       );
     }).then((fn) => { unlistenMsg = fn; });
 
@@ -351,6 +367,12 @@ export const App: React.FC = () => {
       const res = await api.getMessages(contact.targetId);
       if (res.success && res.data) {
         setChatMessages(res.data);
+        // The user is looking at the conversation now, so the badge should clear.
+        const newest = res.data.reduce((max, m) => Math.max(max, m.timestamp), 0);
+        await api.markRead(contact.targetId, newest || undefined);
+        setContacts((prev) =>
+          prev.map((c) => (c.targetId === contact.targetId ? { ...c, unreadCount: 0 } : c))
+        );
       }
     } catch (err) {
       console.error('Failed to load chat messages:', err);

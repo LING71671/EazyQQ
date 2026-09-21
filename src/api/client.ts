@@ -31,6 +31,10 @@ export const api = {
   getContacts: async (params?: { type?: string; searchKeyword?: string }): Promise<ApiResponse<{ list: ContactItemDto[]; total: number }>> => {
     return invoke('get_contacts', { params });
   },
+  /** Clear a conversation's unread badge. `at` defaults to now on the backend. */
+  markRead: async (targetId: string, at?: number): Promise<ApiResponse<number>> => {
+    return invoke('mark_read', { targetId, at });
+  },
   updateRule: async (rule: Partial<RoutingRuleDto> & { targetId: string }): Promise<ApiResponse<RoutingRuleDto>> => {
     return invoke('update_rule', { rule });
   },

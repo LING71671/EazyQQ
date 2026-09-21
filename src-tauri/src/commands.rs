@@ -141,6 +141,32 @@ pub async fn logout() -> Result<ApiResponse<()>, String> {
     ))
 }
 
+/// Mark a conversation as read, clearing its unread badge.
+///
+/// `at` is a millisecond timestamp; the frontend passes the newest message it has
+/// rendered, and the database keeps the maximum so out-of-order calls cannot un-read.
+#[command]
+pub async fn mark_read(
+    state: State<'_, AppState>,
+    target_id: String,
+    at: Option<i64>,
+) -> Result<ApiResponse<i64>, String> {
+    let at_ms = at.unwrap_or_else(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64
+    });
+
+    state
+        .db
+        .mark_read(&target_id, at_ms)
+        .map_err(|e| e.to_string())?;
+
+    tracing::debug!("marked {} read up to {}", target_id, at_ms);
+    Ok(ApiResponse::ok(at_ms))
+}
+
 #[command]
 pub async fn get_contacts(state: State<'_, AppState>) -> Result<ApiResponse<serde_json::Value>, String> {
     // 1. Read existing whitelist and rules from SQLite
@@ -200,7 +226,7 @@ pub async fn get_contacts(state: State<'_, AppState>) -> Result<ApiResponse<serd
                 is_summary_whitelist: rule.is_summary_whitelist,
                 summary_interval_hours: rule.summary_interval_hours,
             },
-            unread_count: 0,
+            unread_count: state.db.count_unread(&target_id).unwrap_or(0) as i32,
             last_message_snippet: None,
         });
     }
@@ -248,7 +274,7 @@ pub async fn get_contacts(state: State<'_, AppState>) -> Result<ApiResponse<serd
                 is_summary_whitelist: rule.is_summary_whitelist,
                 summary_interval_hours: rule.summary_interval_hours,
             },
-            unread_count: 0,
+            unread_count: state.db.count_unread(&target_id).unwrap_or(0) as i32,
             last_message_snippet: None,
         });
     }
@@ -272,7 +298,7 @@ pub async fn get_contacts(state: State<'_, AppState>) -> Result<ApiResponse<serd
                 is_summary_whitelist: rule.is_summary_whitelist,
                 summary_interval_hours: rule.summary_interval_hours,
             },
-            unread_count: 0,
+            unread_count: state.db.count_unread(&target_id).unwrap_or(0) as i32,
             last_message_snippet: None,
         });
     }
