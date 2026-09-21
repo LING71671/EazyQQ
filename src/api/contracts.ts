@@ -149,4 +149,15 @@ export interface AppConfig {
     autoForwardToPhone: boolean;
     customPrompt?: string;
   };
+  window: {
+    /** Collapse into the system tray instead of the taskbar when minimized. */
+    minimizeToTray: boolean;
+    /** Hide into the system tray instead of terminating the process on close. */
+    closeToTray: boolean;
+  };
+}
+
+export interface WindowBehaviorDto {
+  minimizeToTray: boolean;
+  closeToTray: boolean;
 }

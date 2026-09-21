@@ -1,0 +1,32 @@
+{
+  "ai": {
+    "activeProvider": "tokenrhythm",
+    "model": "qwen3.8-flash",
+    "temperature": 0.7,
+    "maxContextMessages": 10,
+    "baseUrl": "https://tokenrhythm.studio/v1",
+    "apiKey": ""
+  },
+  "napcat": {
+    "wsPort": 3001,
+    "autoRestart": true,
+    "heartbeatIntervalSec": 15
+  },
+  "storage": {
+    "workspaceDir": "EazyQQ_Data",
+    "autoSyncFiles": true,
+    "maxFileSizeMb": 100
+  },
+  "summary": {
+    "enabled": true,
+    "intervalType": "2h",
+    "customIntervalMinutes": 120,
+    "slidingWindowHours": 6,
+    "autoForwardToPhone": false,
+    "customPrompt": "请提炼群聊核心讨论要点、达成的共识决策与待办行动项，结构清晰、简洁明了，不要复述闲聊。"
+  },
+  "window": {
+    "minimizeToTray": true,
+    "closeToTray": true
+  }
+}

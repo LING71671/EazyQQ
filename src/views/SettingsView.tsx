@@ -55,6 +55,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [isSaved, setIsSaved] = useState(false);
 
+  // Window & Tray Behavior (default: collapse into tray on minimize / close)
+  const [minimizeToTray, setMinimizeToTray] = useState(
+    config.window?.minimizeToTray ?? true
+  );
+  const [closeToTray, setCloseToTray] = useState(config.window?.closeToTray ?? true);
+
+  // Tray behavior must take effect immediately, so persist on every toggle
+  // instead of waiting for the global "save all" button.
+  const applyWindowBehavior = (next: { minimizeToTray?: boolean; closeToTray?: boolean }) => {
+    const merged = {
+      minimizeToTray: next.minimizeToTray ?? minimizeToTray,
+      closeToTray: next.closeToTray ?? closeToTray,
+    };
+    setMinimizeToTray(merged.minimizeToTray);
+    setCloseToTray(merged.closeToTray);
+    onUpdateConfig({ window: merged });
+  };
+
   const handleSaveAll = () => {
     onUpdateConfig({
       ai: {
@@ -71,6 +89,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         slidingWindowHours: Number(slidingWindowHours) || 6,
         autoForwardToPhone,
         customPrompt: customPrompt.trim(),
+      },
+      window: {
+        minimizeToTray,
+        closeToTray,
       },
     });
     setIsSaved(true);
@@ -95,7 +117,62 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </button>
         </div>
 
-        {/* 1. Dynamic Group Summarization Settings Card */}
+        {/* 1. Window & System Tray Behavior */}
+        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <span className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+              <Settings className="w-4 h-4 text-sky-600" />
+              <span>窗口与系统托盘行为</span>
+            </span>
+            <span className="text-[11px] text-slate-400">即改即生效，无需重启</span>
+          </div>
+
+          <div className="space-y-3 text-xs">
+            <div className="p-3 rounded-xl bg-sky-50/70 border border-sky-100 flex items-start gap-2.5">
+              <ShieldAlert className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
+              <div className="text-sky-900 leading-relaxed text-[11px]">
+                <strong className="font-semibold block">托盘常驻保护：</strong>
+                窗口缩入托盘后，QQ 协议监听、消息接管与定时群总结仍在后台持续运行，不会被中断。
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="pr-4">
+                <span className="font-semibold block text-slate-800">最小化时缩至系统托盘</span>
+                <span className="text-slate-400 text-[11px]">
+                  点击最小化按钮时隐藏窗口至右下角托盘，而非保留在任务栏
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={minimizeToTray}
+                onChange={(e) => applyWindowBehavior({ minimizeToTray: e.target.checked })}
+                className="w-4 h-4 shrink-0 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer accent-sky-600"
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="pr-4">
+                <span className="font-semibold block text-slate-800">关闭时缩至系统托盘</span>
+                <span className="text-slate-400 text-[11px]">
+                  点击关闭按钮仅隐藏窗口，不退出进程；彻底退出请右键托盘图标选择「退出 EazyQQ」
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={closeToTray}
+                onChange={(e) => applyWindowBehavior({ closeToTray: e.target.checked })}
+                className="w-4 h-4 shrink-0 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer accent-sky-600"
+              />
+            </div>
+
+            <div className="pt-1 text-[11px] text-slate-400 leading-relaxed">
+              标题栏空白处可按住拖动窗口，双击标题栏可最大化 / 还原；单击托盘图标即可重新呼出主窗口。
+            </div>
+          </div>
+        </div>
+
+        {/* 2. Dynamic Group Summarization Settings Card */}
         <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-4">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
             <span className="text-sm font-semibold text-slate-900 flex items-center gap-2">
@@ -243,7 +320,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        {/* 2. AI Model Provider Selector */}
+        {/* 3. AI Model Provider Selector */}
         <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-4">
           <h3 className="text-sm font-semibold text-slate-900 pb-2 border-b border-slate-100">
             大模型推理供应源
@@ -296,7 +373,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        {/* 3. Pre-flight Dependency Health Card */}
+        {/* 4. Pre-flight Dependency Health Card */}
         <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-4">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
             <span className="text-sm font-semibold text-slate-900 flex items-center gap-2">
@@ -365,7 +442,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        {/* 4. Diagnostics Export */}
+        {/* 5. Diagnostics Export */}
         <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
             <h4 className="text-xs font-semibold text-slate-900">一键导出诊断日志包</h4>

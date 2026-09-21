@@ -1,5 +1,11 @@
 pub mod db;
+pub mod diagnostics;
 pub mod napcat;
 pub mod onebot;
 pub mod ai;
+pub mod contacts;
+pub mod logging;
+pub mod policy;
+pub mod scheduler;
+pub mod summarizer;
 pub mod ws_listener;

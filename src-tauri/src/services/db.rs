@@ -378,17 +378,60 @@ impl Database {
         Ok(())
     }
 
+    /// The most recent `limit` messages for a target, returned **oldest-first** so the
+    /// result can be fed straight into an AI prompt as conversation history.
+    ///
+    /// (Previously this selected the *oldest* N rows, which meant a busy conversation
+    /// gave the model the very beginning of the chat instead of the latest context.)
     pub fn get_messages_by_target(&self, target_id: &str, limit: usize) -> Result<Vec<crate::models::MessageItemDto>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT msg_id, target_id, sender_id, sender_name, content, is_from_me, ai_reply_status, timestamp
              FROM messages_log 
              WHERE target_id = ?1 
-             ORDER BY timestamp ASC 
+             ORDER BY timestamp DESC 
              LIMIT ?2"
         )?;
 
         let rows = stmt.query_map(params![target_id, limit as i64], |row| {
+            Ok(crate::models::MessageItemDto {
+                id: row.get(0)?,
+                target_id: row.get(1)?,
+                sender_id: row.get(2)?,
+                sender_name: row.get(3)?,
+                content: row.get(4)?,
+                is_from_me: row.get::<_, i32>(5)? != 0,
+                ai_reply_status: row.get(6)?,
+                timestamp: row.get(7)?,
+            })
+        })?;
+
+        let mut list = Vec::new();
+        for r in rows {
+            list.push(r?);
+        }
+        list.reverse();
+        Ok(list)
+    }
+
+    /// Messages for a target inside a sliding time window, oldest-first.
+    /// Used by the group summarizer (ROADMAP Phase 5).
+    pub fn get_messages_in_window(
+        &self,
+        target_id: &str,
+        since_ms: i64,
+        limit: usize,
+    ) -> Result<Vec<crate::models::MessageItemDto>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT msg_id, target_id, sender_id, sender_name, content, is_from_me, ai_reply_status, timestamp
+             FROM messages_log
+             WHERE target_id = ?1 AND timestamp >= ?2
+             ORDER BY timestamp ASC
+             LIMIT ?3"
+        )?;
+
+        let rows = stmt.query_map(params![target_id, since_ms, limit as i64], |row| {
             Ok(crate::models::MessageItemDto {
                 id: row.get(0)?,
                 target_id: row.get(1)?,

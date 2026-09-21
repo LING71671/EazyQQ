@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Send, Trash2, RefreshCw, ChevronDown, ChevronUp, Check, Bot } from 'lucide-react';
 import type { PendingDraftDto } from '@/api/contracts';
+import emptyDraftsUrl from '@/assets/empty-drafts.svg';
 
 interface DraftsViewProps {
   drafts: PendingDraftDto[];
@@ -39,7 +40,7 @@ export const DraftsView: React.FC<DraftsViewProps> = ({
       <div className="flex-1 overflow-y-auto pt-4">
         {drafts.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-8">
-            <img src="/src/assets/empty-drafts.svg" alt="Empty Drafts" className="w-36 h-36 mb-4 opacity-70" />
+            <img src={emptyDraftsUrl} alt="Empty Drafts" className="w-36 h-36 mb-4 opacity-70" />
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1">暂无待审核草稿</h3>
             <p className="text-xs text-slate-400 max-w-sm">
               当开启「草稿审核模式」的联系人或群聊发来消息时，AI 生成的回复将呈现在此处

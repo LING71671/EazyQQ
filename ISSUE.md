@@ -18,6 +18,14 @@
 | 8 | **ISSUE-008** | 界面视觉 / 色调不一 | 低 | **已修复** | 简报视图混入紫红色阶，与全局纯白天蓝设计规范不一致 |
 | 9 | **ISSUE-009** | 协议进程 / 路径错位 | 高 | **已修复** | 启动错引历史废弃目录，弹窗报缺少 express 模块异常 |
 | 10 | **ISSUE-010** | 数据契约 / 字段命名 | 高 | **已修复** | Rust DTO 缺失 camelCase 序列化注解，轮询时 undefined 覆盖导致二维码闪退消失 |
+| 11 | **ISSUE-011** | 窗口外壳 / 权限配置 | 高 | **已修复** | 自绘标题栏无法最小化，也无法拖动窗口 |
+| 12 | **ISSUE-012** | 窗口外壳 / 托盘常驻 | 中 | **已修复** | 缺少系统托盘与「最小化/关闭即缩至托盘」默认设置 |
+| 13 | **ISSUE-013** | 运行环境 / WebView2 | 致命 | **待用户排除（需管理员）** | Windhawk 全局注入致 WebView2 浏览器进程崩溃，窗口黑屏→白屏→卡死 |
+| 14 | **ISSUE-014** | 规则与安全 / 硬编码门禁 | 高 | **已修复** | 硬编码单一测试 UIN 门禁，导致真实群聊无法进入 AI 处理链路 |
+| 15 | **ISSUE-015** | 数据流 / 白名单越界 | 高 | **已修复** | 未入白名单的会话消息仍被落库，违反「完全旁路静默」要求 |
+| 16 | **ISSUE-016** | 功能实现 / 空壳桩代码 | 高 | **已修复** | 简报生成与依赖自检为硬编码假实现，未读取任何真实数据 |
+| 17 | **ISSUE-017** | 上下文 / 查询方向错误 | 中 | **已修复** | 消息历史查询取最旧 N 条而非最新 N 条，AI 上下文错位 |
+| 18 | **ISSUE-018** | 可观测性 / 日志缺失 | 高 | **已修复** | 后端无任何持久化日志，故障后无从定位；诊断包为假实现 |
 
 ---
 
@@ -136,3 +144,122 @@
   2. 在前端 `App.tsx` 中建立二维码持久防御策略（`nextStatus.qrcodeBase64 || prev.qrcodeBase64`），禁止轮询用空值覆盖已有的有效二维码；
   3. 在 `LoginView.tsx` 中锁定渲染缓存，除已正式登录或主动刷新外，持续保持二维码常驻展示。
 
+---
+
+### ISSUE-011: 自绘标题栏无法最小化，也无法拖动窗口
+- **首次发现时间**: 2026-09-21
+- **触发场景**: 无边框窗口（`decorations: false`）下，点击右上角「最小化」按钮无任何反应；按住顶部标题栏空白区域拖动，窗口纹丝不动。
+- **技术根因剖析**:
+  1. **能力清单缺失（Capability ACL）**: Tauri 2 中 `core:window:default` 仅授予只读查询类权限（`is-maximized`、`is-visible` 等），**不包含** `allow-minimize` / `allow-maximize` / `allow-close` / `allow-start-dragging` 等变更类权限。项目此前不存在 `src-tauri/capabilities/` 目录，导致前端所有 `getCurrentWindow().minimize()` / `startDragging()` 调用被 ACL 静默拒绝。
+  2. **错误被吞没**: 前端以 `try/catch` + `console.error` 包裹调用，失败时界面无任何提示，故障表现为「按钮点了没反应」。
+  3. **拖拽依赖同一权限**: 原生 `data-tauri-drag-region` 属性由 Tauri 注入脚本处理，其内部同样通过 IPC 调用 `start_dragging`，因此与最小化按钮同源失效，两者同时不可用。
+- **修复方案与措施**:
+  1. 新增 `src-tauri/capabilities/default.json`，为 `main` 窗口显式授予 `core:window:allow-minimize`、`allow-maximize`、`allow-toggle-maximize`、`allow-close`、`allow-start-dragging`、`allow-is-maximized`、`allow-show`、`allow-hide`；
+  2. **架构加固（关键）**: 窗口控制不再依赖 ACL 门控的前端 Window API，改为全部走自定义 Rust 命令 `app_minimize_window` / `app_toggle_maximize_window` / `app_close_window` / `app_start_drag_window` / `app_show_window`。Tauri 的能力清单**只约束插件命令**，应用自注册的 `#[command]` 不受 ACL 限制，从而彻底消除同类回归风险；
+  3. 新增 `src/hooks/useWindowDrag.ts` 复用型拖拽 Hook，以 `data-drag-handle` 标记拖拽区、`data-no-drag` / 交互元素选择器排除按钮区；**主动移除 `data-tauri-drag-region`**，避免原生脚本与自研处理器对同一次点击各发一次拖拽请求造成抖动；
+  4. 双击标题栏触发最大化 / 还原；窗口尺寸变化事件驱动最大化图标状态同步，保证图标与实际状态一致。
+
+---
+
+### ISSUE-012: 缺少系统托盘常驻与「最小化/关闭即缩至托盘」默认设置
+- **首次发现时间**: 2026-09-21
+- **触发场景**: 用户提出「我需要有默认的设置是缩小到托盘」。此前最小化即沉入任务栏，关闭按钮直接终止进程，导致 OneBot 监听与定时群总结任务被一并杀死。
+- **技术根因剖析**:
+  1. `Cargo.toml` 虽已启用 `tauri` 的 `tray-icon` 特性，但 `lib.rs` 从未构建任何托盘图标与菜单；
+  2. 窗口行为无配置项落库，`app_config` 中不存在 `window` 分组，行为被硬编码。
+- **修复方案与措施**:
+  1. 在 `lib.rs` 中构建常驻托盘图标 `eazyqq-tray`，附带「显示主窗口 / 退出 EazyQQ」右键菜单；左键单击托盘图标即呼出主窗口（`unminimize` + `show` + `set_focus`）；
+  2. 在 SQLite `app_config` 中新增 `window` 分组：`{ minimizeToTray: true, closeToTray: true }`，**默认值均为 `true`**，即默认缩小到托盘、默认关闭不退出进程；
+  3. 后端 `read_window_behavior()` 统一读取该配置：`app_minimize_window` 命中托盘策略时执行 `window.hide()` 而非 `minimize()`；`app_close_window` 命中时执行 `window.hide()` 而非 `exit(0)`；
+  4. 追加 `WindowEvent::CloseRequested` 拦截（覆盖 Alt+F4 与任务栏关闭），按同一策略 `prevent_close()` + `hide()`；
+  5. 前端 `SettingsView.tsx` 新增「窗口与系统托盘行为」卡片，两个开关即改即生效并即时持久化至 SQLite；标题栏按钮 `title` 提示随配置动态切换。
+
+
+---
+
+### ISSUE-013: Windhawk 全局注入导致 WebView2 崩溃，窗口黑屏→白屏→卡死
+- **首次发现时间**: 2026-09-21
+- **触发场景**: 启动应用后窗口依次呈现「黑屏 → 白屏 → 卡死」，界面完全不可用。
+- **排查过程与证据**:
+  1. Win32 窗口树完整：主窗口（`class='Tauri Window'`）下 `TAURI_DRAG_RESIZE_BORDERS`、`WRY_WEBVIEW`、`Chrome_WidgetWin_0/1`、`Chrome_RenderWidgetHostHWND` 全部存在且 `IsWindowVisible=true`，矩形正确；
+  2. 用纯静态探针页（红色背景 + CSS 旋转动画，由 `python -m http.server` 托管于 1420）替换前端，**同样不渲染**，排除 React/前端问题；
+  3. 探针服务端日志确认收到 `GET / HTTP/1.1" 200`，即**页面已成功加载**，只是无法合成上屏；
+  4. `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--disable-gpu` 无效；
+  5. 在 `tauri.conf.json` 设置 `backgroundColor: "#f8fafc"` 后，可见空白区由**纯黑**变为**浅灰** —— 证明窗口背景刷能绘制，但 WebView2 表面从未合成；
+  6. 枚举 `msedgewebview2.exe` 模块，**确认 `windhawk.dll` 已注入**；每次启动应用都在 `%LOCALAPPDATA%\com.eazyqq.app\EBWebView\Crashpad\reports\` 新增转储，崩溃签名 `ProcessType=browser` / `ModuleName=msedge.dll` / `ModuleOffset=0xAF6AC8D` / `SubCode=0x80000003`（Chromium CHECK 失败），`variations_crash_streak` 累计 22 次。
+- **技术根因剖析**:
+  - Windhawk 引擎 `HKLM\SOFTWARE\Windhawk\Engine\Settings` 的 `Include` 与 `Exclude` **均为空字符串**，即对全部进程注入；
+  - 启用的 mod 中 `modernize-folder-picker-dialog`（`Include='*'`、`Exclude=''`）与 `explorer-details-better-file-sizes`（`Include='*'`）会一并注入 `msedgewebview2.exe`；
+  - `windhawk.dll` 的 hook 破坏了 Chromium 浏览器进程的消息循环/合成路径，触发 `msedge.dll` 内的 `CHECK` 断言，浏览器进程崩溃 → 窗口只剩背景刷颜色，且不再响应输入。
+- **修复方案与措施**（需管理员权限，AI 无法代执行）:
+  1. 以管理员身份执行：
+     ```
+     reg add "HKLM\SOFTWARE\Windhawk\Engine\Settings" /v Exclude /t REG_SZ /d "msedgewebview2.exe" /f
+     ```
+     随后重启 Windhawk 服务（或在 Windhawk UI 的「高级设置 → 排除进程」中加入 `msedgewebview2.exe`）；
+  2. 代码侧已将该项纳入自检：`system.json` 会输出 `conflicts.windhawkInstalled` 与说明，`eazyqq-cli export` 生成的诊断包可直接看到；
+  3. 若后续仍异常，可追加 `--disable-features=CalculateNativeWinOcclusion --disable-gpu-compositing --disable-direct-composition` 作为排查手段。
+
+---
+
+### ISSUE-014: 硬编码单一测试 UIN 门禁阻断真实业务链路
+- **首次发现时间**: 2026-09-21
+- **触发场景**: 真实群聊已加入「草稿审核」白名单，但收到消息后既不生成草稿也不自动回复。
+- **技术根因剖析**:
+  - `ws_listener.rs` 中存在 `pub const AUTHORIZED_TEST_UIN = "1739677116"`，并以此硬编码判断 `is_authorized_target`，凡非该账号一律 `return`；
+  - `commands.rs` 的 `send_message` 与 `send_draft` 亦各有一道相同的硬编码拦截；
+  - 该门禁与 ROADMAP Phase 2 设计的「规则驱动 + 默认拒绝」白名单机制**互相矛盾**：真正的安全边界应当是数据库规则，而非写死的账号。
+- **修复方案与措施**:
+  1. 新增 `src-tauri/src/services/policy.rs` 作为唯一策略出口：`tracked()`（是否记录/接管）与 `ai_execution_allowed()`（是否执行 AI），两者均严格默认拒绝；
+  2. 删除全部硬编码 UIN 常量与三处拦截分支，统一改为 `policy::load()`；
+  3. `send_message` 改为仅校验内容非空并记录审计日志（人工主动发送本就是用户意图，不应被白名单拦），`send_draft` 在放行时重新校验规则，防止规则撤销后残留草稿被发送。
+
+---
+
+### ISSUE-015: 未入白名单的会话消息仍被落库，违反「完全旁路静默」
+- **首次发现时间**: 2026-09-21
+- **触发场景**: ROADMAP Phase 2 验收项要求「未加入白名单的群聊发消息时，软件完全旁路静默，不记录流水、不产生草稿」，但实测未白名单群仍写入 `messages_log`。
+- **技术根因剖析**:
+  - 原 `handle_onebot_event` 的执行顺序是「先 `save_message` + `emit`，后做白名单判断」，导致所有消息先落库再判断。
+- **修复方案与措施**:
+  1. 将白名单门禁**前移到任何持久化动作之前**，未命中 `policy.tracked()` 直接 `return`；
+  2. 用真实数据回归验证：向未白名单群注入模拟消息后 `SELECT COUNT(*) FROM messages_log WHERE target_id=...` 结果为 **0**；
+  3. 同时修正 `is_from_me` 判定（依据 `self_id == user_id`），避免我方消息被当作对方消息触发 AI。
+
+---
+
+### ISSUE-016: 简报生成与依赖自检为硬编码假实现
+- **首次发现时间**: 2026-09-21
+- **触发场景**: 生成「群聊简报」后，内容恒为固定模板文字；「前置运行环境状态」恒为全绿。
+- **技术根因剖析**:
+  - `commands.rs::generate_summary` 从未查询 `messages_log`，也未调用大模型，仅拼接固定字符串并写入数据库；
+  - `commands.rs::check_dependencies` 直接返回写死的 `is_all_ready: true` 与伪造路径；
+  - `export_diagnostics_bundle` 返回一个不存在的固定 zip 路径。
+- **修复方案与措施**:
+  1. 新增 `services/summarizer.rs`：真实读取滑动窗口内的消息流水 → 噪声过滤（纯表情/标点剔除、连续刷屏去重、单条超长截断、Prompt 总量上限）→ 以结构化 JSON 约束调用大模型 → 解析并落库；有效消息不足时如实记录「消息不足」而非编造内容；
+  2. 新增 `services/scheduler.rs`：完全配置驱动的定时调度（白名单来自 `contact_rules.is_summary_whitelist`，周期来自 `summary_interval_hours`，窗口与提示词来自 `app_config.summary`），上次执行时间直接取该群最新简报的 `created_at`，无需额外状态；
+  3. `check_dependencies` 改为真实探测：QQNT 安装路径、本地 OpenCode / 云端 Key、数据目录**实际写入探针**、通过 `GetDiskFreeSpaceExW` 读取真实剩余空间；
+  4. `export_diagnostics_bundle` 改为真实打包（见 ISSUE-018）。
+
+---
+
+### ISSUE-017: 消息历史查询方向错误，AI 上下文取到会话开头
+- **首次发现时间**: 2026-09-21
+- **技术根因剖析**: `get_messages_by_target` 使用 `ORDER BY timestamp ASC LIMIT n`，返回的是**最早**的 n 条消息，而非最近 n 条。活跃会话中模型会拿到几天前的开场内容作为上下文。
+- **修复方案与措施**: 改为 `ORDER BY timestamp DESC LIMIT n` 后在 Rust 侧 `reverse()`，保证返回「最近的 n 条」且仍为时间正序，可直接作为对话历史喂给模型。
+
+---
+
+### ISSUE-018: 后端零持久化日志，故障无从定位；诊断包为假实现
+- **首次发现时间**: 2026-09-21
+- **触发场景**: 排查窗口黑屏与协议异常时，`tracing` 虽已作为依赖引入，但**从未初始化 subscriber**，所有 `info!` / `error!` 全部被丢弃；进程退出后无任何线索。`export_diagnostics_bundle` 亦只返回一个并不存在的固定 zip 路径。
+- **技术根因剖析**:
+  1. `lib.rs::run()` 未调用任何 `tracing_subscriber` 初始化，`tracing` 宏在无 subscriber 时是空操作；
+  2. 无 panic 捕获，Windows GUI 子系统进程（`windows_subsystem = "windows"`）崩溃时连控制台输出都没有；
+  3. 诊断包为桩实现，未收集任何文件。
+- **修复方案与措施**:
+  1. 新增 `src-tauri/src/services/logging.rs`：初始化 tracing subscriber 落盘至 `EazyQQ_Data/logs/eazyqq.log`（超过 5MB 自动轮转、同时镜像 stdout、`EAZYQQ_LOG` 可调级别）；自定义 `TeeWriter` 实现 `MakeWriter`，**不引入任何新依赖**；
+  2. 安装 panic 钩子：每次 panic 写出独立报告 `logs/crash-<时间戳>.log` 与 `logs/last-crash.log`，内容含时间、线程、位置、payload、版本与**强制捕获的 backtrace**；
+  3. `lib.rs` 在最早时机初始化日志（先于 SQLite 打开），并在窗口创建、托盘构建、关闭请求等关键节点补齐日志；
+  4. 新增 `src-tauri/src/services/diagnostics.rs`：真实打包 7 个文件（`system.json` / `health.json` / `config/app_config.json` / `rules/contact_rules.json` / `stats.json` / `logs/eazyqq.log` / `README.txt`），**自实现最小 ZIP 容器**（stored 条目 + CRC32，无新增依赖），并做脱敏（API Key 全量替换、QQ 号中间位打码、不含聊天内容）；`system.json` 额外输出 WebView2 版本与 Windhawk 冲突检测结果；
+  5. 验证：用 Python `zipfile` 校验 CRC 通过，且确认原始 API Key 未出现在包内。

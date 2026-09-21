@@ -61,6 +61,29 @@
   }
 }
 
+/* Boot splash animations (shared by index.html's pre-React splash and BootSplash.tsx) */
+@keyframes boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes boot-slide {
+  0% {
+    transform: translateX(-105%);
+  }
+  100% {
+    transform: translateX(345%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-anim-spin,
+  .boot-anim-slide {
+    animation-duration: 2.6s !important;
+  }
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

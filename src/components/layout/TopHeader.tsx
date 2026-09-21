@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Sun, Moon, HelpCircle, Minus, Square, Copy, X } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { api } from '@/api/client';
+import { useWindowDrag } from '@/hooks/useWindowDrag';
 import type { ProtocolStatusDto } from '@/api/contracts';
 
 interface TopHeaderProps {
@@ -19,44 +21,80 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   onOpenManual,
 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
+  const [minimizeToTray, setMinimizeToTray] = useState(true);
+  const [closeToTray, setCloseToTray] = useState(true);
 
+  // Read the persisted window behavior so button tooltips match reality.
   useEffect(() => {
+    api
+      .getWindowBehavior()
+      .then((res) => {
+        if (res.success && res.data) {
+          setMinimizeToTray(res.data.minimizeToTray);
+          setCloseToTray(res.data.closeToTray);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Keep the maximize/restore icon in sync with the native window state.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    const syncMaximized = () => {
+      try {
+        getCurrentWindow().isMaximized().then(setIsMaximized).catch(() => {});
+      } catch {
+        // Not running inside a Tauri webview (browser preview) - ignore.
+      }
+    };
+
+    syncMaximized();
+
     try {
-      const appWindow = getCurrentWindow();
-      appWindow.isMaximized().then(setIsMaximized).catch(() => {});
+      getCurrentWindow()
+        .onResized(() => syncMaximized())
+        .then((fn) => {
+          unlisten = fn;
+        })
+        .catch(() => {});
     } catch {
       // Browser fallback
     }
+
+    return () => unlisten?.();
   }, []);
 
-  const handleMinimize = async () => {
+  const handleMinimize = useCallback(async () => {
     try {
-      const appWindow = getCurrentWindow();
-      await appWindow.minimize();
+      await api.minimizeWindow();
     } catch (e) {
       console.error('Failed to minimize window', e);
     }
-  };
+  }, []);
 
-  const handleToggleMaximize = async () => {
+  const handleToggleMaximize = useCallback(async () => {
     try {
-      const appWindow = getCurrentWindow();
-      await appWindow.toggleMaximize();
-      const next = await appWindow.isMaximized();
-      setIsMaximized(next);
+      const res = await api.toggleMaximizeWindow();
+      if (res.success && typeof res.data === 'boolean') {
+        setIsMaximized(res.data);
+      }
     } catch (e) {
       console.error('Failed to toggle maximize window', e);
     }
-  };
+  }, []);
 
-  const handleClose = async () => {
+  const handleClose = useCallback(async () => {
     try {
-      const appWindow = getCurrentWindow();
-      await appWindow.close();
+      await api.closeWindow();
     } catch (e) {
       console.error('Failed to close window', e);
     }
-  };
+  }, []);
+
+  // Frameless-window dragging, routed through a native command (see useWindowDrag).
+  const { onMouseDown: handleDragMouseDown, onDoubleClick: handleDragDoubleClick } =
+    useWindowDrag(handleToggleMaximize);
 
   const getStatusBadge = () => {
     switch (protocolStatus.loginStatus) {
@@ -92,19 +130,21 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   };
 
   return (
-    <header 
-      data-tauri-drag-region 
-      className="h-14 bg-white border-b border-slate-200/80 px-4 flex items-center justify-between select-none"
+    <header
+      data-drag-handle
+      onMouseDown={handleDragMouseDown}
+      onDoubleClick={handleDragDoubleClick}
+      className="h-14 shrink-0 bg-white border-b border-slate-200/80 px-4 flex items-center justify-between select-none"
     >
       {/* Title (Draggable region) */}
-      <div data-tauri-drag-region className="flex items-center gap-3 flex-1 h-full cursor-default">
-        <h1 data-tauri-drag-region className="text-sm font-semibold text-slate-900 tracking-tight">
+      <div data-drag-handle className="flex items-center gap-3 flex-1 h-full cursor-default">
+        <h1 data-drag-handle className="text-sm font-semibold text-slate-900 tracking-tight">
           {title}
         </h1>
       </div>
 
       {/* Right Tools & Window Controls */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" data-no-drag>
         {/* Status Pill */}
         {getStatusBadge()}
 
@@ -133,7 +173,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         <div className="flex items-center -mr-2">
           <button
             onClick={handleMinimize}
-            title="最小化"
+            title={minimizeToTray ? '最小化到系统托盘' : '最小化'}
             className="w-10 h-10 inline-flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
           >
             <Minus className="w-3.5 h-3.5 stroke-[1.75]" />
@@ -151,7 +191,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           </button>
           <button
             onClick={handleClose}
-            title="关闭"
+            title={closeToTray ? '关闭窗口并缩至托盘 (后台继续运行)' : '退出 EazyQQ'}
             className="w-10 h-10 inline-flex items-center justify-center text-slate-600 hover:text-white hover:bg-red-500 transition-colors"
           >
             <X className="w-4 h-4 stroke-[1.75]" />

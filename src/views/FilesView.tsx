@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FolderSync, Download, FileText, CheckCircle2, Loader2, Sparkles, FolderOpen } from 'lucide-react';
 import type { GroupFileItemDto, FileSummaryResultDto } from '@/api/contracts';
+import emptyFilesUrl from '@/assets/empty-files.svg';
 
 interface FilesViewProps {
   files: GroupFileItemDto[];
@@ -48,7 +49,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
         <div className="flex-1 overflow-y-auto">
           {files.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-8">
-              <img src="/src/assets/empty-files.svg" alt="Empty Files" className="w-36 h-36 mb-4 opacity-70" />
+              <img src={emptyFilesUrl} alt="Empty Files" className="w-36 h-36 mb-4 opacity-70" />
               <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1">暂无群文件</h3>
               <p className="text-xs text-slate-400 max-w-sm">
                 进入任意已加入的群聊后，群内上传的文档与历史附件将在此处自动建立索引

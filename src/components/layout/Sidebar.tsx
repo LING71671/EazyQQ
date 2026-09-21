@@ -8,6 +8,8 @@ import {
   Settings, 
   BookOpen 
 } from 'lucide-react';
+import { useWindowDrag } from '@/hooks/useWindowDrag';
+import logoUrl from '@/assets/logo.svg';
 
 export type NavView = 'login' | 'contacts' | 'drafts' | 'files' | 'summaries' | 'settings';
 
@@ -38,17 +40,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'settings' as NavView, label: '系统设置', icon: Settings },
   ];
 
+  const dragHandlers = useWindowDrag();
+
   return (
     <aside className="w-56 h-screen bg-white border-r border-slate-200/80 flex flex-col justify-between select-none">
-      {/* Brand Header */}
+      {/* Brand Header (also a window drag region) */}
       <div>
-        <div data-tauri-drag-region className="h-14 flex items-center px-4 gap-3 border-b border-slate-200/80 cursor-default">
-          <img src="/src/assets/logo.svg" alt="EazyQQ Logo" className="w-7 h-7 shrink-0" />
-          <div data-tauri-drag-region className="flex flex-col">
-            <span data-tauri-drag-region className="font-semibold tracking-tight text-slate-900 text-sm">
+        <div
+          data-drag-handle
+          {...dragHandlers}
+          className="h-14 flex items-center px-4 gap-3 border-b border-slate-200/80 cursor-default"
+        >
+          <img src={logoUrl} alt="EazyQQ Logo" className="w-7 h-7 shrink-0" />
+          <div data-drag-handle className="flex flex-col">
+            <span data-drag-handle className="font-semibold tracking-tight text-slate-900 text-sm">
               EazyQQ
             </span>
-            <span data-tauri-drag-region className="text-[10px] text-slate-400 font-medium">个人专属助手</span>
+            <span data-drag-handle className="text-[10px] text-slate-400 font-medium">个人专属助手</span>
           </div>
         </div>
 

@@ -49,3 +49,6 @@ logs/
 .DS_Store
 Thumbs.db
 .impeccable/
+
+# AI agent workspace data (logs, memory, scratch diagnostics)
+.workbuddy-ai/

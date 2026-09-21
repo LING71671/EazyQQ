@@ -3,7 +3,7 @@ use crate::models::*;
 use crate::services::db::{Database, ContactRuleRecord};
 use crate::services::napcat::NapCatService;
 use crate::services::onebot::OneBotClient;
-use tauri::{command, State};
+use tauri::{command, Manager, State};
 
 pub struct AppState {
     pub db: Arc<Database>,
@@ -329,18 +329,20 @@ pub async fn get_messages(state: State<'_, AppState>, target_id: String, limit: 
 
 #[command]
 pub async fn send_message(state: State<'_, AppState>, target_id: String, content: String, target_type: Option<String>) -> Result<ApiResponse<serde_json::Value>, String> {
-    // STRICT SAFETY LOCK: Enforce that only 白衣卿相 (1739677116) can be sent messages during test
-    if target_id != crate::services::ws_listener::AUTHORIZED_TEST_UIN {
-        return Ok(ApiResponse::err(
-            4030,
-            &format!(
-                "【安全拦截】当前为受保护的单目标测试模式：仅允许与指定联系人 白衣卿相 ({}) 通信，已拦截向 {} 发送的消息以确保安全！",
-                crate::services::ws_listener::AUTHORIZED_TEST_UIN,
-                target_id
-            ),
-            None,
-        ));
+    // Manual send is an explicit human action, so it is intentionally NOT gated by the
+    // whitelist (the user typed the message themselves). It IS still validated and
+    // logged so an accidental send to the wrong target is traceable.
+    if content.trim().is_empty() {
+        return Ok(ApiResponse::err(4001, "消息内容不能为空", None));
     }
+
+    let policy = crate::services::policy::load(&state.db, &target_id);
+    tracing::info!(
+        "manual send -> {} ({}) [{}]",
+        target_id,
+        target_type.as_deref().unwrap_or("auto"),
+        policy.describe()
+    );
 
     let t_type = target_type.unwrap_or_else(|| "private".to_string());
     
@@ -386,20 +388,33 @@ pub async fn send_draft(state: State<'_, AppState>, draft_id: String, final_cont
     let draft = drafts.into_iter().find(|d| d.id == draft_id)
         .ok_or_else(|| "找不到指定的待审核草稿".to_string())?;
 
-    // STRICT SAFETY LOCK: Enforce that only 白衣卿相 (1739677116) can be sent drafts
-    if draft.target_id != crate::services::ws_listener::AUTHORIZED_TEST_UIN {
+    // A draft only exists because the target is on the "copilot" whitelist, and the
+    // human is explicitly approving it - so no extra hardcoded gate is needed here.
+    // The draft's origin is still re-validated so a stale rule cannot leak a send.
+    let policy = crate::services::policy::load(&state.db, &draft.target_id);
+    if !policy.ai_execution_allowed() {
+        tracing::warn!(
+            "refusing to send draft {} for {}: target no longer whitelisted [{}]",
+            draft_id,
+            draft.target_id,
+            policy.describe()
+        );
         return Ok(ApiResponse::err(
             4030,
-            &format!(
-                "【安全拦截】当前测试模式仅允许向指定联系人 白衣卿相 ({}) 放行草稿！",
-                crate::services::ws_listener::AUTHORIZED_TEST_UIN
-            ),
+            "该会话已不在消息接管白名单中，草稿已被安全拦截。",
             None,
         ));
     }
 
     let send_content = final_content.unwrap_or(draft.generated_content);
     let target_type = if draft.target_type == "group" { "group" } else { "private" };
+
+    tracing::info!(
+        "draft {} approved -> sending to {} ({})",
+        draft_id,
+        draft.target_id,
+        target_type
+    );
 
     // Send via OneBot
     let _ = state.onebot.send_msg(target_type, &draft.target_id, &send_content).await
@@ -518,13 +533,6 @@ pub async fn open_folder(target_path: String) -> Result<ApiResponse<()>, String>
     Ok(ApiResponse::ok(()))
 }
 
-fn now_millis() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as i64
-}
-
 #[command]
 pub async fn generate_summary(
     state: State<'_, AppState>,
@@ -532,54 +540,28 @@ pub async fn generate_summary(
     sliding_window_hours: Option<i32>,
     hours: Option<i32>,
 ) -> Result<ApiResponse<GroupSummaryDto>, String> {
-    let effective_hours = sliding_window_hours.or(hours).unwrap_or(6);
-    let now = now_millis();
-    let start_time = now - (effective_hours as i64 * 3600 * 1000);
+    // Real summarization: reads the sliding-window message stream, filters noise and
+    // asks the model for structured output. (Previously this returned a hardcoded
+    // template string without reading a single message.)
+    let settings = crate::services::scheduler::read_settings(&state.db);
+    let window = sliding_window_hours
+        .or(hours)
+        .unwrap_or(settings.sliding_window_hours)
+        .clamp(1, 720);
 
-    // Look up target name from DB rules
-    let all_rules = state.db.get_all_rules().map_err(|e| e.to_string())?;
-    let target_name = all_rules
-        .iter()
-        .find(|r| r.target_id == target_id)
-        .map(|r| r.name.clone())
-        .unwrap_or_else(|| format!("群聊 ({})", target_id));
+    tracing::info!("manual summary requested for {} ({}h window)", target_id, window);
 
-    let is_whitelisted = all_rules
-        .iter()
-        .find(|r| r.target_id == target_id)
-        .map(|r| r.is_summary_whitelist)
-        .unwrap_or(false);
-
-    let summary_id = format!("sum_{}_{}", target_id, now);
-    let summary_text = format!(
-        "已对「{}」过去 {} 小时内的群消息进行结构化梳理。{}",
-        target_name,
-        effective_hours,
-        if is_whitelisted { "（白名单群聊受检）" } else { "（用户即时生成）" }
-    );
-
-    let summary = GroupSummaryDto {
-        id: summary_id,
+    let req = crate::services::summarizer::SummaryRequest {
         target_id,
-        target_name,
-        summary_text,
-        key_points: vec![
-            format!("监控时段：过去 {} 小时群动态", effective_hours),
-            "提炼要点与技术方案决策脉络".to_string(),
-        ],
-        decisions: vec![
-            "严格保持白名单接管，未经授权的群聊不进行自动化回复与简报归档".to_string(),
-        ],
-        shared_files: vec![],
-        start_time,
-        end_time: now,
-        created_at: now,
+        sliding_window_hours: window,
+        custom_prompt: Some(settings.custom_prompt),
+        max_messages: 400,
+        // A manual request should always attempt the model, even on a quiet window.
+        min_messages: 1,
     };
 
-    // Persist real record in SQLite
-    state.db.save_summary(&summary).map_err(|e| e.to_string())?;
-
-    Ok(ApiResponse::ok(summary))
+    let outcome = crate::services::summarizer::generate(&state.db, &state.ai, &req).await?;
+    Ok(ApiResponse::ok(outcome.summary))
 }
 
 #[command]
@@ -634,6 +616,10 @@ pub async fn get_config(state: State<'_, AppState>) -> Result<ApiResponse<serde_
             "slidingWindowHours": 6,
             "autoForwardToPhone": false,
             "customPrompt": "请提炼群聊核心讨论要点、决策事项与待办行动项，结构清晰明了。"
+        },
+        "window": {
+            "minimizeToTray": true,
+            "closeToTray": true
         }
     });
 
@@ -666,18 +652,191 @@ pub async fn test_ai_connection(state: State<'_, AppState>, _provider: String, _
 }
 
 #[command]
-pub async fn check_dependencies() -> Result<ApiResponse<DependencyHealthReport>, String> {
+pub async fn check_dependencies(state: State<'_, AppState>) -> Result<ApiResponse<DependencyHealthReport>, String> {
+    // Real probes - this used to return hardcoded "everything is fine" values, which
+    // made the health panel useless for diagnosing an actual problem.
+
+    // 1. QQNT client: try the paths Tencent uses plus whatever NapCat was configured with.
+    let qq_candidates = [
+        r"C:\Program Files\Tencent\QQNT\QQ.exe",
+        r"C:\Program Files (x86)\Tencent\QQNT\QQ.exe",
+        r"D:\Program Files\Tencent\QQNT\QQ.exe",
+    ];
+    let (qq_ready, qq_path) = qq_candidates
+        .iter()
+        .find(|p| std::path::Path::new(p).exists())
+        .map(|p| (true, p.to_string()))
+        .unwrap_or_else(|| (false, qq_candidates[0].to_string()));
+
+    // 2. Local AI runtime: a configured key or a local opencode binary both count.
+    let has_key = state
+        .db
+        .get_setting("tokenrhythm_api_key")
+        .ok()
+        .flatten()
+        .map(|k| !k.trim().is_empty())
+        .unwrap_or(false)
+        || std::env::var("TOKENRHYTHM_API_KEY").is_ok();
+    let opencode_candidates = [
+        r"A:\DevEnv\SDKs\Node\npm-global\opencode.cmd",
+        r"C:\Users\www17\AppData\Roaming\npm\opencode.cmd",
+    ];
+    let opencode_found = opencode_candidates
+        .iter()
+        .find(|p| std::path::Path::new(p).exists());
+    let (ai_ready, ai_path) = match opencode_found {
+        Some(p) => (true, p.to_string()),
+        None if has_key => (true, format!("云端模型 (API Key 已配置, {})", state.ai.model())),
+        None => (false, "未检测到本地 OpenCode，且未配置 API Key".to_string()),
+    };
+
+    // 3. Storage: really write a probe file, and report actual free space.
+    let data_dir = crate::services::logging::data_dir();
+    let writable = crate::services::diagnostics::is_dir_writable(&data_dir);
+    let free_mb = crate::services::diagnostics::free_space_mb(&data_dir).unwrap_or(0);
+
+    let napcat_ready = state.napcat.is_alive().await;
+    let onebot_ready = state.onebot.get_login_info().await.is_ok();
+
+    let is_all_ready = qq_ready && ai_ready && writable && napcat_ready && onebot_ready;
+
+    tracing::info!(
+        "health: qqnt={} ai={} storage={} napcat={} onebot={} => allReady={}",
+        qq_ready,
+        ai_ready,
+        writable,
+        napcat_ready,
+        onebot_ready,
+        is_all_ready
+    );
+
     Ok(ApiResponse::ok(DependencyHealthReport {
-        is_all_ready: true,
-        qq_nt: ReadyPath { ready: true, path: "C:\\Program Files\\Tencent\\QQNT\\QQ.exe".to_string() },
-        open_code: ReadyPath { ready: true, path: "A:\\DevEnv\\SDKs\\Node\\npm-global\\opencode.cmd".to_string() },
-        storage: StorageReady { is_writable: true, free_space_mb: 102400 },
+        is_all_ready,
+        qq_nt: ReadyPath {
+            ready: qq_ready,
+            path: qq_path,
+        },
+        open_code: ReadyPath {
+            ready: ai_ready,
+            path: ai_path,
+        },
+        storage: StorageReady {
+            is_writable: writable,
+            free_space_mb: free_mb,
+        },
     }))
 }
 
 #[command]
-pub async fn export_diagnostics_bundle() -> Result<ApiResponse<serde_json::Value>, String> {
+pub async fn export_diagnostics_bundle(
+    state: State<'_, AppState>,
+) -> Result<ApiResponse<serde_json::Value>, String> {
+    let result = crate::services::diagnostics::export_bundle(
+        &state.db,
+        &state.ai,
+        &state.napcat,
+        &state.onebot,
+    )
+    .await?;
+
     Ok(ApiResponse::ok(serde_json::json!({
-        "zipFilePath": "B:\\EazyQQ_Data\\logs\\diagnostics_bundle.zip"
+        "zipFilePath": result.zip_path.display().to_string(),
+        "entries": result.entries,
+        "bytes": result.bytes,
     })))
 }
+
+/// Window behavior preferences, persisted in the SQLite `app_settings.app_config` blob.
+/// Project default: BOTH minimize and close collapse into the system tray, so the
+/// background OneBot listener and scheduled summarizer keep running.
+pub fn read_window_behavior(db: &Database) -> (bool, bool) {
+    if let Ok(Some(raw)) = db.get_setting("app_config") {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) {
+            if let Some(win) = parsed.get("window") {
+                let minimize_to_tray = win
+                    .get("minimizeToTray")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                let close_to_tray = win
+                    .get("closeToTray")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                return (minimize_to_tray, close_to_tray);
+            }
+        }
+    }
+    (true, true)
+}
+
+/// Restore the main window from tray / minimized state and pull it to the foreground.
+pub fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+#[command]
+pub async fn app_minimize_window(
+    window: tauri::Window,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    let (minimize_to_tray, _) = read_window_behavior(&state.db);
+    if minimize_to_tray {
+        window.hide().map_err(|e| e.to_string())?;
+    } else {
+        window.minimize().map_err(|e| e.to_string())?;
+    }
+    Ok(minimize_to_tray)
+}
+
+#[command]
+pub async fn app_toggle_maximize_window(window: tauri::Window) -> Result<bool, String> {
+    if window.is_maximized().map_err(|e| e.to_string())? {
+        window.unmaximize().map_err(|e| e.to_string())?;
+        Ok(false)
+    } else {
+        let _ = window.unminimize();
+        window.maximize().map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+}
+
+#[command]
+pub async fn app_close_window(
+    window: tauri::Window,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    let (_, close_to_tray) = read_window_behavior(&state.db);
+    if close_to_tray {
+        window.hide().map_err(|e| e.to_string())?;
+        Ok(true)
+    } else {
+        window.app_handle().exit(0);
+        Ok(false)
+    }
+}
+
+#[command]
+pub async fn app_start_drag_window(window: tauri::Window) -> Result<(), String> {
+    window.start_dragging().map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn app_show_window(app: tauri::AppHandle) -> Result<(), String> {
+    show_main_window(&app);
+    Ok(())
+}
+
+#[command]
+pub async fn app_get_window_behavior(
+    state: State<'_, AppState>,
+) -> Result<ApiResponse<serde_json::Value>, String> {
+    let (minimize_to_tray, close_to_tray) = read_window_behavior(&state.db);
+    Ok(ApiResponse::ok(serde_json::json!({
+        "minimizeToTray": minimize_to_tray,
+        "closeToTray": close_to_tray
+    })))
+}
+

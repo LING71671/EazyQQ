@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar, NavView } from '@/components/layout/Sidebar';
 import { TopHeader } from '@/components/layout/TopHeader';
 import { ManualDrawer } from '@/components/manual/ManualDrawer';
+import { BootSplash } from '@/components/common/BootSplash';
 import { LoginView } from '@/views/LoginView';
 import { ContactsView } from '@/views/ContactsView';
 import { DraftsView } from '@/views/DraftsView';
@@ -9,7 +10,6 @@ import { FilesView } from '@/views/FilesView';
 import { SummariesView } from '@/views/SummariesView';
 import { SettingsView } from '@/views/SettingsView';
 import { ChatDrawer } from '@/components/chat/ChatDrawer';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { api } from '@/api/client';
 import type { 
   ProtocolStatusDto, 
@@ -76,6 +76,10 @@ export const App: React.FC = () => {
       autoForwardToPhone: false,
       customPrompt: '请提取群聊中的核心讨论议题、达成的共识决议、待办行动项及关联责任人，输出清晰简洁的结构化简报。',
     },
+    window: {
+      minimizeToTray: true,
+      closeToTray: true,
+    },
   });
 
   const [health, setHealth] = useState<DependencyHealthReport>({
@@ -88,43 +92,61 @@ export const App: React.FC = () => {
 
   const [isRefreshingQr, setIsRefreshingQr] = useState(false);
 
+  // Boot splash: stays up until the first local data round-trip settles.
+  const [isBooting, setIsBooting] = useState(true);
+  const [bootStage, setBootStage] = useState('正在初始化本地运行环境');
+
   // Poll status & load contacts/summaries/config/drafts from SQLite / OneBot on mount
   useEffect(() => {
     let unlistenDraft: (() => void) | undefined;
     let unlistenMsg: (() => void) | undefined;
 
     // Smooth reveal: show window when React is mounted and initialized
-    try {
-      getCurrentWindow().show();
-    } catch {}
+    api.showWindow().catch(() => {});
+
+    const applyProtocolStatus = (initStatus: ProtocolStatusDto) => {
+      setProtocolStatus(initStatus);
+      // If not logged in and no QR code is available yet, auto-fetch immediately
+      if (initStatus.loginStatus !== 'logged_in' && !initStatus.qrcodeBase64) {
+        api
+          .refreshQrCode()
+          .then((rRes) => {
+            if (rRes.success && rRes.data) {
+              const qr = rRes.data;
+              setProtocolStatus((prev) => ({
+                ...prev,
+                qrcodeBase64: qr.qrcodeBase64,
+                loginStatus: 'waiting_scan',
+              }));
+            }
+          })
+          .catch(() => {});
+      }
+    };
 
     const fetchInitialData = async () => {
+      const bootStartedAt = Date.now();
+
+      // Protocol status is network-bound: it probes the NapCat / OneBot ports and can
+      // take seconds when the protocol backend is not up yet. Keep it OFF the boot
+      // critical path so a slow (or dead) backend never delays the first paint.
+      api
+        .getProtocolStatus()
+        .then((res) => {
+          if (res.success && res.data) applyProtocolStatus(res.data);
+        })
+        .catch(() => {});
+
+      setBootStage('正在同步本地配置与联系人');
+
       try {
-        const [statusRes, contactsRes, summariesRes, configRes, draftsRes] = await Promise.allSettled([
-          api.getProtocolStatus(),
+        const [contactsRes, summariesRes, configRes, draftsRes] = await Promise.allSettled([
           api.getContacts(),
           api.getSummaryHistory(),
           api.getConfig(),
           api.getPendingDrafts(),
         ]);
 
-        if (statusRes.status === 'fulfilled' && statusRes.value.success && statusRes.value.data) {
-          const initStatus = statusRes.value.data;
-          setProtocolStatus(initStatus);
-          // If not logged in and no QR code is available yet, auto-fetch immediately
-          if (initStatus.loginStatus !== 'logged_in' && !initStatus.qrcodeBase64) {
-            api.refreshQrCode().then((rRes) => {
-              if (rRes.success && rRes.data) {
-                const qr = rRes.data;
-                setProtocolStatus((prev) => ({
-                  ...prev,
-                  qrcodeBase64: qr.qrcodeBase64,
-                  loginStatus: 'waiting_scan',
-                }));
-              }
-            });
-          }
-        }
         if (contactsRes.status === 'fulfilled' && contactsRes.value.success && contactsRes.value.data) {
           setContacts(contactsRes.value.data.list);
         }
@@ -139,6 +161,11 @@ export const App: React.FC = () => {
         }
       } catch (e) {
         console.error('Failed to load initial data from SQLite', e);
+      } finally {
+        // Hold the splash long enough to read: a 400ms flash reads as "broken",
+        // a ~900ms animation reads as an intentional boot sequence.
+        const elapsed = Date.now() - bootStartedAt;
+        setTimeout(() => setIsBooting(false), Math.max(0, 900 - elapsed));
       }
     };
     fetchInitialData();
@@ -529,6 +556,9 @@ export const App: React.FC = () => {
         onTriggerAiReply={handleTriggerAiReply}
         onUpdateMode={handleUpdateMode}
       />
+
+      {/* Boot overlay: animates until the first local data round-trip settles */}
+      <BootSplash visible={isBooting} stageLabel={bootStage} />
     </div>
   );
 };

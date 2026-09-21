@@ -1,9 +1,12 @@
 [package]
 name = "eazyqq"
-version = "1.0.0"
+version = "0.10.0"
 description = "EazyQQ Desktop Application"
 authors = ["EazyQQ Team"]
 edition = "2021"
+# The GUI binary stays the default target; `eazyqq-cli` is an explicit opt-in
+# (`cargo run --bin eazyqq-cli -- status`) so `tauri dev` keeps working unchanged.
+default-run = "eazyqq"
 
 [lib]
 name = "eazyqq_lib"

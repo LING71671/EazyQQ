@@ -11,7 +11,8 @@ import type {
   FileSummaryResultDto,
   GroupSummaryDto,
   DependencyHealthReport,
-  AppConfig
+  AppConfig,
+  WindowBehaviorDto
 } from './contracts';
 
 export const api = {
@@ -112,5 +113,28 @@ export const api = {
   },
   onMessageReceived: (callback: (msg: MessageItemDto) => void): Promise<UnlistenFn> => {
     return listen<MessageItemDto>('new-chat-message', (event) => callback(event.payload));
+  },
+
+  // Window Management
+  // Routed through native Rust commands on purpose: custom commands are not gated by
+  // the capability ACL, so window control keeps working even if a capability file is
+  // missing or stale (that regression is what broke minimize / drag before).
+  minimizeWindow: async (): Promise<ApiResponse<boolean>> => {
+    return invoke('app_minimize_window');
+  },
+  toggleMaximizeWindow: async (): Promise<ApiResponse<boolean>> => {
+    return invoke('app_toggle_maximize_window');
+  },
+  closeWindow: async (): Promise<ApiResponse<boolean>> => {
+    return invoke('app_close_window');
+  },
+  startDragWindow: async (): Promise<ApiResponse<void>> => {
+    return invoke('app_start_drag_window');
+  },
+  showWindow: async (): Promise<ApiResponse<void>> => {
+    return invoke('app_show_window');
+  },
+  getWindowBehavior: async (): Promise<ApiResponse<WindowBehaviorDto>> => {
+    return invoke('app_get_window_behavior');
   }
 };
