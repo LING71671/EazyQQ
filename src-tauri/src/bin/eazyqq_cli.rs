@@ -398,14 +398,26 @@ async fn cmd_contacts(svc: &Services, args: &Args) -> Result<(), String> {
     }
     for r in filtered {
         let kind = if r.target_type == "group" { "群" } else { "友" };
+        let trigger = match r.trigger_condition.as_str() {
+            "at_me" => "@我",
+            "keyword" => "关键词",
+            _ => "全部",
+        };
         println!(
-            "[{}] {:<28} {}  {}{}",
+            "[{}] {:<28} {}  {:<8} 触发:{} 冷却:{}s{}{}",
             kind,
             truncate(&r.name, 28),
             r.target_id,
             mode_label(&r.mode),
+            trigger,
+            r.cooldown_seconds,
             if r.is_summary_whitelist {
                 format!("  简报白名单({}h)", r.summary_interval_hours)
+            } else {
+                String::new()
+            },
+            if r.keywords != "[]" && !r.keywords.is_empty() {
+                format!("  关键词:{}", r.keywords)
             } else {
                 String::new()
             }

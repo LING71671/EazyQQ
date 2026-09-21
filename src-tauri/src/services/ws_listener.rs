@@ -56,6 +56,16 @@ impl MessageOutcome {
         match self.action {
             "auto_replied" => format!("目标 {} 已自动秒回", self.target_id),
             "draft_created" => format!("目标 {} 已生成待审核草稿", self.target_id),
+            "trigger_skipped" => format!(
+                "目标 {} 已记录，但未满足触发条件（{}）",
+                self.target_id,
+                self.detail.clone().unwrap_or_default()
+            ),
+            "cooldown" => format!(
+                "目标 {} 已记录，处于回复冷却中（{}）",
+                self.target_id,
+                self.detail.clone().unwrap_or_default()
+            ),
             "skipped" => format!(
                 "目标 {} 已记录，未触发 AI（mode={}）",
                 self.target_id, self.mode
@@ -367,6 +377,40 @@ async fn handle_message_event(
         return outcome;
     }
 
+    // --- Trigger condition: enforce `all` / `at_me` / `keyword`. Without this a group
+    // --- configured as `at_me` would be answered on every single message.
+    let trigger = crate::services::trigger::evaluate(
+        &policy.trigger_condition,
+        &policy.keywords,
+        event,
+        &self_id,
+        &raw_message,
+    );
+    if let Some(reason) = trigger.reason() {
+        tracing::debug!(
+            "target {} not triggered (condition={}): {}",
+            target_id,
+            policy.trigger_condition,
+            reason
+        );
+        outcome.action = "trigger_skipped";
+        outcome.detail = Some(reason.to_string());
+        return outcome;
+    }
+
+    // --- Cooldown: pace replies so a burst of messages cannot produce a burst of answers.
+    if let Err(wait) = crate::services::cooldown::try_acquire(&target_id, policy.cooldown_seconds) {
+        tracing::info!(
+            "target {} is cooling down, {}s remaining (cooldown={}s)",
+            target_id,
+            wait,
+            policy.cooldown_seconds
+        );
+        outcome.action = "cooldown";
+        outcome.detail = Some(format!("冷却中，剩余 {} 秒", wait));
+        return outcome;
+    }
+
     let target_type = if message_type == "group" { "group" } else { "private" }.to_string();
 
     match policy.mode.as_str() {
@@ -597,24 +641,34 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn whitelisted_target_is_recorded_and_reaches_the_ai_step() {
-        let f = fixture("whitelisted");
-        f.db.upsert_rule(&crate::services::db::ContactRuleRecord {
-            target_id: "1104661022".to_string(),
+    fn rule(
+        target_id: &str,
+        mode: &str,
+        trigger: &str,
+        keywords: &str,
+        cooldown: i32,
+    ) -> crate::services::db::ContactRuleRecord {
+        crate::services::db::ContactRuleRecord {
+            target_id: target_id.to_string(),
             target_type: "group".to_string(),
             name: "测试群".to_string(),
             avatar_url: String::new(),
-            mode: "copilot".to_string(),
-            trigger_condition: "at_me".to_string(),
-            keywords: "[]".to_string(),
-            cooldown_seconds: 5,
-            enabled: true,
+            mode: mode.to_string(),
+            trigger_condition: trigger.to_string(),
+            keywords: keywords.to_string(),
+            cooldown_seconds: cooldown,
+            enabled: mode != "ignore",
             is_summary_whitelist: true,
             summary_interval_hours: 2,
             updated_at: 0,
-        })
-        .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn whitelisted_target_is_recorded_and_reaches_the_ai_step() {
+        let f = fixture("whitelisted");
+        f.db.upsert_rule(&rule("1104661022", "copilot", "all", "[]", 0))
+            .unwrap();
 
         let outcome =
             handle_onebot_event(None, &group_message("1104661022", "白名单群的消息"), &f.db, &f.onebot, &f.ai, true)
@@ -629,6 +683,90 @@ mod tests {
         // The AI call itself fails (no API key / dead endpoint), which is exactly the
         // proof that the request made it past the whitelist gate.
         assert_eq!(outcome.action, "error");
+    }
+
+    #[tokio::test]
+    async fn at_me_trigger_records_but_never_reaches_the_ai_step() {
+        let f = fixture("at_me_skip");
+        f.db.upsert_rule(&rule("1104661022", "auto_reply", "at_me", "[]", 0))
+            .unwrap();
+
+        let outcome =
+            handle_onebot_event(None, &group_message("1104661022", "大家早啊"), &f.db, &f.onebot, &f.ai, true)
+                .await;
+
+        assert!(outcome.recorded, "the message is still tracked for summaries");
+        assert_eq!(
+            outcome.action, "trigger_skipped",
+            "a plain group message must not be answered when the rule says at_me"
+        );
+        assert!(outcome.detail.unwrap().contains("未 @"));
+    }
+
+    #[tokio::test]
+    async fn at_me_trigger_passes_when_the_account_is_mentioned() {
+        let f = fixture("at_me_hit");
+        f.db.upsert_rule(&rule("1104661022", "copilot", "at_me", "[]", 0))
+            .unwrap();
+
+        let event = json!({
+            "post_type": "message",
+            "message_type": "group",
+            "group_id": "1104661022",
+            "user_id": "10001",
+            "self_id": "462564834",
+            "sender": { "nickname": "测试者" },
+            "raw_message": "[CQ:at,qq=462564834] 帮我看下",
+            "message": [
+                { "type": "at", "data": { "qq": "462564834" } },
+                { "type": "text", "data": { "text": " 帮我看下" } }
+            ]
+        });
+
+        let outcome = handle_onebot_event(None, &event, &f.db, &f.onebot, &f.ai, true).await;
+        assert_eq!(
+            outcome.action, "error",
+            "an @-mention must pass the trigger gate and reach the AI step"
+        );
+    }
+
+    #[tokio::test]
+    async fn keyword_trigger_only_passes_on_a_keyword_hit() {
+        let f = fixture("keyword");
+        f.db.upsert_rule(&rule("1104661022", "copilot", "keyword", r#"["进度"]"#, 0))
+            .unwrap();
+
+        let miss =
+            handle_onebot_event(None, &group_message("1104661022", "今天天气不错"), &f.db, &f.onebot, &f.ai, true)
+                .await;
+        assert_eq!(miss.action, "trigger_skipped");
+
+        let hit =
+            handle_onebot_event(None, &group_message("1104661022", "同步一下进度"), &f.db, &f.onebot, &f.ai, true)
+                .await;
+        assert_eq!(hit.action, "error", "a keyword hit must reach the AI step");
+    }
+
+    #[tokio::test]
+    async fn cooldown_blocks_a_second_reply_in_the_same_window() {
+        let f = fixture("cooldown");
+        // A long cooldown guarantees the second message lands inside the window.
+        f.db.upsert_rule(&rule("1104661022", "copilot", "all", "[]", 600))
+            .unwrap();
+
+        let first =
+            handle_onebot_event(None, &group_message("1104661022", "第一条"), &f.db, &f.onebot, &f.ai, true)
+                .await;
+        assert_eq!(first.action, "error", "the first attempt reaches the AI step");
+
+        let second =
+            handle_onebot_event(None, &group_message("1104661022", "第二条"), &f.db, &f.onebot, &f.ai, true)
+                .await;
+        assert_eq!(second.action, "cooldown", "the second must be rate limited");
+        assert!(second.recorded, "rate-limited messages are still tracked");
+
+        // Leave the shared registry clean for other tests.
+        crate::services::cooldown::reset("1104661022");
     }
 
     #[tokio::test]

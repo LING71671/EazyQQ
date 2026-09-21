@@ -25,6 +25,12 @@ pub struct TargetPolicy {
     pub is_summary_whitelist: bool,
     pub summary_interval_hours: i32,
     pub name: String,
+    /// `all` | `at_me` | `keyword` - enforced by `services::trigger`.
+    pub trigger_condition: String,
+    /// Already-parsed keyword list.
+    pub keywords: Vec<String>,
+    /// Minimum seconds between two replies to this target (`services::cooldown`).
+    pub cooldown_seconds: i32,
 }
 
 impl Default for TargetPolicy {
@@ -36,6 +42,9 @@ impl Default for TargetPolicy {
             is_summary_whitelist: false,
             summary_interval_hours: 6,
             name: String::new(),
+            trigger_condition: "all".to_string(),
+            keywords: Vec::new(),
+            cooldown_seconds: 0,
         }
     }
 }
@@ -55,8 +64,13 @@ impl TargetPolicy {
     /// One-line description used in logs.
     pub fn describe(&self) -> String {
         format!(
-            "mode={}, enabled={}, summaryWhitelist={} ({}h)",
-            self.mode, self.enabled, self.is_summary_whitelist, self.summary_interval_hours
+            "mode={}, enabled={}, summaryWhitelist={} ({}h), trigger={}, cooldown={}s",
+            self.mode,
+            self.enabled,
+            self.is_summary_whitelist,
+            self.summary_interval_hours,
+            self.trigger_condition,
+            self.cooldown_seconds
         )
     }
 }
@@ -74,6 +88,9 @@ pub fn load(db: &Database, target_id: &str) -> TargetPolicy {
                 is_summary_whitelist: r.is_summary_whitelist,
                 summary_interval_hours: r.summary_interval_hours,
                 name: r.name,
+                trigger_condition: r.trigger_condition,
+                keywords: crate::services::trigger::parse_keywords(&r.keywords),
+                cooldown_seconds: r.cooldown_seconds,
             })
             .unwrap_or_default(),
         Err(e) => {
@@ -95,6 +112,9 @@ mod tests {
             is_summary_whitelist: summary,
             summary_interval_hours: 6,
             name: "t".to_string(),
+            trigger_condition: "all".to_string(),
+            keywords: Vec::new(),
+            cooldown_seconds: 0,
         }
     }
 
