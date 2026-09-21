@@ -23,8 +23,6 @@ use eazyqq_lib::services::policy;
 const NAPCAT_WEBUI: &str = "http://127.0.0.1:6099";
 const NAPCAT_FALLBACK_TOKEN: &str = "f7376db3d59d";
 const ONEBOT_HTTP: &str = "http://127.0.0.1:3000";
-const AI_BASE_URL: &str = "https://tokenrhythm.studio/v1";
-const AI_MODEL: &str = "qwen3.8-flash";
 
 // ---------------------------------------------------------------------------
 // Tiny argument parser (no clap dependency on purpose)
@@ -173,11 +171,19 @@ impl Services {
             .or_else(|| db.get_setting("tokenrhythm_api_key").ok().flatten())
             .unwrap_or_default();
 
-        let ai = Arc::new(AiService::new(
-            AI_BASE_URL.to_string(),
-            api_key,
-            AI_MODEL.to_string(),
-        ));
+        // Same resolution path as the GUI, so the CLI reports what the app really uses.
+        let ai_config = {
+            let raw = db.get_setting("app_config").ok().flatten();
+            let parsed = raw
+                .as_deref()
+                .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
+            eazyqq_lib::services::ai::AiRuntimeConfig::from_app_config(
+                parsed.as_ref().and_then(|v| v.get("ai")),
+                &api_key,
+            )
+        };
+        tracing::info!("active AI provider -> {}", ai_config.describe());
+        let ai = Arc::new(AiService::new(ai_config));
 
         Ok(Services {
             db,
@@ -238,6 +244,11 @@ fn cmd_help() {
 配置与诊断
   config [--json]                 打印当前配置
   set-config --key <k> --value <v> 写入 app_settings
+  ai-config                       查看实际生效的大模型供应商配置
+  ai-set --provider <p>           切换供应商（省 token 可指向本地端点）
+         [--base-url <u>] [--model <m>] [--key <k>]
+         [--temperature <t>] [--max-context <n>]
+  ai-test                         对当前供应商发起真实连通性测试
   health [--deep]                 依赖与链路自检（--deep 会真实调用大模型）
   export                          导出脱敏诊断包 zip
   simulate --target <id> --text <消息>  调试后门：注入模拟消息走完整处理链路
@@ -654,7 +665,7 @@ async fn cmd_ask(svc: &Services, args: &Args) -> Result<(), String> {
             "targetName": name,
             "reply": content,
             "thinking": thinking,
-            "model": AI_MODEL,
+            "model": svc.ai.model(),
         }));
     } else {
         hr();
@@ -880,7 +891,7 @@ async fn cmd_health(svc: &Services, args: &Args) -> Result<(), String> {
     if deep {
         let probe = svc.ai.generate_reply(&[], "ping", "自检").await;
         items.push((
-            format!("大模型连通性 ({})", AI_MODEL),
+            format!("大模型连通性 ({})", svc.ai.model()),
             probe.is_ok(),
             match probe {
                 Ok((c, _)) => format!("回复: {}", truncate(&c, 40)),
@@ -989,15 +1000,34 @@ async fn cmd_simulate(svc: &Services, args: &Args) -> Result<(), String> {
         sender_name
     );
 
-    let outcome = eazyqq_lib::services::ws_listener::handle_onebot_event(
-        None,
-        &event,
-        &svc.db,
-        &svc.onebot,
-        &svc.ai,
-        true, // await the AI work so the result is observable before we exit
-    )
-    .await;
+    // `--repeat N` injects the same message N times inside one process. This is the only
+    // way to exercise the in-memory reply cooldown from the CLI, since every other
+    // invocation is a fresh process with an empty cooldown registry.
+    let repeat: usize = args
+        .flag("repeat")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1)
+        .max(1);
+
+    let mut last = None;
+    for i in 0..repeat {
+        let outcome = eazyqq_lib::services::ws_listener::handle_onebot_event(
+            None,
+            &event,
+            &svc.db,
+            &svc.onebot,
+            &svc.ai,
+            true, // await the AI work so the result is observable before we exit
+        )
+        .await;
+
+        if repeat > 1 {
+            println!("  [{}/{}] {} -> {}", i + 1, repeat, outcome.action, outcome.summary());
+        }
+        last = Some(outcome);
+    }
+
+    let outcome = last.expect("repeat is clamped to at least 1");
 
     if args.json() {
         print_json(&serde_json::json!({
@@ -1008,6 +1038,7 @@ async fn cmd_simulate(svc: &Services, args: &Args) -> Result<(), String> {
             "mode": outcome.mode,
             "action": outcome.action,
             "detail": outcome.detail,
+            "repeat": repeat,
         }));
     } else {
         hr();
@@ -1448,6 +1479,217 @@ async fn cmd_quick_login(svc: &Services, args: &Args) -> Result<(), String> {
     Ok(())
 }
 
+/// Show the AI provider configuration that is actually in effect.
+fn cmd_ai_config(svc: &Services, args: &Args) -> Result<(), String> {
+    let cfg = svc.ai.current();
+
+    if args.json() {
+        print_json(&serde_json::json!({
+            "provider": cfg.provider,
+            "baseUrl": cfg.base_url,
+            "model": cfg.model,
+            "temperature": cfg.temperature,
+            "maxContextMessages": cfg.max_context_messages,
+            "requiresApiKey": cfg.requires_api_key(),
+            "apiKeyConfigured": !cfg.api_key.trim().is_empty(),
+        }));
+        return Ok(());
+    }
+
+    hr();
+    println!("大模型供应商配置（实际生效值）");
+    hr();
+    println!("供应商       : {}", cfg.provider);
+    println!("接口地址     : {}", cfg.base_url);
+    println!("模型         : {}", cfg.model);
+    println!("温度         : {}", cfg.temperature);
+    println!("上下文条数   : {}", cfg.max_context_messages);
+    println!(
+        "是否需要 Key : {}",
+        if cfg.requires_api_key() { "是" } else { "否（本地端点）" }
+    );
+    println!(
+        "Key 已配置   : {}",
+        if cfg.api_key.trim().is_empty() { "否" } else { "是" }
+    );
+    hr();
+    println!("可用供应商（含默认端点，本地端点免 Key、省 token）：");
+    for (name, url, model, local) in eazyqq_lib::services::ai::known_providers() {
+        println!(
+            "  {:<11} {:<34} {:<20} {}",
+            name,
+            url,
+            model,
+            if local { "本地" } else { "云端" }
+        );
+    }
+    hr();
+    println!("切换示例：");
+    println!("  eazyqq_cli ai-set --provider opencode");
+    println!("  eazyqq_cli ai-set --provider ollama --model qwen2.5:7b");
+    println!("  eazyqq_cli ai-set --provider openai --base-url http://127.0.0.1:1234/v1 --model local-model");
+    hr();
+    Ok(())
+}
+
+/// Patch the `ai` block of `app_config`.
+fn cmd_ai_set(svc: &Services, args: &Args) -> Result<(), String> {
+    let raw = svc
+        .db
+        .get_setting("app_config")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "{}".to_string());
+
+    let mut config: serde_json::Value =
+        serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!({}));
+    if !config.is_object() {
+        config = serde_json::json!({});
+    }
+
+    let mut ai = config.get("ai").cloned().unwrap_or_else(|| serde_json::json!({}));
+    if !ai.is_object() {
+        ai = serde_json::json!({});
+    }
+
+    let mut changed: Vec<String> = Vec::new();
+
+    if let Some(v) = args.flag("provider") {
+        let provider = v.trim().to_lowercase();
+        ai["activeProvider"] = serde_json::json!(provider);
+
+        // Refresh the endpoint and model from the preset unless the caller pinned them
+        // in this same call. Without this, a previously stored explicit baseUrl keeps
+        // winning and the provider switch silently does nothing.
+        let (preset_url, preset_model) =
+            eazyqq_lib::services::ai::provider_preset(&provider);
+        if args.flag("base-url").is_none() {
+            ai["baseUrl"] = serde_json::json!(preset_url);
+        }
+        if args.flag("model").is_none() {
+            ai["model"] = serde_json::json!(preset_model);
+        }
+        changed.push(format!("provider={}", provider));
+    }
+    if let Some(v) = args.flag("base-url") {
+        ai["baseUrl"] = serde_json::json!(v);
+        changed.push(format!("baseUrl={}", v));
+    }
+    if let Some(v) = args.flag("model") {
+        ai["model"] = serde_json::json!(v);
+        changed.push(format!("model={}", v));
+    }
+    if let Some(v) = args.flag("key") {
+        ai["apiKey"] = serde_json::json!(v);
+        changed.push("apiKey=***".to_string());
+    }
+    if let Some(v) = args.flag("temperature") {
+        let t: f64 = v
+            .parse()
+            .map_err(|_| format!("--temperature 需要数字，收到 {}", v))?;
+        ai["temperature"] = serde_json::json!(t);
+        changed.push(format!("temperature={}", t));
+    }
+    if let Some(v) = args.flag("max-context") {
+        let n: i64 = v
+            .parse()
+            .map_err(|_| format!("--max-context 需要整数，收到 {}", v))?;
+        ai["maxContextMessages"] = serde_json::json!(n);
+        changed.push(format!("maxContextMessages={}", n));
+    }
+
+    if changed.is_empty() {
+        return Err(
+            "未指定任何变更项。可用: --provider --base-url --model --key --temperature --max-context"
+                .to_string(),
+        );
+    }
+
+    config["ai"] = ai;
+    let serialized =
+        serde_json::to_string(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
+    svc.db
+        .set_setting("app_config", &serialized)
+        .map_err(|e| format!("写入配置失败: {}", e))?;
+
+    tracing::info!("AI config updated: {}", changed.join(", "));
+
+    // Re-resolve so the user sees the effective endpoint (preset vs explicit).
+    let fallback_key = svc
+        .db
+        .get_setting("tokenrhythm_api_key")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let effective = eazyqq_lib::services::ai::AiRuntimeConfig::from_app_config(
+        config.get("ai"),
+        &fallback_key,
+    );
+
+    if args.json() {
+        print_json(&serde_json::json!({
+            "changed": changed,
+            "effective": {
+                "provider": effective.provider,
+                "baseUrl": effective.base_url,
+                "model": effective.model,
+                "requiresApiKey": effective.requires_api_key(),
+            }
+        }));
+        return Ok(());
+    }
+
+    println!("已更新: {}", changed.join(", "));
+    println!("实际生效: {}", effective.describe());
+    println!();
+    println!("提示: 已运行的客户端需要重启，或在设置页保存一次配置以热生效。");
+    Ok(())
+}
+
+/// Probe the configured provider with a real request.
+async fn cmd_ai_test(svc: &Services, args: &Args) -> Result<(), String> {
+    let cfg = svc.ai.current();
+    println!("测试目标: {}", cfg.describe());
+
+    let start = std::time::Instant::now();
+    let result = svc.ai.generate_reply(&[], "ping", "连通性自检").await;
+    let latency = start.elapsed().as_millis();
+
+    match result {
+        Ok((reply, _)) => {
+            if args.json() {
+                print_json(&serde_json::json!({
+                    "isSuccess": true,
+                    "provider": cfg.provider,
+                    "model": cfg.model,
+                    "endpoint": cfg.base_url,
+                    "latencyMs": latency,
+                    "reply": reply,
+                }));
+                return Ok(());
+            }
+            hr();
+            println!("连通成功 ({} ms)", latency);
+            println!("回复: {}", reply);
+            hr();
+            Ok(())
+        }
+        Err(e) => {
+            if args.json() {
+                print_json(&serde_json::json!({
+                    "isSuccess": false,
+                    "provider": cfg.provider,
+                    "model": cfg.model,
+                    "endpoint": cfg.base_url,
+                    "error": e,
+                }));
+                return Ok(());
+            }
+            Err(format!("连通失败: {}", e))
+        }
+    }
+}
+
 fn cmd_log_path() -> Result<(), String> {
     println!("{}", logging::active_log_path().display());
     let (dir, crash_count, last) = logging::diagnostics();
@@ -1526,6 +1768,9 @@ async fn main() -> ExitCode {
                 "config" => cmd_config(&svc, &args).await,
                 "set-config" => cmd_set_config(&svc, &args).await,
                 "health" => cmd_health(&svc, &args).await,
+                "ai-config" => cmd_ai_config(&svc, &args),
+                "ai-set" => cmd_ai_set(&svc, &args),
+                "ai-test" => cmd_ai_test(&svc, &args).await,
                 "export" => cmd_export(&svc, &args).await,
                 "simulate" => cmd_simulate(&svc, &args).await,
                 other => {

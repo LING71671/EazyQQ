@@ -64,12 +64,22 @@ cargo build --bin eazyqq_cli
 # 协议与登录
 eazyqq_cli status                         # 协议进程 / 登录态一览
 eazyqq_cli login-info                     # 当前登录账号
+eazyqq_cli quick-login-list               # 列出可免扫码登录的账号（含真实头像）
+eazyqq_cli quick-login --uin <QQ号>       # 免扫码快速登录
 eazyqq_cli qr --save qr.txt               # 获取真实登录二维码
 
+# 大模型供应商（省 token 可切到本地端点）
+eazyqq_cli ai-config                      # 查看实际生效的供应商 / 端点 / 模型
+eazyqq_cli ai-set --provider ollama       # 切到本地 Ollama（免 Key、不走云端）
+eazyqq_cli ai-set --provider openai --base-url http://127.0.0.1:1234/v1 --model local-model
+eazyqq_cli ai-test                        # 对当前供应商发起真实连通测试
+
 # 联系人与白名单（默认全部拒绝）
-eazyqq_cli contacts                       # 同步真实好友/群并列出规则
+eazyqq_cli contacts                       # 同步真实好友/群并列出规则（含触发条件与冷却）
 eazyqq_cli contacts --type group --search EazyQQ
 eazyqq_cli rule --target 1104661022 --mode copilot --summary on --interval-hours 2
+eazyqq_cli rule --target 1104661022 --trigger at_me          # 仅 @ 我时才响应
+eazyqq_cli rule --target 1104661022 --trigger keyword --keywords "进度,排期"
 
 # 消息与 AI
 eazyqq_cli send --target 1104661022 --text "你好"       # 真实发送
@@ -94,9 +104,23 @@ eazyqq_cli log-tail --lines 100
 
 # 调试后门：注入模拟消息，走完整处理链路（无需第二个账号）
 eazyqq_cli simulate --target 1104661022 --text "测试内容" --sender-name "测试者"
+eazyqq_cli simulate --target 1104661022 --text "连发" --repeat 3   # 同进程连发，可验证回复冷却
 ```
 
 所有命令都支持 `--json`，便于脚本消费。
+
+### 回复触发与冷却
+
+白名单只决定「谁可以被处理」，触发条件决定「什么消息才值得响应」：
+
+| 触发条件 | 行为 |
+| :--- | :--- |
+| `all` | 任何消息都触发（私聊默认） |
+| `at_me` | 仅当消息 @ 到本账号（或 @全体成员）时触发（群聊默认） |
+| `keyword` | 仅当命中配置的关键词时触发 |
+
+`cooldown_seconds` 是同一会话两次回复之间的最小间隔，用于避免连发消息导致机器人刷屏。
+未知或空的触发条件一律**拒绝触发**（fail closed），不会退化成「回复所有消息」。
 
 ---
 

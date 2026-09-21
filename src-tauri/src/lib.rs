@@ -49,11 +49,20 @@ pub fn run() {
         .or_else(|| db.get_setting("tokenrhythm_api_key").ok().flatten())
         .unwrap_or_default();
 
-    let ai = Arc::new(services::ai::AiService::new(
-        "https://tokenrhythm.studio/v1".to_string(),
-        api_key,
-        "qwen3.8-flash".to_string(),
-    ));
+    // The AI provider comes from the persisted config, so the settings UI actually
+    // controls where requests go (local OpenCode / Ollama, DeepSeek, OpenAI, ...).
+    let ai_config = {
+        let raw = db.get_setting("app_config").ok().flatten();
+        let parsed = raw
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
+        services::ai::AiRuntimeConfig::from_app_config(
+            parsed.as_ref().and_then(|v| v.get("ai")),
+            &api_key,
+        )
+    };
+    tracing::info!("active AI provider -> {}", ai_config.describe());
+    let ai = Arc::new(services::ai::AiService::new(ai_config));
 
     let app_state = AppState {
         db: db.clone(),

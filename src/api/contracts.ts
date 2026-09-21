@@ -122,9 +122,17 @@ export interface DependencyHealthReport {
   storage: { workspacePath: string; isWritable: boolean; freeSpaceMb: number };
 }
 
+export type AiProviderId =
+  | 'opencode'
+  | 'ollama'
+  | 'lmstudio'
+  | 'deepseek'
+  | 'openai'
+  | 'tokenrhythm';
+
 export interface AppConfig {
   ai: {
-    activeProvider: 'opencode' | 'openai' | 'deepseek';
+    activeProvider: AiProviderId;
     model: string;
     temperature: number;
     maxContextMessages: number;

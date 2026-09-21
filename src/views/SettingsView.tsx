@@ -14,7 +14,81 @@ import {
   Send,
   Sliders,
 } from 'lucide-react';
-import type { AppConfig, DependencyHealthReport } from '@/api/contracts';
+import type { AiProviderId, AppConfig, DependencyHealthReport } from '@/api/contracts';
+
+/**
+ * Provider presets, mirroring `services/ai.rs`.
+ *
+ * Switching provider must also refresh the endpoint and model: the backend treats an
+ * explicitly stored `baseUrl` as authoritative, so without this the user would pick
+ * "local Ollama" and keep sending requests to the cloud.
+ */
+const AI_PRESETS: Record<
+  AiProviderId,
+  { baseUrl: string; model: string; label: string; sub: string; local: boolean }
+> = {
+  opencode: {
+    baseUrl: 'http://127.0.0.1:4096/v1',
+    model: 'opencode-default',
+    label: '本地 OpenCode',
+    sub: '零配置、免买 Key',
+    local: true,
+  },
+  ollama: {
+    baseUrl: 'http://127.0.0.1:11434/v1',
+    model: 'qwen2.5:7b',
+    label: '本地 Ollama',
+    sub: '完全离线、最省 token',
+    local: true,
+  },
+  lmstudio: {
+    baseUrl: 'http://127.0.0.1:1234/v1',
+    model: 'local-model',
+    label: 'LM Studio',
+    sub: '本地 GUI 推理',
+    local: true,
+  },
+  deepseek: {
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-chat',
+    label: 'DeepSeek 官方 API',
+    sub: '性价比极高',
+    local: false,
+  },
+  openai: {
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini',
+    label: 'OpenAI 兼容',
+    sub: '通用 API / OneAPI',
+    local: false,
+  },
+  tokenrhythm: {
+    baseUrl: 'https://tokenrhythm.studio/v1',
+    model: 'qwen3.8-flash',
+    label: 'TokenRhythm',
+    sub: '默认云端服务',
+    local: false,
+  },
+};
+
+const AI_PROVIDER_ORDER: AiProviderId[] = [
+  'opencode',
+  'ollama',
+  'lmstudio',
+  'deepseek',
+  'openai',
+  'tokenrhythm',
+];
+
+function isLocalEndpoint(url: string): boolean {
+  const u = url.toLowerCase();
+  return (
+    u.includes('127.0.0.1') ||
+    u.includes('localhost') ||
+    u.includes('0.0.0.0') ||
+    u.includes('[::1]')
+  );
+}
 
 interface SettingsViewProps {
   config: AppConfig;
@@ -35,9 +109,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   diagnosticsPath,
 }) => {
   // AI Settings
-  const [provider, setProvider] = useState(config.ai?.activeProvider || 'opencode');
-  const [model, setModel] = useState(config.ai?.model || 'opencode-default');
+  const [provider, setProvider] = useState<AiProviderId>(
+    (config.ai?.activeProvider as AiProviderId) || 'tokenrhythm'
+  );
+  const [model, setModel] = useState(config.ai?.model || '');
   const [apiKey, setApiKey] = useState(config.ai?.apiKey || '');
+  const [baseUrl, setBaseUrl] = useState(config.ai?.baseUrl || '');
+
+  // Switching provider refreshes the endpoint and model from the preset, unless the
+  // preset matches what is already there.
+  const handleSelectProvider = (id: AiProviderId) => {
+    setProvider(id);
+    const preset = AI_PRESETS[id];
+    if (preset) {
+      setBaseUrl(preset.baseUrl);
+      setModel(preset.model);
+    }
+  };
 
   // Summary Settings (Zero hardcoding, completely dynamic)
   const [summaryEnabled, setSummaryEnabled] = useState(config.summary?.enabled ?? true);
@@ -62,9 +150,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // only ever see the placeholder defaults. Re-seed whenever the real config lands,
   // otherwise the page silently shows (and would then save) wrong values.
   useEffect(() => {
-    setProvider(config.ai?.activeProvider || 'opencode');
-    setModel(config.ai?.model || 'opencode-default');
+    setProvider((config.ai?.activeProvider as AiProviderId) || 'tokenrhythm');
+    setModel(config.ai?.model || AI_PRESETS.tokenrhythm.model);
     setApiKey(config.ai?.apiKey || '');
+    setBaseUrl(config.ai?.baseUrl || AI_PRESETS.tokenrhythm.baseUrl);
 
     setSummaryEnabled(config.summary?.enabled ?? true);
     setIntervalType(config.summary?.intervalType || '6h');
@@ -103,8 +192,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       ai: {
         ...config.ai,
         activeProvider: provider,
-        model,
+        model: model.trim(),
         apiKey: apiKey.trim(),
+        baseUrl: baseUrl.trim(),
       },
       summary: {
         ...config.summary,
@@ -347,54 +437,104 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* 3. AI Model Provider Selector */}
         <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-4">
-          <h3 className="text-sm font-semibold text-slate-900 pb-2 border-b border-slate-100">
-            大模型推理供应源
-          </h3>
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <h3 className="text-sm font-semibold text-slate-900">大模型推理供应源</h3>
+            <span
+              className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                isLocalEndpoint(baseUrl)
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-amber-50 text-amber-700 border-amber-200'
+              }`}
+            >
+              {isLocalEndpoint(baseUrl) ? '本地端点 · 不消耗云端 token' : '云端端点 · 消耗 token'}
+            </span>
+          </div>
 
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">
+              <label className="text-xs font-semibold text-slate-700 block mb-2">
                 选择大脑类型：
               </label>
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { id: 'opencode', label: '本地 OpenCode (推荐)', sub: '零配置、免买 Key' },
-                  { id: 'deepseek', label: 'DeepSeek 官方 API', sub: '性价比极高' },
-                  { id: 'openai', label: 'OpenAI 兼容接口', sub: '通用 API / OneAPI' },
-                ].map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setProvider(p.id as any)}
-                    className={`p-3 rounded-xl text-left border transition-all ${
-                      provider === p.id
-                        ? 'border-sky-500 bg-sky-50/60 text-sky-900 ring-1 ring-sky-500 shadow-2xs'
-                        : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
-                    }`}
-                  >
-                    <span className="text-xs font-semibold block">{p.label}</span>
-                    <span className="text-[10px] text-slate-400">{p.sub}</span>
-                  </button>
-                ))}
+              <div className="grid grid-cols-3 gap-2">
+                {AI_PROVIDER_ORDER.map((id) => {
+                  const preset = AI_PRESETS[id];
+                  const active = provider === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => handleSelectProvider(id)}
+                      className={`p-2.5 rounded-xl text-left border transition-all ${
+                        active
+                          ? 'border-sky-500 bg-sky-50/60 text-sky-900 ring-1 ring-sky-500 shadow-2xs'
+                          : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
+                      }`}
+                    >
+                      <span className="text-xs font-semibold flex items-center gap-1.5">
+                        {preset.label}
+                        {preset.local && (
+                          <span className="text-[9px] px-1 py-px rounded bg-emerald-100 text-emerald-700 font-medium">
+                            本地
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">{preset.sub}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {provider !== 'opencode' && (
-              <div className="space-y-3 pt-2">
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    API Key:
-                  </label>
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="sk-..."
-                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
-                  />
-                </div>
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  接口地址 (Base URL)：
+                </label>
+                <input
+                  type="text"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder="http://127.0.0.1:11434/v1"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  模型名称 (Model)：
+                </label>
+                <input
+                  type="text"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder="qwen2.5:7b"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+            </div>
+
+            {isLocalEndpoint(baseUrl) ? (
+              <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-100 text-[11px] text-emerald-900 leading-relaxed">
+                本地端点无需 API Key，请求不会离开本机，适合用来节省 token 费用。
+              </div>
+            ) : (
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  API Key：
+                </label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
+                />
               </div>
             )}
+
+            <div className="text-[11px] text-slate-400 leading-relaxed">
+              切换供应商会自动填入其默认地址与模型；使用 OneAPI / vLLM / 自建网关时，直接修改上方两项即可。
+              保存后立即生效，无需重启。
+            </div>
           </div>
         </div>
 

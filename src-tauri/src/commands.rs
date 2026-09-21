@@ -127,7 +127,18 @@ pub async fn refresh_qrcode(state: State<'_, AppState>) -> Result<ApiResponse<se
 
 #[command]
 pub async fn logout() -> Result<ApiResponse<()>, String> {
-    Ok(ApiResponse::ok(()))
+    // NapCat's WebUI exposes no logout route (its full route table is: QQLogin
+    // CheckLoginStatus / GetQQLoginInfo / GetQQLoginQrcode / GetQuickLogin* /
+    // SetQuickLogin*, plus base / auth / OB11Config / Log / File / WebUIConfig).
+    // Returning Ok(()) here would be a lie - the session would stay alive.
+    tracing::warn!("logout requested but NapCat provides no logout endpoint");
+    Ok(ApiResponse::err(
+        4050,
+        "当前协议端 (NapCat) 未提供登出接口，无法在应用内注销。\
+         如需切换账号，请在 NapCat WebUI (http://127.0.0.1:6099) 中退出登录，\
+         或停止协议端进程后使用「快速登录」切换到其它账号。",
+        None,
+    ))
 }
 
 #[command]
@@ -667,21 +678,47 @@ pub async fn update_config(
 ) -> Result<ApiResponse<serde_json::Value>, String> {
     let serialized = serde_json::to_string(&config).map_err(|e| e.to_string())?;
     state.db.set_setting("app_config", &serialized).map_err(|e| e.to_string())?;
+
+    // Hot-apply the AI provider so switching to a local model takes effect immediately
+    // instead of requiring an app restart.
+    let fallback_key = state
+        .db
+        .get_setting("tokenrhythm_api_key")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let ai_cfg =
+        crate::services::ai::AiRuntimeConfig::from_app_config(config.get("ai"), &fallback_key);
+    state.ai.reconfigure(ai_cfg.clone());
+
+    tracing::info!("config updated; active AI provider -> {}", ai_cfg.describe());
+
     Ok(ApiResponse::ok(config))
 }
 
 #[command]
 pub async fn test_ai_connection(state: State<'_, AppState>, _provider: String, _model_id: Option<String>) -> Result<ApiResponse<serde_json::Value>, String> {
+    let cfg = state.ai.current();
+    tracing::info!("AI connectivity test against {}", cfg.describe());
+
     let start = std::time::Instant::now();
     match state.ai.generate_reply(&[], "ping", "系统连通性自检").await {
-        Ok(_) => {
+        Ok((reply, _)) => {
             let latency = start.elapsed().as_millis();
             Ok(ApiResponse::ok(serde_json::json!({
                 "isSuccess": true,
-                "latencyMs": latency
+                "latencyMs": latency,
+                "provider": cfg.provider,
+                "model": cfg.model,
+                "endpoint": cfg.base_url,
+                "reply": reply,
             })))
         }
-        Err(e) => Ok(ApiResponse::err(1003, format!("TokenRhythm 连通测试失败: {}", e), None)),
+        Err(e) => Ok(ApiResponse::err(
+            1003,
+            format!("大模型连通测试失败 [{}]: {}", cfg.describe(), e),
+            None,
+        )),
     }
 }
 
