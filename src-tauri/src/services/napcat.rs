@@ -183,4 +183,26 @@ impl NapCatService {
     pub async fn check_login(&self) -> Result<Value, String> {
         self.post_authed("/api/QQLogin/CheckLoginStatus", &serde_json::json!({})).await
     }
+
+    /// Accounts NapCat can log into without a QR scan (Phase 1 acceptance item:
+    /// "退出软件重开可实现无感快速登录").
+    ///
+    /// Returns `uin`, `nickName` and a real `faceUrl` for each remembered account.
+    pub async fn get_quick_login_list(&self) -> Result<Value, String> {
+        self.post_authed("/api/QQLogin/GetQuickLoginListNew", &serde_json::json!({}))
+            .await
+    }
+
+    /// Trigger a quick login for a remembered account.
+    pub async fn set_quick_login(&self, uin: &str) -> Result<Value, String> {
+        self.post_authed("/api/QQLogin/SetQuickLogin", &serde_json::json!({ "uin": uin }))
+            .await
+    }
+
+    /// Authoritative login info straight from the protocol backend, including a real
+    /// avatar (`faceUrl`) and an `online` flag.
+    pub async fn get_login_info(&self) -> Result<Value, String> {
+        self.post_authed("/api/QQLogin/GetQQLoginInfo", &serde_json::json!({}))
+            .await
+    }
 }

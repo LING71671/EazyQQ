@@ -201,6 +201,8 @@ fn cmd_help() {
 协议与登录
   status                          协议进程、登录态、二维码可用性一览
   login-info                      当前登录 QQ 号与昵称
+  quick-login-list                列出可免扫码快速登录的账号
+  quick-login --uin <QQ号>        对指定账号执行快速登录（免扫码）
   qr [--save <path>]              获取真实登录二维码（未登录时有效）
 
 联系人与规则（默认全部拒绝）
@@ -1376,6 +1378,64 @@ async fn cmd_file_summarize(svc: &Services, args: &Args) -> Result<(), String> {
     Ok(())
 }
 
+/// List accounts available for password-free quick login (Phase 1).
+async fn cmd_quick_login_list(svc: &Services, args: &Args) -> Result<(), String> {
+    let res = svc.napcat.get_quick_login_list().await?;
+
+    if args.json() {
+        print_json(&res);
+        return Ok(());
+    }
+
+    let accounts = res
+        .get("data")
+        .and_then(|d| d.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    hr();
+    println!("可快速登录的账号 ({} 个)", accounts.len());
+    hr();
+    if accounts.is_empty() {
+        println!("(无) 说明 NapCat 未记住任何账号，需要扫码登录一次。");
+    }
+    for acc in accounts {
+        println!(
+            "{}  {:<16} {}",
+            acc.get("uin").and_then(|v| v.as_str()).unwrap_or("-"),
+            acc.get("nickName").and_then(|v| v.as_str()).unwrap_or("-"),
+            acc.get("faceUrl").and_then(|v| v.as_str()).unwrap_or("")
+        );
+    }
+    hr();
+    Ok(())
+}
+
+/// Perform a password-free quick login.
+async fn cmd_quick_login(svc: &Services, args: &Args) -> Result<(), String> {
+    let uin = args
+        .flag("uin")
+        .ok_or_else(|| "缺少 --uin <QQ号>（可用 `eazyqq_cli quick-login-list` 查看）".to_string())?;
+
+    tracing::info!("quick login requested for {}", uin);
+    let res = svc.napcat.set_quick_login(uin).await?;
+
+    let code = res.get("code").and_then(|c| c.as_i64()).unwrap_or(-1);
+    if code != 0 {
+        return Err(format!(
+            "快速登录失败: {}",
+            res.get("message").and_then(|m| m.as_str()).unwrap_or("未知错误")
+        ));
+    }
+
+    if args.json() {
+        print_json(&res);
+        return Ok(());
+    }
+    println!("已触发账号 {} 的快速登录，请稍候在 `eazyqq_cli status` 中确认登录状态。", uin);
+    Ok(())
+}
+
 fn cmd_log_path() -> Result<(), String> {
     println!("{}", logging::active_log_path().display());
     let (dir, crash_count, last) = logging::diagnostics();
@@ -1430,6 +1490,8 @@ async fn main() -> ExitCode {
             match args.command.as_str() {
                 "status" => cmd_status(&svc, &args).await,
                 "login-info" => cmd_login_info(&svc, &args).await,
+                "quick-login-list" => cmd_quick_login_list(&svc, &args).await,
+                "quick-login" => cmd_quick_login(&svc, &args).await,
                 "qr" => cmd_qr(&svc, &args).await,
                 "contacts" => cmd_contacts(&svc, &args).await,
                 "groups" => cmd_raw_roster(&svc, &args, true).await,
