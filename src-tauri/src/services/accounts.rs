@@ -414,9 +414,93 @@ fn legacy_stamp() -> String {
     format!("{}", secs)
 }
 
+/// Bring artefacts that NapCat writes into the shared `napcat/` directory under the
+/// account that owns them.
+///
+/// The app's own data is isolated by `account_dir`, but NapCat is a separate program whose
+/// log and cache paths are internal and not user-configurable. Its `logs/` directory
+/// therefore accumulates every account's session logs in one place - and those logs contain
+/// message text. This sweeps them into the account directory at startup.
+///
+/// Deliberately best-effort: a log file NapCat currently has open cannot be moved on
+/// Windows, and that is fine - it belongs to the session in progress, and the next sweep
+/// picks it up.
+pub fn sweep_napcat_artifacts(napcat_dir: &std::path::Path, uin: &str) -> Vec<String> {
+    let mut moved = Vec::new();
+
+    let logs_src = napcat_dir.join("logs");
+    if logs_src.is_dir() {
+        let dest = account_dir(Some(uin)).join("napcat_logs");
+        match merge_dir(&logs_src, &dest) {
+            Ok(n) if n > 0 => {
+                moved.push(format!("napcat_logs({})", n));
+                tracing::info!(
+                    "accounts: moved {} NapCat log file(s) into account {} (they contain \
+                     message text and must not stay in the shared napcat/ directory)",
+                    n,
+                    uin
+                );
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!("accounts: could not sweep NapCat logs: {}", e),
+        }
+    }
+
+    // A QR code is a login credential. QQ's expire quickly, but leaving one on disk after
+    // a successful login serves no purpose.
+    let qr = napcat_dir.join("cache").join("qrcode.png");
+    if qr.is_file() {
+        match std::fs::remove_file(&qr) {
+            Ok(_) => {
+                moved.push("cache/qrcode.png".to_string());
+                tracing::info!(
+                    "accounts: removed the login QR code from napcat/cache (no longer needed \
+                     once an account is bound)"
+                );
+            }
+            // Locked by a running NapCat, or already gone: neither is a problem.
+            Err(e) => tracing::debug!("accounts: could not remove {}: {}", qr.display(), e),
+        }
+    }
+
+    moved
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sweeping_removes_the_qr_and_moves_logs() {
+        let base = std::env::temp_dir().join("eazyqq_accounts_sweep");
+        let _ = std::fs::remove_dir_all(&base);
+
+        let napcat = base.join("napcat");
+        std::fs::create_dir_all(napcat.join("logs")).unwrap();
+        std::fs::create_dir_all(napcat.join("cache")).unwrap();
+        std::fs::write(napcat.join("logs").join("session.log"), "聊天内容").unwrap();
+        std::fs::write(napcat.join("cache").join("qrcode.png"), b"png").unwrap();
+
+        let moved = sweep_napcat_artifacts(&napcat, "462564834");
+        assert!(!moved.is_empty(), "something should have been swept");
+        assert!(
+            !napcat.join("cache").join("qrcode.png").exists(),
+            "the login QR must not be left behind"
+        );
+        assert!(
+            !napcat.join("logs").join("session.log").exists(),
+            "logs containing message text must leave the shared directory"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn sweeping_an_absent_directory_is_harmless() {
+        let base = std::env::temp_dir().join("eazyqq_accounts_sweep_absent");
+        let _ = std::fs::remove_dir_all(&base);
+        assert!(sweep_napcat_artifacts(&base.join("nope"), "1").is_empty());
+    }
 
     #[test]
     fn bootstrap_round_trips_through_camel_case_json() {

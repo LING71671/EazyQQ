@@ -158,6 +158,15 @@ impl Services {
             if let Err(e) = eazyqq_lib::services::accounts::migrate_legacy_if_needed(&uin) {
                 tracing::warn!("account data migration failed: {}", e);
             }
+            // NapCat's own logs contain message text and live in the shared `napcat/`
+            // directory; sweep them under the account like the GUI does.
+            let swept = eazyqq_lib::services::accounts::sweep_napcat_artifacts(
+                &root.join("napcat"),
+                &uin,
+            );
+            if !swept.is_empty() {
+                tracing::info!("swept shared NapCat artefacts: {}", swept.join(", "));
+            }
         }
 
         let db = Arc::new(
