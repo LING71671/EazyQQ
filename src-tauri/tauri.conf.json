@@ -21,7 +21,7 @@
         "center": true,
         "decorations": false,
         "resizable": true,
-        "visible": true,
+        "visible": false,
         "backgroundColor": "#f8fafc",
         "additionalBrowserArgs": "--no-sandbox"
       }

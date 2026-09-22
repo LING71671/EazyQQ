@@ -79,12 +79,40 @@ pub fn run() {
         .setup(move |app| {
             tracing::info!("Tauri setup: creating main window and system tray");
 
+            // The window is created hidden (see tauri.conf.json) so the user never sees
+            // Chromium's startup sequence: a blank surface, then a black frame while the
+            // GPU process dies and is respawned, then finally the rendered UI. Instead
+            // the frontend calls `frontend_ready` once React has mounted, and only then
+            // does the window appear - already painted.
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-                tracing::info!("main window shown and focused");
+                tracing::info!(
+                    "main window created hidden; waiting for the frontend to report ready"
+                );
+                let _ = window;
             } else {
                 tracing::error!("main window handle not found during setup");
+            }
+
+            // Safety net: if the frontend never reports ready (script error, WebView
+            // failure), show the window anyway rather than leaving the app invisible.
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(12)).await;
+                    if let Some(window) = handle.get_webview_window("main") {
+                        match window.is_visible() {
+                            Ok(true) => {}
+                            _ => {
+                                tracing::warn!(
+                                    "frontend did not report ready within 12s; \
+                                     showing the window anyway"
+                                );
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                    }
+                });
             }
 
             // --- System tray: keep EazyQQ resident so the OneBot listener and the

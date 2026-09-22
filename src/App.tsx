@@ -111,7 +111,14 @@ export const App: React.FC = () => {
     let unlistenDraft: (() => void) | undefined;
     let unlistenMsg: (() => void) | undefined;
 
-    // Smooth reveal: show window when React is mounted and initialized
+    // Reveal the window only now that React has mounted.
+    //
+    // The window is created hidden (tauri.conf.json `visible: false`) because showing it
+    // immediately exposes Chromium's startup sequence: a blank surface, then a black
+    // frame while the GPU process dies and is respawned, and only then the painted UI.
+    // Revealing it here means the user's first sight of the app is the finished screen.
+    // lib.rs shows it after 12s regardless, so a frontend failure cannot leave the app
+    // invisible.
     api.showWindow().catch(() => {});
 
     const applyProtocolStatus = (initStatus: ProtocolStatusDto) => {
