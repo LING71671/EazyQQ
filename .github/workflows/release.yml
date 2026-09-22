@@ -36,32 +36,48 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Prepare bundled NapCat
+      - name: Bundle NapCat into resources
         shell: pwsh
         run: |
-          $dest = "src-tauri/resources/napcat"
-          New-Item -ItemType Directory -Force -Path $dest
-          Write-Host "Fetching latest NapCat assets from GitHub..."
-          $headers = @{ "User-Agent" = "EazyQQ-CI" }
-          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/NapNeko/NapCatQQ/releases/latest" -Headers $headers
-          $oneKey = $release.assets | Where-Object { $_.name -like "*OneKey*.zip" } | Select-Object -First 1
-          if ($oneKey) {
-            Write-Host "Downloading $($oneKey.name)..."
-            Invoke-WebRequest -Uri $oneKey.browser_download_url -OutFile "napcat_onekey.zip"
-            Expand-Archive -Path "napcat_onekey.zip" -DestinationPath "temp_onekey" -Force
-            if (Test-Path "temp_onekey/bootmain") {
-              Copy-Item -Path "temp_onekey/bootmain/*" -Destination $dest -Recurse -Force
+          $ErrorActionPreference = 'Stop'
+
+          # Fetch latest NapCat release info
+          $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/NapNeko/NapCatQQ/releases/latest' -Headers @{ 'User-Agent' = 'EazyQQ-CI' }
+          $shellAsset = $release.assets | Where-Object { $_.name -eq 'NapCat.Shell.zip' } | Select-Object -First 1
+          $onekeyAsset = $release.assets | Where-Object { $_.name -like '*OneKey*' } | Select-Object -First 1
+
+          if (-not $shellAsset) { throw 'NapCat.Shell.zip not found in latest release' }
+
+          $resourceDir = 'src-tauri/resources/napcat'
+          New-Item -ItemType Directory -Force -Path $resourceDir | Out-Null
+
+          # Download and extract NapCat Shell (core runtime: napcat.mjs, static/, node_modules/, etc.)
+          $shellZip = "$env:TEMP/NapCat.Shell.zip"
+          Write-Host "Downloading $($shellAsset.name) ($([math]::Round($shellAsset.size / 1MB, 1)) MB)..."
+          Invoke-WebRequest -Uri $shellAsset.browser_download_url -OutFile $shellZip
+          Expand-Archive -Path $shellZip -DestinationPath $resourceDir -Force
+          Remove-Item $shellZip
+
+          # Download OneKey package to get NapCatWinBootMain.exe and NapCatWinBootHook.dll
+          if ($onekeyAsset) {
+            $onekeyZip = "$env:TEMP/NapCat.OneKey.zip"
+            Write-Host "Downloading $($onekeyAsset.name) for boot binaries..."
+            Invoke-WebRequest -Uri $onekeyAsset.browser_download_url -OutFile $onekeyZip
+            $onekeyDir = "$env:TEMP/napcat-onekey"
+            Expand-Archive -Path $onekeyZip -DestinationPath $onekeyDir -Force
+
+            # Find and copy boot binaries
+            $bootFiles = Get-ChildItem -Path $onekeyDir -Recurse -Include 'NapCatWinBootMain.exe','NapCatWinBootHook.dll'
+            foreach ($f in $bootFiles) {
+              Copy-Item $f.FullName -Destination $resourceDir -Force
+              Write-Host "Copied $($f.Name)"
             }
-            $innerZip = Get-ChildItem -Path "temp_onekey" -Filter "NapCat.Shell.zip" -Recurse | Select-Object -First 1
-            if ($innerZip) {
-              Expand-Archive -Path $innerZip.FullName -DestinationPath $dest -Force
-            }
-            Remove-Item -Recurse -Force "temp_onekey", "napcat_onekey.zip"
-            Write-Host "NapCat bundled successfully into $dest"
-          } else {
-            Write-Error "Failed to locate NapCat asset on GitHub releases."
-            exit 1
+            Remove-Item $onekeyZip
+            Remove-Item $onekeyDir -Recurse -Force
           }
+
+          Write-Host "NapCat bundled into $resourceDir"
+          Get-ChildItem $resourceDir | Select-Object Name, Length
 
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
@@ -70,6 +86,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'EazyQQ ${{ github.ref_name }}'
-          releaseBody: '自动化构建发布的 EazyQQ 桌面客户端。'
+          releaseBody: '自动化构建发布的 EazyQQ 桌面客户端（内置 NapCat 协议，开箱即用）。'
           releaseDraft: false
           prerelease: true
