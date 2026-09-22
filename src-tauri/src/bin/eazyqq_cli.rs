@@ -2012,7 +2012,13 @@ async fn probe_chain_from_cli(svc: &Services) {
             }
         }
         Err(e) => {
-            record_error(Link::NapcatWebUi, e);
+            // Use the same explanation the app's monitor uses. Reporting only the network
+            // error here was why this command said the least about the thing it exists for.
+            let napcat_dir = eazyqq_lib::services::logging::workspace_root().join("napcat");
+            record_error(
+                Link::NapcatWebUi,
+                eazyqq_lib::services::chain::explain_napcat_failure(&e, &napcat_dir),
+            );
             record_unknown(Link::QqLogin, "WebUI 不可达，无法判断登录状态");
         }
     }

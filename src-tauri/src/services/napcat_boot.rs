@@ -38,6 +38,8 @@ pub struct BootOutcome {
 struct BootState {
     last_attempt: Option<Instant>,
     consecutive_failures: u32,
+    /// A launch has been made and readiness has not been confirmed yet.
+    awaiting_readiness: bool,
 }
 
 fn state() -> &'static Mutex<BootState> {
@@ -232,21 +234,23 @@ pub fn diagnose(napcat_dir: &Path, uin: Option<&str>) -> Vec<Step> {
 
     // 5. Is QQ already running?
     //
-    // This is the step that took the longest to find by hand. NapCat starts its own QQ with
-    // the hook attached, but QQ refuses a second instance, so the one NapCat launches exits
-    // as soon as it has loaded QQNT.dll - and NapCat's JavaScript never runs at all. The
-    // evidence is indirect but unambiguous: `fileLog` is on in napcat.json and no log file
-    // is ever produced.
+    // Stated as the most likely cause rather than a proven one. What is measured: four new QQ
+    // processes appear when NapCat starts, port 6099 is bound for about three seconds, then
+    // all four exit and the WebUI goes with them - and the same happens with the sandbox out
+    // of the picture, so it is not an artefact of how this was tested. NapCat boots its own QQ
+    // (official docs) and ships `KillQQ.bat`, which is why a running QQ is the leading
+    // explanation. It is not the only possible one, so it is not presented as settled.
     let running = running_qq_processes();
     steps.push(if running.is_empty() {
-        Step::ok("QQ 进程", "未在运行，NapCat 可以独占启动")
+        Step::ok("QQ 进程", "未在运行，NapCat 可以自行引导 QQ 启动")
     } else {
         Step::fail(
             "QQ 进程",
             format!(
-                "已有 {} 个 QQ 实例在运行。NapCat 需要自己拉起一个带钩子的 QQ，而 QQ 的\
-                 单实例机制会让新实例加载完 QQNT.dll 就退出，NapCat 的 JavaScript 因此从未\
-                 执行（配置里 fileLog 已开启，却始终没有任何日志）。请先完全退出 QQ 再重试。",
+                "已有 {} 个 QQ 实例在运行。NapCat 会自行引导一个 QQ 实例启动，两者可能互相\
+                 冲突——实测中 NapCat 拉起的 4 个 QQ 进程约 3 秒后全部退出，WebUI 随之消失。\
+                 这是目前最可能的原因，但尚未定论。若 NapCat 反复启动失败，请先完全退出 QQ \
+                 再试；退出后应用会自动把它拉起来。",
                 running.len()
             ),
         )
@@ -336,6 +340,19 @@ pub fn first_blocker(napcat_dir: &Path, uin: Option<&str>) -> Option<Step> {
     diagnose(napcat_dir, uin).into_iter().find(|s| !s.ok)
 }
 
+/// Where to write this launch's console output.
+///
+/// Under the account's own `napcat_logs/`, alongside the other protocol-side logs, so it is
+/// swept with the rest of the account's data and never leaks across accounts.
+fn next_output_log_path() -> Option<PathBuf> {
+    let dir = crate::services::logging::data_dir().join("napcat_logs");
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    Some(dir.join(format!("boot-{}.log", stamp)))
+}
+
 /// Running `QQ.exe` processes, as raw `tasklist` lines.
 ///
 /// Shelling out keeps this dependency-free; the alternative is a process-enumeration crate
@@ -359,10 +376,32 @@ fn running_qq_processes() -> Vec<String> {
     }
 }
 
+/// Record that a launch was made and its readiness is still unknown.
+fn note_launch_pending() {
+    if let Ok(mut st) = state().lock() {
+        st.awaiting_readiness = true;
+    }
+}
+
+/// Record that a launched NapCat never became reachable.
+///
+/// The missing half of `start()`: a spawn proves a process exists, not that NapCat works.
+/// Called by the chain monitor when the probe still fails after a launch, so that a backend
+/// which can never start eventually stops being retried instead of spawning QQ forever.
+pub fn note_unready() {
+    if let Ok(mut st) = state().lock() {
+        if st.awaiting_readiness {
+            st.awaiting_readiness = false;
+            st.consecutive_failures += 1;
+        }
+    }
+}
+
 /// Reset the failure counter (called when the backend is observed healthy again).
 pub fn note_healthy() {
     if let Ok(mut st) = state().lock() {
         st.consecutive_failures = 0;
+        st.awaiting_readiness = false;
     }
 }
 
@@ -378,6 +417,25 @@ pub fn start(napcat_dir: &Path) -> BootOutcome {
             ok: false,
             detail: reason,
         };
+    }
+
+    // Note whether QQ is already running, but do not refuse to start because of it.
+    //
+    // NapCat boots its own QQ ("NapCat 可以完全自身引导 QQ 程序的启动" - official docs), so a
+    // running QQ client is a plausible reason for that instance to exit: measured, four new
+    // QQ processes appear, port 6099 is bound for about three seconds, then all four exit and
+    // the WebUI goes with them. NapCat also ships `KillQQ.bat` (`taskkill /f /im QQ.exe`).
+    //
+    // But "plausible" is not "proven", and refusing outright would break a setup that works.
+    // So this only records the hint; the retry budget below is what stops the churn, and it
+    // does so for any cause.
+    let qq_running = running_qq_processes().len();
+    if qq_running > 0 {
+        tracing::warn!(
+            "napcat boot: {} QQ process(es) already running; NapCat boots its own QQ, so if \
+             this start fails, quitting QQ is the first thing to try",
+            qq_running
+        );
     }
 
     let files = match resolve(napcat_dir) {
@@ -407,8 +465,8 @@ pub fn start(napcat_dir: &Path) -> BootOutcome {
     }
 
     // Step 2 + 3: same variables the batch launcher exports, then run the bootstrapper.
-    let spawn = Command::new(&files.launcher)
-        .arg(&files.qq_path)
+    let mut cmd = Command::new(&files.launcher);
+    cmd.arg(&files.qq_path)
         .arg(&files.hook_dll)
         .current_dir(napcat_dir)
         .env("NAPCAT_PATCH_PACKAGE", &files.patch_pkg)
@@ -416,8 +474,33 @@ pub fn start(napcat_dir: &Path) -> BootOutcome {
         .env("NAPCAT_INJECT_PATH", &files.hook_dll)
         .env("NAPCAT_LAUNCHER_PATH", &files.launcher)
         .env("NAPCAT_MAIN_PATH", &files.main_mjs)
-        .env("QQ_PATH_CONFIG", napcat_dir.join("config").join("qq_path.txt"))
-        .spawn();
+        .env("QQ_PATH_CONFIG", napcat_dir.join("config").join("qq_path.txt"));
+
+    // Capture the launcher's output.
+    //
+    // NapCat runs with `consoleLog: true`, so it prints what it is doing and, when it stops
+    // early, why. All of that was going to the app's inherited stdout and being thrown away,
+    // which left a failing boot undiagnosable from the app side - the reason a whole
+    // investigation had to be done by hand from the outside.
+    let output_log = next_output_log_path();
+    if let Some(path) = &output_log {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if let Ok(file) = std::fs::File::create(path) {
+            match file.try_clone() {
+                Ok(dup) => {
+                    cmd.stdout(std::process::Stdio::from(file));
+                    cmd.stderr(std::process::Stdio::from(dup));
+                }
+                Err(_) => {
+                    cmd.stdout(std::process::Stdio::from(file));
+                }
+            }
+        }
+    }
+
+    let spawn = cmd.spawn();
 
     match spawn {
         Ok(child) => {
@@ -428,11 +511,22 @@ pub fn start(napcat_dir: &Path) -> BootOutcome {
                 files.qq_path.display()
             );
             // The bootstrapper hands off to QQ and exits, so a successful spawn only means
-            // "started", not "ready" - the chain monitor decides that.
+            // "started", not "ready" - the chain monitor decides that, and calls
+            // `note_unready` when it never becomes ready. Nothing used to be recorded here,
+            // which is why `consecutive_failures` never moved and the "stop after three
+            // attempts" guard could never fire.
+            note_launch_pending();
             BootOutcome {
                 attempted: true,
                 ok: true,
-                detail: format!("已拉起 NapCat（QQ: {}）", files.qq_path.display()),
+                detail: match &output_log {
+                    Some(p) => format!(
+                        "已拉起 NapCat（QQ: {}），输出写入 {}",
+                        files.qq_path.display(),
+                        p.display()
+                    ),
+                    None => format!("已拉起 NapCat（QQ: {}）", files.qq_path.display()),
+                },
             }
         }
         Err(e) => {

@@ -242,6 +242,21 @@ fn napcat_setting(db: &crate::services::db::Database, key: &str) -> Option<serde
 /// Component-owned links (WebSocket, frontend, scheduler) are not touched here - they
 /// report themselves, and polling them would either be meaningless or produce a false
 /// verdict.
+/// Explain a protocol-side failure in terms of the step that is actually blocking.
+///
+/// Shared by the app's monitor and the CLI probe. They were written separately and drifted:
+/// the monitor named the blocking step while `chain-status` reported only the raw network
+/// error, so the command a person reaches for when something is wrong said the least.
+pub fn explain_napcat_failure(error: &str, napcat_dir: &std::path::Path) -> String {
+    match crate::services::napcat_boot::first_blocker(
+        napcat_dir,
+        crate::services::accounts::active().as_deref(),
+    ) {
+        Some(b) => format!("{}；首先卡在「{}」：{}", error, b.name, b.detail),
+        None => error.to_string(),
+    }
+}
+
 pub fn spawn_monitor(db: std::sync::Arc<crate::services::db::Database>,
                      napcat: std::sync::Arc<crate::services::napcat::NapCatService>,
                      onebot: std::sync::Arc<crate::services::onebot::OneBotClient>,
@@ -293,17 +308,12 @@ pub fn spawn_monitor(db: std::sync::Arc<crate::services::db::Database>,
                     // not resolve, QQ already running so the instance NapCat starts exits a
                     // few seconds later, a NapCat whose JavaScript never runs. Each needs a
                     // different action from the user, so name the one that applies.
-                    let blocker = napcat_boot::first_blocker(
-                        &napcat_dir,
-                        crate::services::accounts::active().as_deref(),
-                    );
-                    match &blocker {
-                        Some(b) => record_error(
-                            Link::NapcatWebUi,
-                            format!("{}；首先卡在「{}」：{}", e, b.name, b.detail),
-                        ),
-                        None => record_error(Link::NapcatWebUi, e),
-                    }
+                    //
+                    // The previous launch, if there was one, has now had its chance: the
+                    // probe still fails, so it never became ready.
+                    napcat_boot::note_unready();
+
+                    let blocker_text = Some(explain_napcat_failure(&e, &napcat_dir));
 
                     // The protocol side is the one link we can actually repair, so do it
                     // when the user has asked for it. Without this the app could only ever
@@ -311,32 +321,32 @@ pub fn spawn_monitor(db: std::sync::Arc<crate::services::db::Database>,
                     let auto_restart = napcat_setting(&db, "autoRestart")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(true);
+
+                    let mut launched = false;
+                    let mut action: Option<String> = None;
                     if auto_restart {
                         let outcome = napcat_boot::start(&napcat_dir);
-                        if outcome.attempted {
-                            if outcome.ok {
-                                tracing::warn!(
-                                    "chain: NapCat was down and autoRestart is on - {}",
-                                    outcome.detail
-                                );
-                                record_unknown(
-                                    Link::NapcatWebUi,
-                                    format!("已自动拉起，等待就绪（{}）", outcome.detail),
-                                );
-                            } else {
-                                tracing::error!(
-                                    "chain: could not start NapCat - {}",
-                                    outcome.detail
-                                );
-                                record_error(
-                                    Link::NapcatWebUi,
-                                    format!("自动拉起失败: {}", outcome.detail),
-                                );
-                            }
+                        launched = outcome.ok;
+                        // A refusal is as informative as a failure here: it carries the one
+                        // thing the user has to do. It used to go to a debug log, so the app
+                        // restarted NapCat every 90 seconds and said nothing about why the
+                        // restarts could not possibly work.
+                        action = Some(if outcome.ok {
+                            format!("已自动拉起，等待就绪（{}）", outcome.detail)
                         } else {
-                            // Throttled or out of attempts; say so rather than looking idle.
-                            tracing::debug!("chain: skipping NapCat restart - {}", outcome.detail);
-                        }
+                            outcome.detail
+                        });
+                    }
+
+                    let detail = [blocker_text.as_deref(), action.as_deref()]
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<_>>()
+                        .join("；");
+                    if launched {
+                        record_unknown(Link::NapcatWebUi, detail);
+                    } else {
+                        record_error(Link::NapcatWebUi, detail);
                     }
 
                     record_unknown(Link::QqLogin, "NapCat WebUI 不可达，无法判断登录状态");
