@@ -424,7 +424,15 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                 >
                   {/* Sender & Badge Info */}
                   <div className="flex items-center gap-1.5 text-[10px] text-slate-400 px-1 font-sans">
-                    <span>{isMe ? '我' : (msg.senderName || contact.name)}</span>
+                    <span>
+                      {isMe
+                        ? '我'
+                        : contact.targetType === 'group'
+                          ? (msg.senderName && msg.senderName !== contact.name && msg.senderName !== '好友'
+                              ? msg.senderName
+                              : (msg.senderId ? `群友 (${msg.senderId})` : '群成员'))
+                          : (msg.senderName || contact.name)}
+                    </span>
                     {isAiAuto && (
                       <span className="bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400 font-semibold px-1 py-0.2 rounded text-[9px] border border-sky-200/60 dark:border-sky-800 flex items-center gap-0.5">
                         <Sparkles className="w-2.5 h-2.5" /> AI 秒回 (qwen3.8-flash)

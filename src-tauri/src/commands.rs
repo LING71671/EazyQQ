@@ -637,11 +637,29 @@ pub async fn get_messages(
         let sender_name = if is_from_me {
             "我".to_string()
         } else {
-            sender.and_then(|s| s.get("card").or_else(|| s.get("nickname")))
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .unwrap_or("好友")
-                .to_string()
+            sender
+                .and_then(|s| {
+                    s.get("card")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .or_else(|| {
+                            s.get("nickname")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.trim())
+                                .filter(|s| !s.is_empty())
+                        })
+                })
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| {
+                    if !sender_id.is_empty() {
+                        sender_id.clone()
+                    } else if is_group {
+                        "群成员".to_string()
+                    } else {
+                        "好友".to_string()
+                    }
+                })
         };
 
         let chat_msg = MessageItemDto {
@@ -903,9 +921,32 @@ pub async fn summarize_file(
 
 #[command]
 pub async fn open_folder(target_path: String) -> Result<ApiResponse<()>, String> {
+    let base_data = crate::services::logging::data_dir();
+    let path = if target_path.is_empty() || target_path == "." {
+        base_data.join("group_files")
+    } else {
+        let p = std::path::Path::new(&target_path);
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            let rel = target_path
+                .replace('/', "\\")
+                .trim_start_matches("EazyQQ_Data\\")
+                .trim_start_matches("EazyQQ_Data/")
+                .to_string();
+            base_data.join(rel)
+        }
+    };
+
+    let _ = std::fs::create_dir_all(&path);
+
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("explorer").arg(&target_path).spawn();
+        let canonical_str = path.to_string_lossy().to_string();
+        tracing::info!("open_folder: launching explorer for {}", canonical_str);
+        let _ = std::process::Command::new("explorer")
+            .arg(&canonical_str)
+            .spawn();
     }
     Ok(ApiResponse::ok(()))
 }

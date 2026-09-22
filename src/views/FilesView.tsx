@@ -167,7 +167,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
             <span>{isSyncing ? '同步中…' : '同步群文件'}</span>
           </button>
           <button
-            onClick={() => onOpenFolder('EazyQQ_Data/group_files')}
+            onClick={() => onOpenFolder(selectedGroupId ? `group_files/${selectedGroupId}` : 'group_files')}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer active:scale-95"
           >
             <FolderOpen className="w-3.5 h-3.5" />

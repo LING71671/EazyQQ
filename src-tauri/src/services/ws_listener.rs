@@ -268,10 +268,28 @@ async fn handle_message_event(
         .map(|v| v.to_string().replace('\"', ""))
         .unwrap_or_default();
     let sender_name = sender
-        .and_then(|s| s.get("card").or_else(|| s.get("nickname")))
-        .and_then(|v| v.as_str())
-        .unwrap_or("好友")
-        .to_string();
+        .and_then(|s| {
+            s.get("card")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    s.get("nickname")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                })
+        })
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            if !user_id.is_empty() {
+                user_id.clone()
+            } else if message_type == "group" {
+                "群成员".to_string()
+            } else {
+                "好友".to_string()
+            }
+        });
 
     let target_id = if message_type == "group" {
         event
