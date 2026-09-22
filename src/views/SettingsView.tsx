@@ -7,6 +7,7 @@ import {
   FileDown,
   CheckCircle2,
   AlertCircle,
+  HelpCircle,
   RefreshCw,
   Clock,
   Sparkles,
@@ -15,6 +16,7 @@ import {
   Sliders,
 } from 'lucide-react';
 import type { AiProviderId, AppConfig, DependencyHealthReport } from '@/api/contracts';
+import { api } from '@/api/client';
 
 /**
  * Provider presets, mirroring `services/ai.rs`.
@@ -153,6 +155,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   );
 
   const [isSaved, setIsSaved] = useState(false);
+
+  // End-to-end chain status. Kept local to this view because it is diagnostic detail,
+  // not something the rest of the app needs to react to.
+  type ChainLink = {
+    link: string;
+    label: string;
+    impact: string;
+    health: 'ok' | 'unknown' | 'failed';
+    detail: string;
+  };
+  const [chainLinks, setChainLinks] = useState<ChainLink[]>([]);
+  const [chainFirstBreak, setChainFirstBreak] = useState<{
+    label: string;
+    detail: string;
+    impact: string;
+  } | null>(null);
+  const [chainLoading, setChainLoading] = useState(false);
+
+  const loadChain = async () => {
+    setChainLoading(true);
+    try {
+      const res = await api.getChainStatus();
+      if (res.success && res.data) {
+        setChainLinks(res.data.links as ChainLink[]);
+        setChainFirstBreak(res.data.firstBreak ?? null);
+      }
+    } catch (e) {
+      console.error('Failed to load chain status', e);
+    } finally {
+      setChainLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadChain();
+  }, []);
 
   // The config arrives asynchronously from SQLite, so the useState initialisers above
   // only ever see the placeholder defaults. Re-seed whenever the real config lands,
@@ -628,7 +666,71 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        {/* 5. Diagnostics Export */}
+        {/* 5. End-to-end chain status */}
+        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div>
+              <h4 className="text-xs font-semibold text-slate-900">全链路状态</h4>
+              <p className="text-[11px] text-slate-400">
+                从协议端到界面的 8 个环节逐个体检。流水线里第一个断点之后的异常都只是后果，先修第一个。
+              </p>
+            </div>
+            <button
+              onClick={loadChain}
+              disabled={chainLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-50 transition-colors shrink-0"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${chainLoading ? 'animate-spin' : ''}`} />
+              <span>{chainLoading ? '检测中…' : '重新检测'}</span>
+            </button>
+          </div>
+
+          {chainFirstBreak ? (
+            <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-[11px] leading-relaxed">
+              <span className="font-semibold text-red-900 block">
+                第一个断点：{chainFirstBreak.label}
+              </span>
+              <span className="text-red-800 block mt-0.5">{chainFirstBreak.detail}</span>
+              <span className="text-red-700 block mt-1">影响：{chainFirstBreak.impact}</span>
+            </div>
+          ) : chainLinks.length > 0 ? (
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-[11px] text-emerald-900">
+              未发现断点。
+              {chainLinks.some((l) => l.health === 'unknown') &&
+                ' 其中部分环节尚未被验证（需要对应组件运行才能确认）。'}
+            </div>
+          ) : null}
+
+          <div className="space-y-1.5">
+            {chainLinks.map((link) => (
+              <div
+                key={link.link}
+                className="flex items-start gap-2.5 py-1.5 border-b border-slate-50 last:border-0"
+              >
+                {link.health === 'ok' ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                ) : link.health === 'failed' ? (
+                  <AlertCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 shrink-0" />
+                ) : (
+                  <HelpCircle className="w-3.5 h-3.5 text-slate-300 mt-0.5 shrink-0" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xs font-medium text-slate-800 shrink-0">{link.label}</span>
+                    <span className="text-[11px] text-slate-500 truncate">{link.detail}</span>
+                  </div>
+                  {link.health === 'failed' && (
+                    <span className="text-[10px] text-red-600 block mt-0.5">
+                      影响：{link.impact}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 6. Diagnostics Export */}
         <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
             <div>

@@ -621,11 +621,15 @@ mod tests {
         Fixture {
             db: Arc::new(Database::init(&path).expect("temp db")),
             onebot: Arc::new(OneBotClient::new("http://127.0.0.1:1".to_string())),
-            ai: Arc::new(AiService::new(
-                "http://127.0.0.1:1/v1".to_string(),
-                String::new(),
-                "test-model".to_string(),
-            )),
+            // Points at a dead port on purpose: any test that reaches the AI step must
+            // fail there, which is how we prove the request got past the earlier gates.
+            ai: Arc::new(AiService::new(crate::services::ai::AiRuntimeConfig {
+                provider: "test".to_string(),
+                base_url: "http://127.0.0.1:1/v1".to_string(),
+                api_key: String::new(),
+                model: "test-model".to_string(),
+                ..Default::default()
+            })),
         }
     }
 
