@@ -25,11 +25,22 @@ use crate::services::summarizer::{self, SummaryRequest, DEFAULT_PROMPT};
 
 const TICK_SECONDS: u64 = 60;
 
+/// The interval every rule used to be pre-filled with. Kept only so the one-time
+/// normalisation above can recognise rows written by older versions.
+const LEGACY_DEFAULT_INTERVAL_HOURS: i32 = 6;
+
 #[derive(Debug, Clone)]
 pub struct SummarySettings {
     pub enabled: bool,
     pub sliding_window_hours: i32,
     pub custom_prompt: String,
+    /// Cadence from `summary.intervalType` / `customIntervalMinutes`, in hours.
+    ///
+    /// These two settings were selectable in the UI and read by nothing - the scheduler
+    /// only ever looked at each rule's own interval, so choosing "every 2 hours" changed
+    /// nothing. They are the installation-wide default now; a rule whose own interval is
+    /// 0 follows it, and a positive value overrides it for that group.
+    pub interval_hours: i64,
 }
 
 impl Default for SummarySettings {
@@ -38,6 +49,7 @@ impl Default for SummarySettings {
             enabled: true,
             sliding_window_hours: 6,
             custom_prompt: DEFAULT_PROMPT.to_string(),
+            interval_hours: 6,
         }
     }
 }
@@ -76,7 +88,92 @@ pub fn read_settings(db: &Database) -> SummarySettings {
             .filter(|s| !s.trim().is_empty())
             .unwrap_or(DEFAULT_PROMPT)
             .to_string(),
+        interval_hours: resolve_interval_hours(summary),
     }
+}
+
+/// Turn `intervalType` / `customIntervalMinutes` into an hour count.
+///
+/// `intervalType` is the user's choice from the settings dropdown; `custom` defers to the
+/// minute field. An unrecognised or missing value falls back to 6h, matching the default
+/// the UI shows, so a hand-edited config cannot silently change the cadence.
+fn resolve_interval_hours(summary: &Value) -> i64 {
+    let kind = summary
+        .get("intervalType")
+        .and_then(|v| v.as_str())
+        .unwrap_or("6h");
+
+    match kind {
+        "1h" => 1,
+        "2h" => 2,
+        "4h" => 4,
+        "6h" => 6,
+        "12h" => 12,
+        "24h" => 24,
+        "custom" => {
+            let minutes = summary
+                .get("customIntervalMinutes")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(360);
+            // Round up so a sub-hour custom interval still yields a usable hour count,
+            // and clamp so a typo cannot schedule something absurd.
+            ((minutes + 59) / 60).clamp(1, 720)
+        }
+        other => {
+            tracing::warn!(
+                "scheduler: unrecognised intervalType {:?}, falling back to 6h",
+                other
+            );
+            6
+        }
+    }
+}
+
+/// One-time normalisation of rule intervals written before the global cadence existed.
+///
+/// `contact_rules.summary_interval_hours` used to be pre-filled with 6 for every group and
+/// was the only value the scheduler ever read, which is why the cadence dropdown on the
+/// settings page did nothing. Now 0 means "follow the global cadence", but existing rows
+/// still carry the old hardcoded 6 - and that reads as an explicit override, so the global
+/// setting would keep being ignored on every upgraded install.
+///
+/// Only the exact legacy default is touched. Since the global default is also 6h, behaviour
+/// is unchanged until the user picks a different cadence, at which point following it is
+/// precisely what they asked for. Returns how many rules were adjusted.
+pub fn normalize_legacy_intervals(db: &Database) -> usize {
+    let rules = match db.get_all_rules() {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("scheduler: cannot read rules for interval normalisation: {}", e);
+            return 0;
+        }
+    };
+
+    let mut changed = 0usize;
+    for mut rule in rules {
+        if rule.summary_interval_hours != LEGACY_DEFAULT_INTERVAL_HOURS {
+            continue;
+        }
+        rule.summary_interval_hours = 0;
+        match db.upsert_rule(&rule) {
+            Ok(_) => changed += 1,
+            Err(e) => tracing::warn!(
+                "scheduler: could not normalise interval for {}: {}",
+                rule.target_id,
+                e
+            ),
+        }
+    }
+
+    if changed > 0 {
+        tracing::info!(
+            "scheduler: {} rule(s) now follow the global cadence instead of the old \
+             hardcoded {}h default",
+            changed,
+            LEGACY_DEFAULT_INTERVAL_HOURS
+        );
+    }
+    changed
 }
 
 fn now_ms() -> i64 {
@@ -192,7 +289,13 @@ pub async fn tick(
     let mut outcomes = Vec::new();
 
     for group in groups {
-        let interval_hours = group.summary_interval_hours.max(1) as i64;
+        // A rule interval of 0 means "follow the installation-wide cadence".
+        let interval_hours = if group.summary_interval_hours > 0 {
+            group.summary_interval_hours as i64
+        } else {
+            settings.interval_hours
+        }
+        .max(1);
         let interval_ms = interval_hours * 3600 * 1000;
 
         // Last run = created_at of the newest summary for this target.
@@ -288,6 +391,73 @@ mod tests {
         let path = dir.join(format!("{}_{}.db", tag, std::process::id()));
         let _ = std::fs::remove_file(&path);
         std::sync::Arc::new(Database::init(&path).expect("temp db"))
+    }
+
+    #[test]
+    fn interval_type_maps_to_hours() {
+        // These two settings were selectable in the UI and read by nothing until now, so
+        // each branch needs to actually produce a cadence.
+        for (kind, expected) in [("1h", 1), ("2h", 2), ("4h", 4), ("6h", 6), ("12h", 12), ("24h", 24)] {
+            let v = serde_json::json!({ "intervalType": kind });
+            assert_eq!(resolve_interval_hours(&v), expected, "intervalType {kind}");
+        }
+    }
+
+    #[test]
+    fn custom_interval_uses_the_minute_field() {
+        let v = serde_json::json!({ "intervalType": "custom", "customIntervalMinutes": 180 });
+        assert_eq!(resolve_interval_hours(&v), 3);
+
+        // Sub-hour values round up rather than collapsing to zero.
+        let v = serde_json::json!({ "intervalType": "custom", "customIntervalMinutes": 30 });
+        assert_eq!(resolve_interval_hours(&v), 1);
+    }
+
+    #[test]
+    fn custom_interval_is_clamped() {
+        let v = serde_json::json!({ "intervalType": "custom", "customIntervalMinutes": 0 });
+        assert_eq!(resolve_interval_hours(&v), 1, "must not schedule a zero-length cycle");
+
+        let v = serde_json::json!({ "intervalType": "custom", "customIntervalMinutes": 999999 });
+        assert_eq!(resolve_interval_hours(&v), 720, "a typo must not schedule years ahead");
+    }
+
+    #[test]
+    fn unknown_or_missing_interval_type_falls_back_to_six_hours() {
+        assert_eq!(resolve_interval_hours(&serde_json::json!({})), 6);
+        assert_eq!(
+            resolve_interval_hours(&serde_json::json!({ "intervalType": "whenever" })),
+            6
+        );
+    }
+
+    #[test]
+    fn global_cadence_is_read_from_config() {
+        let db = temp_db("interval_type");
+        db.set_setting(
+            "app_config",
+            r#"{"summary":{"intervalType":"2h"}}"#,
+        )
+        .unwrap();
+        assert_eq!(read_settings(&db).interval_hours, 2);
+
+        db.set_setting(
+            "app_config",
+            r#"{"summary":{"intervalType":"custom","customIntervalMinutes":90}}"#,
+        )
+        .unwrap();
+        assert_eq!(read_settings(&db).interval_hours, 2, "90 minutes rounds up to 2h");
+    }
+
+    #[test]
+    fn a_rule_interval_of_zero_defers_to_the_global_cadence() {
+        // The resolution rule itself: 0 = follow the installation-wide setting, anything
+        // positive is an explicit override for that group.
+        let resolve = |rule: i32, global: i64| -> i64 {
+            if rule > 0 { rule as i64 } else { global }.max(1)
+        };
+        assert_eq!(resolve(0, 3), 3, "0 must follow the global cadence");
+        assert_eq!(resolve(12, 3), 12, "a positive value overrides the global cadence");
     }
 
     #[test]

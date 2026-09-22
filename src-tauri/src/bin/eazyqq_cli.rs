@@ -175,6 +175,8 @@ impl Services {
                 .map_err(|e| format!("cannot open SQLite database: {}", e))?,
         );
 
+        eazyqq_lib::services::scheduler::normalize_legacy_intervals(&db);
+
         if let Some(uin) = eazyqq_lib::services::accounts::active() {
             if let Some(note) = eazyqq_lib::services::accounts::seed_settings_if_missing(&db, &uin)
             {

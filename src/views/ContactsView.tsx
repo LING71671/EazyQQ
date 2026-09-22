@@ -196,7 +196,11 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
             {filtered.map((contact) => {
               const isGroup = contact.targetType === 'group';
               const isSummaryWhitelisted = !!contact.rule.isSummaryWhitelist;
-              const summaryInterval = contact.rule.summaryIntervalHours || 6;
+              // 0 means "follow the cadence set on the settings page"; a positive value is
+              // an explicit per-group override. Showing "每0h" for the former would be wrong.
+              const summaryInterval = contact.rule.summaryIntervalHours ?? 0;
+              const summaryLabel =
+                summaryInterval > 0 ? `每${summaryInterval}h` : '跟随全局周期';
               const isTestUser = contact.targetId === '1739677116';
 
               return (
@@ -290,7 +294,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                           title={isSummaryWhitelisted ? '点击移出总结白名单' : '点击加入总结白名单'}
                         >
                           <Sparkles className={`w-3 h-3 ${isSummaryWhitelisted ? 'text-sky-600' : 'text-slate-400'}`} />
-                          <span>{isSummaryWhitelisted ? `简报白名单 (每${summaryInterval}h)` : '+ 简报白名单'}</span>
+                          <span>{isSummaryWhitelisted ? `简报白名单 (${summaryLabel})` : '+ 简报白名单'}</span>
                         </button>
                       </div>
                     )}

@@ -82,6 +82,10 @@ pub fn run() {
     }));
     tracing::info!("SQLite ready at {}", db_path.display());
 
+    // Rules written by older versions carry the old hardcoded interval, which would shadow
+    // the global cadence setting forever on an upgraded install.
+    services::scheduler::normalize_legacy_intervals(&db);
+
     // A brand-new account database inherits the settings that belong to the installation
     // (AI provider and key, tray behaviour, summary defaults) so a second QQ account does
     // not have to be configured from scratch.

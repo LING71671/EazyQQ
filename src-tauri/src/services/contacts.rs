@@ -50,7 +50,10 @@ fn default_rule(target_id: &str, target_type: &str, name: &str) -> ContactRuleRe
         cooldown_seconds: 5,
         enabled: false,
         is_summary_whitelist: false,
-        summary_interval_hours: 6,
+        // 0 means "follow the installation-wide cadence from the settings page"; a
+        // positive value is an explicit per-group override. Defaulting to a number here
+        // would shadow the global setting for every group.
+        summary_interval_hours: 0,
         updated_at: 0,
     }
 }

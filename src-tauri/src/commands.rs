@@ -283,7 +283,8 @@ pub async fn get_contacts(state: State<'_, AppState>) -> Result<ApiResponse<serd
                 cooldown_seconds: 5,
                 enabled: false,
                 is_summary_whitelist: false,
-                summary_interval_hours: 6,
+                // 0 = follow the global cadence (see scheduler::resolve_interval_hours).
+                summary_interval_hours: 0,
                 updated_at: 0,
             };
             let _ = state.db.upsert_rule(&new_rule);
@@ -331,7 +332,8 @@ pub async fn get_contacts(state: State<'_, AppState>) -> Result<ApiResponse<serd
                 cooldown_seconds: 5,
                 enabled: false,
                 is_summary_whitelist: false,
-                summary_interval_hours: 6,
+                // 0 = follow the global cadence (see scheduler::resolve_interval_hours).
+                summary_interval_hours: 0,
                 updated_at: 0,
             };
             let _ = state.db.upsert_rule(&new_rule);
