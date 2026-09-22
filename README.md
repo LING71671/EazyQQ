@@ -108,7 +108,7 @@ EazyQQ 侧的处理是**自适应降级**（默认关闭、失败后自动启用
 3. 更新或重装显卡驱动；
 4. 以上均无效时，再为 QQ 与 EazyQQ 统一关闭 Chromium GPU 加速。
 
-确认后请相应调整 `tauri.conf.json` 的 `additionalBrowserArgs`。
+确认根因已解决后，用 `eazyqq_cli set-config --key webview_compat_mode --value false` 关闭兼容模式即可恢复沙箱。
 
 ---
 
