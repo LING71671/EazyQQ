@@ -56,6 +56,13 @@ pub struct ProtocolStatusDto {
     pub login_status: String, // "unlogged" | "waiting_scan" | "scanned" | "logged_in"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub qrcode_base64: Option<String>,
+    /// Why no QR code could be obtained, when that is the case.
+    ///
+    /// Without this the frontend only knew `qrcodeBase64` was absent, so it sat on
+    /// "正在向腾讯请求二维码..." indefinitely while the protocol side was down - the failure
+    /// was invisible even though the backend knew exactly what had gone wrong.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub qrcode_error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub qq_number: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

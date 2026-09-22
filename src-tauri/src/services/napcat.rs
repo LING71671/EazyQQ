@@ -2,11 +2,9 @@ use reqwest::Client;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::path::Path;
-use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
-use tracing::info;
 
 fn compute_hash(token: &str) -> String {
     let mut hasher = Sha256::new();
@@ -89,44 +87,27 @@ impl NapCatService {
         self.client.get(&url).send().await.map(|r| r.status().is_success()).unwrap_or(false)
     }
 
-    pub fn launch_if_needed(&self, target_uin: Option<&str>) -> Result<(), String> {
+    /// Launch NapCat through the one launcher that knows how to start it.
+    ///
+    /// This used to spawn `NapCatWinBootMain.exe` (or `launcher-user.bat`) directly and pass
+    /// the target UIN as the first argument. That binary's first argument is the QQ *path*
+    /// and its second is the hook DLL, so NapCat rejected the UIN with "provided QQ path is
+    /// invalid"; called with no target at all - which is exactly what the QR-code flow did -
+    /// it received no arguments and failed the same way. Two launchers existed and the login
+    /// path used the wrong one, so requesting a fresh login QR code never worked.
+    ///
+    /// `napcat_boot::start` resolves the QQ path from `config/qq_path.txt`, passes the hook
+    /// DLL and exports the variables NapCat expects, so there is now a single code path. The
+    /// UIN is deliberately not a launch argument: which account to sign into is decided by
+    /// NapCat's quick-login call, not by a command line.
+    pub fn launch_if_needed(&self) -> Result<(), String> {
         let dir = Path::new(&self.napcat_dir);
-        let launcher_bat = dir.join("launcher-user.bat");
-        let exe_path = dir.join("NapCatWinBootMain.exe");
-
-        let mut cmd = if launcher_bat.exists() {
-            let mut c = Command::new("cmd.exe");
-            c.arg("/c").arg("launcher-user.bat");
-            if let Some(uin) = target_uin {
-                if !uin.is_empty() {
-                    c.arg(uin);
-                }
-            }
-            c
-        } else if exe_path.exists() {
-            let mut c = Command::new(&exe_path);
-            if let Some(uin) = target_uin {
-                if !uin.is_empty() {
-                    c.arg(uin);
-                }
-            }
-            c
+        let outcome = crate::services::napcat_boot::start(dir);
+        if outcome.ok {
+            Ok(())
         } else {
-            return Err(format!("找不到 NapCat 启动程序，检查目录: {:?}", dir));
-        };
-
-        cmd.current_dir(dir);
-
-        info!("Starting NapCat daemon from {:?}", dir);
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
-            cmd.creation_flags(CREATE_NO_WINDOW);
+            Err(outcome.detail)
         }
-
-        cmd.spawn().map_err(|e| format!("Failed to spawn NapCat: {}", e))?;
-        Ok(())
     }
 
     async fn post_authed(&self, path: &str, json_body: &Value) -> Result<Value, String> {

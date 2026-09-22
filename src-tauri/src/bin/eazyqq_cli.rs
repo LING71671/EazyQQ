@@ -2255,12 +2255,40 @@ async fn cmd_selftest(svc_ctx: &Services, args: &Args) -> Result<(), String> {
         dotdot
     );
 
-    // 7. Redaction: a supplied secret must not survive.
+    // 7. Where the data lives must not depend on how the app was launched.
+    //
+    // Deriving the root from the working directory meant that double-clicking the executable
+    // silently switched to an empty database beside the binary, and reported napcat/ as
+    // missing. Both halves of that are checked here: the root must not sit inside build
+    // output, and it must not move when the working directory changes.
+    let root = svc::logging::workspace_root();
+    let root_text = root.to_string_lossy().replace('\\', "/");
+    check!(
+        "数据根目录不在构建输出内",
+        !root_text.contains("/target/"),
+        root_text.clone()
+    );
+
+    let cwd_before = std::env::current_dir().ok();
+    if let Some(original) = cwd_before {
+        if std::env::set_current_dir(std::env::temp_dir()).is_ok() {
+            let moved = svc::logging::workspace_root();
+            check!(
+                "数据根目录与当前工作目录无关",
+                moved == root,
+                format!("从 {} 启动时变成 {}", original.display(), moved.display())
+            );
+            // Restore immediately: later checks must not see a relocated working directory.
+            let _ = std::env::set_current_dir(&original);
+        }
+    }
+
+    // 8. Redaction: a supplied secret must not survive.
     let secret = "sk_tr_selftest_secret_value".to_string();
     let redacted = svc::diagnostics::redact(&format!("key={}", secret), &[secret.clone()]);
     check!("诊断脱敏移除已知密钥", !redacted.contains(&secret));
 
-    // 8. Diagnostics archive round-trip: we write the ZIP ourselves, so prove it reads back.
+    // 9. Diagnostics archive round-trip: we write the ZIP ourselves, so prove it reads back.
     let zip = svc::diagnostics::build_zip(&[("probe.txt".to_string(), b"hello".to_vec())]);
     let is_zip = zip.len() > 22 && &zip[0..4] == b"PK\x03\x04";
     check!("自实现 ZIP 容器结构正确", is_zip);

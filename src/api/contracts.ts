@@ -18,6 +18,8 @@ export interface ProtocolStatusDto {
   isConnected: boolean;
   loginStatus: 'unlogged' | 'waiting_scan' | 'scanned' | 'logged_in';
   qrcodeBase64?: string;
+  /** Why no QR code could be obtained, when that is the case. */
+  qrcodeError?: string;
   qqNumber?: string;
   nickname?: string;
   avatarUrl?: string;

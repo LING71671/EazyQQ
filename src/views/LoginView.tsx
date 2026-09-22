@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { QrCode, RefreshCw, Smartphone, CheckCircle, ShieldCheck } from 'lucide-react';
+import { QrCode, RefreshCw, Smartphone, CheckCircle, ShieldCheck, AlertCircle } from 'lucide-react';
 import QRCode from 'qrcode';
 import type { ProtocolStatusDto } from '@/api/contracts';
 
@@ -7,9 +7,11 @@ interface LoginViewProps {
   status: ProtocolStatusDto;
   onRefreshQr: () => void;
   isLoading: boolean;
+  /** Why the last refresh attempt failed, if it did. */
+  error?: string | null;
 }
 
-export const LoginView: React.FC<LoginViewProps> = ({ status, onRefreshQr, isLoading }) => {
+export const LoginView: React.FC<LoginViewProps> = ({ status, onRefreshQr, isLoading, error }) => {
   const isLoggedIn = status.loginStatus === 'logged_in';
   const [generatedQr, setGeneratedQr] = useState<string | null>(null);
 
@@ -98,7 +100,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ status, onRefreshQr, isLoa
                 <img 
                   src={currentQrImage} 
                   alt="Login QR Code" 
-                  className="w-full h-full object-contain rounded-xl"
+                  className={`w-full h-full object-contain rounded-xl transition-opacity ${error ? 'opacity-40' : ''}`}
                 />
               ) : (
                 <div className="flex flex-col items-center gap-2 text-slate-400">
@@ -106,11 +108,26 @@ export const LoginView: React.FC<LoginViewProps> = ({ status, onRefreshQr, isLoa
                   <span className="text-xs">正在向腾讯请求二维码...</span>
                 </div>
               )}
+
+              {/* A failed refresh leaves the previous code on screen. Say so on the image
+                  itself, otherwise it looks like the button simply did nothing. */}
+              {error && currentQrImage && (
+                <div className="absolute inset-0 flex items-center justify-center z-20">
+                  <span className="text-[11px] font-semibold text-rose-700 bg-rose-50/95 px-3 py-1.5 rounded-lg border border-rose-200">
+                    此二维码可能已过期
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Status notice */}
             <div className="h-5 flex items-center justify-center">
-              {refreshedNotice ? (
+              {error ? (
+                <span className="text-[11px] text-rose-600 font-medium flex items-center gap-1 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200/60">
+                  <AlertCircle className="w-3 h-3 text-rose-500" />
+                  刷新失败
+                </span>
+              ) : refreshedNotice ? (
                 <span className="text-[11px] text-emerald-600 font-medium flex items-center gap-1 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/60">
                   <CheckCircle className="w-3 h-3 text-emerald-500" />
                   最新有效二维码已就绪
@@ -121,6 +138,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ status, onRefreshQr, isLoa
                 </span>
               )}
             </div>
+
+            {/* The reason, verbatim. The backend already explains it (protocol side down,
+                QQ path wrong); hiding that behind "刷新失败" would waste it. */}
+            {error && (
+              <p className="max-w-[16rem] text-[11px] leading-relaxed text-rose-600/90 text-center break-words">
+                {error}
+              </p>
+            )}
           </div>
         )}
 

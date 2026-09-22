@@ -68,7 +68,14 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
-    host: false,
+    // Bind IPv4 loopback explicitly.
+    //
+    // `host: false` means "listen on localhost", and Node resolves that to `::1` first, so
+    // the dev server ended up listening on IPv6 only - visible as `[::1]:1420` in netstat.
+    // WebView2 resolves `localhost` to `127.0.0.1`, found nothing there, and could not load
+    // the frontend at all: the window stayed hidden and the app looked broken. Naming the
+    // address removes the resolution step from both sides.
+    host: '127.0.0.1',
     // Transform the entry graph during server startup instead of on first request.
     warmup: {
       clientFiles: [

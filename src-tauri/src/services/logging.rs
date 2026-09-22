@@ -17,15 +17,60 @@ use tracing_subscriber::fmt::MakeWriter;
 /// Rotate the active log once it grows past this size.
 const MAX_LOG_BYTES: u64 = 5 * 1024 * 1024;
 
-/// Resolve the workspace root the same way `lib.rs` does, so the CLI and the GUI
-/// always agree on where logs and the SQLite database live.
+/// Resolve the workspace root: where `EazyQQ_Data/` and `napcat/` live.
+///
+/// This is anchored on the executable's location, never on the process working directory.
+/// Deriving it from the working directory looked harmless in a terminal - `cargo run` and
+/// `cd src-tauri && ./target/debug/eazyqq.exe` both happen to land in the right place - but
+/// the way a person actually launches the app is by double-clicking it, and that sets the
+/// working directory to the folder holding the executable. The app then silently used a
+/// second, empty `EazyQQ_Data` beside the binary: every rule and message appeared to be
+/// gone, and `napcat/` was reported missing so protocol control was unavailable too.
+///
+/// Two layouts are recognised:
+///
+/// * development - `<root>/src-tauri/target/<profile>/<binary>`, where walking up to the
+///   directory named `src-tauri` identifies the repository root;
+/// * installed or portable - anything else, where the data sits beside the executable.
+///
+/// Falls back to the old working-directory behaviour only if the OS will not report the
+/// executable path, which in practice does not happen.
 pub fn workspace_root() -> PathBuf {
+    if let Some(root) = workspace_root_from_exe() {
+        return root;
+    }
+
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     if cwd.ends_with("src-tauri") {
         cwd.parent().unwrap_or(&cwd).to_path_buf()
     } else {
         cwd
     }
+}
+
+/// Derive the workspace root from where this binary is installed.
+fn workspace_root_from_exe() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+
+    // Development layout: the binary lives under `src-tauri/target/...`, so the first
+    // ancestor named `src-tauri` marks the repository root. Walking up rather than counting
+    // a fixed number of levels keeps this correct for both `target/debug` and
+    // `target/x86_64-pc-windows-msvc/debug`.
+    let mut cur = dir;
+    while let Some(parent) = cur.parent() {
+        if parent
+            .file_name()
+            .map(|n| n.to_string_lossy() == "src-tauri")
+            .unwrap_or(false)
+        {
+            return Some(parent.parent().unwrap_or(parent).to_path_buf());
+        }
+        cur = parent;
+    }
+
+    // Installed or portable layout: beside the executable.
+    Some(dir.to_path_buf())
 }
 
 /// Data directory for the account this process is serving.
@@ -282,5 +327,51 @@ pub fn ensure_dir(path: &Path) -> bool {
             tracing::error!("cannot create directory {}: {}", path.display(), e);
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The working directory must not influence where private data is written.
+    ///
+    /// Regression test for a bug that only appeared on the launch path people actually use:
+    /// double-clicking the executable sets the working directory to the folder containing
+    /// it, which used to relocate the database to `target/debug/EazyQQ_Data` - an empty
+    /// database, so the user's rules and messages looked deleted - and hid `napcat/`.
+    #[test]
+    fn workspace_root_ignores_the_working_directory() {
+        let before = workspace_root();
+        let original = std::env::current_dir().expect("cwd");
+
+        std::env::set_current_dir(std::env::temp_dir()).expect("chdir to temp");
+        let after = workspace_root();
+        std::env::set_current_dir(&original).expect("restore cwd");
+
+        assert_eq!(before, after, "workspace root moved when the cwd changed");
+    }
+
+    /// Private data must never be written into build output.
+    ///
+    /// `cargo clean` would delete it, and a rebuilt binary would appear to have lost
+    /// everything.
+    #[test]
+    fn workspace_root_is_not_inside_build_output() {
+        let root = workspace_root().to_string_lossy().replace('\\', "/");
+        assert!(
+            !root.contains("/target/"),
+            "workspace root {root} is inside build output"
+        );
+    }
+
+    /// The resolved root must be the one holding the data directory, so that `EazyQQ_Data`
+    /// and `napcat` are looked up in the same place.
+    #[test]
+    fn data_root_hangs_off_the_workspace_root() {
+        assert_eq!(
+            crate::services::accounts::data_root(),
+            workspace_root().join("EazyQQ_Data")
+        );
     }
 }

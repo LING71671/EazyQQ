@@ -229,11 +229,24 @@ pub fn run() {
                         return;
                     }
 
-                    // Step 1: first observed failure -> enable the fallback and restart.
-                    if !compat_already_on {
+                    // Step 1: decide whether the WebView is actually to blame before changing
+                    // anything that persists.
+                    //
+                    // "The frontend never mounted" has two very different causes, and the
+                    // remedy for one of them permanently weakens the process. In a packaged
+                    // build the assets are embedded, so failing to mount really does mean the
+                    // WebView could not run them. In a development build the page is fetched
+                    // over the network first - when the dev server was bound to IPv6 only and
+                    // WebView2 dialled IPv4, the page never arrived at all, and blaming the
+                    // WebView would have turned the sandbox off for good to fix a problem that
+                    // had nothing to do with it.
+                    let webview_is_culprit = !tauri::is_dev();
+
+                    if !compat_already_on && webview_is_culprit {
                         tracing::warn!(
-                            "frontend did not mount within 9s and WebView compatibility mode \
-                             is off. Enabling it (adds --no-sandbox to the WebView2 command \
+                            "frontend did not mount within 9s and the frontend assets are \
+                             embedded, so the WebView could not run them. Enabling \
+                             compatibility mode (adds --no-sandbox to the WebView2 command \
                              line) and restarting once. This failure produces no crash dump \
                              - it means the WebView could not execute JS, not that a process \
                              died."
@@ -249,17 +262,39 @@ pub fn run() {
                         handle.restart();
                     }
 
-                    // Step 2: compatibility mode is already on, so reload once in case the
-                    // failure was transient.
-                    tracing::warn!(
-                        "compatibility mode is already enabled but the frontend still has \
-                         not mounted; reloading the webview once"
-                    );
-                    if let Some(w) = handle.get_webview_window("main") {
-                        let _ = w.eval("window.location.reload()");
-                    }
+                    if !compat_already_on {
+                        // Development build: the page should have arrived from a server, so
+                        // report where from instead of touching the WebView configuration. The
+                        // window is shown in step 3 so the failure is visible rather than
+                        // silent.
+                        let dev_url = handle
+                            .config()
+                            .build
+                            .dev_url
+                            .as_ref()
+                            .map(|u| u.to_string())
+                            .unwrap_or_else(|| "(devUrl is not set)".to_string());
+                        tracing::error!(
+                            "frontend did not mount within 9s. This is a development build, so \
+                             the page is fetched from {} - check that address first; the WebView \
+                             is probably fine. Compatibility mode is deliberately NOT enabled, \
+                             because disabling the sandbox would not make an unreachable dev \
+                             server reachable.",
+                            dev_url
+                        );
+                    } else {
+                        // Step 2: compatibility mode is already on, so reload once in case the
+                        // failure was transient.
+                        tracing::warn!(
+                            "compatibility mode is already enabled but the frontend still has \
+                             not mounted; reloading the webview once"
+                        );
+                        if let Some(w) = handle.get_webview_window("main") {
+                            let _ = w.eval("window.location.reload()");
+                        }
 
-                    tokio::time::sleep(std::time::Duration::from_secs(9)).await;
+                        tokio::time::sleep(std::time::Duration::from_secs(9)).await;
+                    }
 
                     // Step 3: never leave the app invisible.
                     if let Some(window) = handle.get_webview_window("main") {

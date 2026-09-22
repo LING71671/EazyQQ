@@ -38,6 +38,7 @@ pub async fn get_protocol_status(
                     is_connected: true,
                     login_status: "logged_in".to_string(),
                     qrcode_base64: None,
+                    qrcode_error: None,
                     qq_number: uin,
                     nickname,
                     avatar_url,
@@ -53,6 +54,12 @@ pub async fn get_protocol_status(
             is_connected: false,
             login_status: "unlogged".to_string(),
             qrcode_base64: None,
+            // Saying nothing here is what left the UI spinning on "正在向腾讯请求二维码..."
+            // forever: the backend knew the protocol side was down and did not mention it.
+            qrcode_error: Some(
+                "协议端（NapCat）未运行，无法获取登录二维码。请确认 NapCat 已启动且 QQ 路径正确"
+                    .to_string(),
+            ),
             qq_number: None,
             nickname: None,
             avatar_url: None,
@@ -69,6 +76,7 @@ pub async fn get_protocol_status(
                     is_connected: true,
                     login_status: "logged_in".to_string(),
                     qrcode_base64: None,
+                    qrcode_error: None,
                     qq_number: uin,
                     nickname: None,
                     avatar_url,
@@ -80,6 +88,7 @@ pub async fn get_protocol_status(
                         is_connected: true,
                         login_status: "waiting_scan".to_string(),
                         qrcode_base64: Some(qr.to_string()),
+                        qrcode_error: None,
                         qq_number: None,
                         nickname: None,
                         avatar_url: None,
@@ -89,12 +98,19 @@ pub async fn get_protocol_status(
         }
     }
 
-    let qrcode_base64 = state.napcat.get_qrcode().await.ok();
+    let (qrcode_base64, qrcode_error) = match state.napcat.get_qrcode().await {
+        Ok(qr) => (Some(qr), None),
+        Err(e) => (
+            None,
+            Some(format!("无法获取登录二维码: {}；协议端可能仍在启动，请稍后重试", e)),
+        ),
+    };
 
     Ok(ApiResponse::ok(ProtocolStatusDto {
         is_connected: true,
         login_status: "waiting_scan".to_string(),
         qrcode_base64,
+        qrcode_error,
         qq_number: None,
         nickname: None,
         avatar_url: None,
@@ -103,10 +119,13 @@ pub async fn get_protocol_status(
 
 #[command]
 pub async fn refresh_qrcode(state: State<'_, AppState>) -> Result<ApiResponse<serde_json::Value>, String> {
-    // 1. Ensure NapCat daemon is alive, targeting 462564834
+    // 1. Make sure the protocol side is up, and keep the reason if it will not start.
+    let mut launch_error: Option<String> = None;
     if !state.napcat.is_alive().await {
-        let _ = state.napcat.launch_if_needed(None);
-        // Wait up to 5 seconds for WebUI to listen
+        if let Err(e) = state.napcat.launch_if_needed() {
+            launch_error = Some(e);
+        }
+        // Wait up to 5 seconds for the WebUI to start listening.
         for _ in 0..10 {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
             if state.napcat.is_alive().await {
@@ -115,19 +134,29 @@ pub async fn refresh_qrcode(state: State<'_, AppState>) -> Result<ApiResponse<se
         }
     }
 
-    // 2. Fetch fresh real QR code via active refresh
+    // 2. Ask NapCat for a genuinely new code.
+    //
+    // A failure is reported, not papered over. This used to fall back to `get_qrcode()`,
+    // which returns whatever code NapCat last issued - so pressing "refresh" handed back the
+    // same image while the UI announced "最新有效二维码已就绪" for a code that was already
+    // stale, and the real reason was discarded with `Err(_)`. The caller keeps showing the
+    // previous image; what it must not do is claim the code is fresh when it is not.
     match state.napcat.refresh_qrcode().await {
         Ok(base64_str) => Ok(ApiResponse::ok(serde_json::json!({
             "qrcodeBase64": base64_str,
             "expiresInSeconds": 120
         }))),
-        Err(_) => match state.napcat.get_qrcode().await {
-            Ok(base64_str) => Ok(ApiResponse::ok(serde_json::json!({
-                "qrcodeBase64": base64_str,
-                "expiresInSeconds": 120
-            }))),
-            Err(e) => Ok(ApiResponse::err(1001, format!("无法获取真实二维码: {}", e), Some("请确认本地 NapCat 是否正在启动".to_string()))),
-        },
+        Err(e) => {
+            let mut reason = format!("无法获取全新二维码: {}", e);
+            if let Some(note) = launch_error {
+                reason.push_str(&format!("；协议端未能启动: {}", note));
+            }
+            Ok(ApiResponse::err(
+                1001,
+                reason,
+                Some("请确认 NapCat 正在运行，且 QQ 安装路径正确".to_string()),
+            ))
+        }
     }
 }
 

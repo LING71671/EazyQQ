@@ -100,6 +100,10 @@ export const App: React.FC = () => {
   });
 
   const [isRefreshingQr, setIsRefreshingQr] = useState(false);
+  // Why the last refresh attempt failed, if it did. Without this the button looked broken:
+  // the backend explained the problem, the click produced nothing, and the user was told
+  // nothing at all.
+  const [qrError, setQrError] = useState<string | null>(null);
 
   // Boot splash: stays up until the first local data round-trip settles.
   const [isBooting, setIsBooting] = useState(true);
@@ -283,6 +287,7 @@ export const App: React.FC = () => {
 
   const handleRefreshQr = async () => {
     setIsRefreshingQr(true);
+    setQrError(null);
     try {
       const res = await api.refreshQrCode();
       if (res.success && res.data) {
@@ -292,8 +297,13 @@ export const App: React.FC = () => {
           qrcodeBase64: qr.qrcodeBase64,
           loginStatus: 'waiting_scan',
         }));
+      } else {
+        // `success: false` used to be ignored outright, which is why a failed refresh showed
+        // nothing while the previous QR code stayed on screen looking current.
+        setQrError(res.error?.message || '获取全新二维码失败，请稍后重试');
       }
     } catch (e) {
+      setQrError(e instanceof Error ? e.message : String(e));
       console.error('Failed to refresh QR code', e);
     } finally {
       setIsRefreshingQr(false);
@@ -651,6 +661,7 @@ export const App: React.FC = () => {
               status={protocolStatus}
               onRefreshQr={handleRefreshQr}
               isLoading={isRefreshingQr}
+              error={qrError || protocolStatus.qrcodeError}
             />
           )}
           {currentView === 'contacts' && (
