@@ -46,9 +46,54 @@
 建议后续**临时完全停用 Windhawk（需管理员）复测**：若停用后无需该参数即可正常，则应改为保留排除方案，
 而不是长期关闭沙箱。完整排查过程见 [ISSUE.md](ISSUE.md) 的 ISSUE-013。
 
-**2. 群文件下载不可用**
+**2. 群文件下载：需要 NapCat ≥ 4.18.28**
 
-`get_group_file_url` 需要 NapCat 的 packetBackend，当前 NTQQ `9.9.35-52892-x64` 不在 NapCat v4.9.81 支持矩阵内。文件列表同步、落盘、文本抽取与 AI 综述均已实现，调整 QQ 版本后即可直接使用。详见 ISSUE-019。
+NapCat 的 packet 机制依赖一张「QQ 版本 → 偏移」映射表，**QQ 版本超出表的上限就无法使用 packetBackend**，
+群文件下载会失败（消息收发、草稿、简报不受影响）。
+
+| NapCat | 偏移表 x64 上限 |
+| :--- | :--- |
+| 4.9.81（原先安装的版本） | 9.9.25-42941 |
+| **4.18.28（当前，已升级）** | **9.9.35-52892** |
+
+**本机已完成升级**：`B:\EazyQQ\napcat` 已从 4.9.81 更新到 4.18.28，偏移表由 53 个版本扩展到 70 个，
+本机的 `A:\NTQQ`（9.9.28-46928）现已落在表内，**无需降级 QQ**。原 `config/` 已保留，
+并留有备份 `config.backup-<时间戳>`。
+
+判断当前 QQ 版本是否被支持（NapCat 运行后）：
+
+```bash
+grep "偏移数据" B:/EazyQQ/napcat/logs/*.log | tail -1     # 4.18.28 起日志改为输出到 QQ 控制台
+grep -oE "9\.9\.[0-9]+-[0-9]+-x64" B:/EazyQQ/napcat/napcat.mjs | sort -u | tail -3
+```
+
+---
+
+## 关于 Chromium GPU 进程崩溃（影响本机所有 Chromium 系程序）
+
+本机存在一个**机器级**问题：Chromium 的 GPU 子进程无法启动，报
+`GPU process exited unexpectedly` 并在重试数次后以
+`FATAL: GPU process isn't usable. Goodbye.` 终止宿主进程。
+
+这**不是 EazyQQ 的缺陷**——QQ 自身（Electron）会打印完全相同的日志并以同样方式死亡。
+两者的表现分别是：
+
+- EazyQQ（WebView2）：窗口先白后黑，随后界面才加载出来；
+- QQ：进程直接退出（这也是 NapCat 启动后 QQ 消失的原因）。
+
+EazyQQ 侧的规避手段是 `tauri.conf.json` 中的 `"additionalBrowserArgs": "--no-sandbox"`
+（逐参数验证过：`--disable-gpu`、`--use-angle=swiftshader`、`--disable-gpu-compositing`、
+`--disable-features=Vulkan` 均无效，只有 `--no-sandbox` 生效，说明问题在**沙箱/进程环境**而非显卡驱动）。
+
+**这是真实的安全降级**（关闭了渲染进程沙箱），建议按以下顺序从根上解决：
+
+1. **临时完全停用 Windhawk 后复测**——若不再需要 `--no-sandbox`，则应改用排除方案而非长期关闭沙箱；
+2. **禁用 `GameViewer Virtual Display Adapter`**（虚拟显示器驱动，Chromium GPU 崩溃的经典诱因；
+   本机适配器为 NVIDIA RTX 5060 Laptop / Intel UHD / GameViewer 虚拟显示器）；
+3. 更新或重装显卡驱动；
+4. 以上均无效时，再为 QQ 与 EazyQQ 统一关闭 Chromium GPU 加速。
+
+确认后请相应调整 `tauri.conf.json` 的 `additionalBrowserArgs`。
 
 ---
 
