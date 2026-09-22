@@ -31,20 +31,32 @@
 > 其中 9 个同样加载了 `windhawk.dll`（连 Windhawk 的 mod DLL 也注入了）；且崩溃栈上 95~99 个返回地址
 > **全部落在 `msedge.dll` 内，指向 `windhawk.dll` 的为 0**。因此无需再对 Windhawk 做任何排除操作。
 
-已采用的修复（写入 `tauri.conf.json`，无需用户操作）：
+**处理方式：自适应降级（默认关闭，只在真的失败后才启用）**
 
-```json
-"additionalBrowserArgs": "--no-sandbox"
+`--no-sandbox` 能规避该问题，但它会关闭 Chromium 的渲染进程沙箱——**这是一项真实的安全降级**。
+因此它**不写死在配置里**，否则等于让所有用户为一台机器的怪问题买单。实际机制：
+
+1. 应用**始终以带沙箱的安全方式启动**（`tauri.conf.json` 中不含该参数）；
+2. 若启动后 9 秒内前端仍未挂载，判定为「WebView 无法执行 JS」；
+3. 此时**开启兼容模式**（写入 `app_settings.webview_compat_mode`）并**重启一次**；
+4. 重启后从设置中读到该开关，才为 WebView2 追加 `--no-sandbox`；
+5. 若已开启仍失败，则重载一次 webview，最后无论如何都会显示窗口并输出诊断——**不会无限重启**。
+
+**效果**：健康机器永远不启用它；有问题的机器自动恢复，无需人工干预。
+
+如需恢复沙箱（例如根因已修复）：
+
+```bash
+eazyqq_cli set-config --key webview_compat_mode --value false
 ```
 
 逐参数隔离测试表明：`--no-sandbox` 单独使用即可恢复正常，而 `--disable-gpu`、
 `--use-angle=swiftshader`、`--disable-gpu-compositing`、`--disable-features=Vulkan` **均无效**，
-说明问题出在**沙箱/进程环境**，而非显卡驱动或渲染后端。
+说明问题出**沙箱/进程环境**，而非显卡驱动或渲染后端。
 
-**安全权衡（需知晓）**：`--no-sandbox` 会关闭 Chromium 的渲染进程沙箱。本应用只加载本地打包内容、
-不浏览任意网页，风险相对可控，但**这仍是一项真实的安全降级**，应视为临时规避手段。
-建议后续**临时完全停用 Windhawk（需管理员）复测**：若停用后无需该参数即可正常，则应改为保留排除方案，
-而不是长期关闭沙箱。完整排查过程见 [ISSUE.md](ISSUE.md) 的 ISSUE-013。
+**注意**：该现象不止影响 EazyQQ——本机的 QQ 自身（Electron）会打印完全相同的
+`GPU process isn't usable. Goodbye.`。排查建议按此顺序：临时完全停用 Windhawk → 禁用虚拟显示器适配器
+→ 更新显卡驱动。完整排查过程（含两次被推翻的结论）见 [ISSUE.md](ISSUE.md) 的 ISSUE-013。
 
 **2. 群文件下载：需要 NapCat ≥ 4.18.28**
 
@@ -69,23 +81,26 @@ grep -oE "9\.9\.[0-9]+-[0-9]+-x64" B:/EazyQQ/napcat/napcat.mjs | sort -u | tail 
 
 ---
 
-## 关于 Chromium GPU 进程崩溃（影响本机所有 Chromium 系程序）
+## 关于 Chromium GPU 进程崩溃
 
-本机存在一个**机器级**问题：Chromium 的 GPU 子进程无法启动，报
-`GPU process exited unexpectedly` 并在重试数次后以
-`FATAL: GPU process isn't usable. Goodbye.` 终止宿主进程。
+**注意：该现象不止影响 EazyQQ。** QQ 自身（Electron）会打印完全相同的日志并以同样方式死亡：
 
-这**不是 EazyQQ 的缺陷**——QQ 自身（Electron）会打印完全相同的日志并以同样方式死亡。
-两者的表现分别是：
+```
+GPU process exited unexpectedly        （重试数次）
+FATAL: GPU process isn't usable. Goodbye.
+```
 
-- EazyQQ（WebView2）：窗口先白后黑，随后界面才加载出来；
-- QQ：进程直接退出（这也是 NapCat 启动后 QQ 消失的原因）。
+两者表现分别是：EazyQQ（WebView2）窗口先白后黑、随后才加载界面；QQ 进程直接退出
+（这也是 NapCat 启动后 QQ 消失的原因）。
 
-EazyQQ 侧的规避手段是 `tauri.conf.json` 中的 `"additionalBrowserArgs": "--no-sandbox"`
-（逐参数验证过：`--disable-gpu`、`--use-angle=swiftshader`、`--disable-gpu-compositing`、
-`--disable-features=Vulkan` 均无效，只有 `--no-sandbox` 生效，说明问题在**沙箱/进程环境**而非显卡驱动）。
+> 关于成因，需要说明一个**已被自己推翻的结论**：曾判定为「机器级 GPU 故障」，
+> 但用 Edge 做对照后发现——**Edge 带着沙箱、带着 GPU 跑得完全正常**。
+> 所以本机的沙箱与 GPU 都没坏，故障只出现在**嵌入式 Chromium（WebView2 / Electron）**
+> 且**由自动化 shell 启动**时。用户在交互式会话中自行启动是否受影响，仍需实测确认。
+> 因此不要把它当成「这台机器坏了」来对待。
 
-**这是真实的安全降级**（关闭了渲染进程沙箱），建议按以下顺序从根上解决：
+EazyQQ 侧的处理是**自适应降级**（默认关闭、失败后自动启用并记住），机制见上文「窗口白屏」一节。
+如需从根上解决，建议按以下顺序排查：
 
 1. **临时完全停用 Windhawk 后复测**——若不再需要 `--no-sandbox`，则应改用排除方案而非长期关闭沙箱；
 2. **禁用 `GameViewer Virtual Display Adapter`**（虚拟显示器驱动，Chromium GPU 崩溃的经典诱因；
@@ -159,7 +174,8 @@ eazyqq_cli files --target <群号>
 eazyqq_cli file-summarize --path <本地文件路径>            # 支持 txt/md/docx/xlsx/pptx
 
 # 诊断
-eazyqq_cli health --deep                                 # 全链路自检（含真实模型调用）
+eazyqq_cli chain-status                                  # ★ 全链路状态：逐环节体检并定位第一个断点
+eazyqq_cli health --deep                                 # 依赖与链路自检（含真实模型调用）
 eazyqq_cli export                                        # 导出脱敏诊断包 zip
 eazyqq_cli log-tail --lines 100
 
@@ -169,6 +185,34 @@ eazyqq_cli simulate --target 1104661022 --text "连发" --repeat 3   # 同进程
 ```
 
 所有命令都支持 `--json`，便于脚本消费。
+
+### 全链路监控
+
+链路上有 8 个环节，任何一个坏掉都会表现为「功能不工作」，但原因完全不同：
+
+```
+NapCat WebUI → QQ 登录 → OneBot HTTP → OneBot WebSocket
+             → 本地数据库 → 大模型 → 定时调度 → 前端界面
+```
+
+`eazyqq_cli chain-status` 会逐环节报告状态与**影响范围**，并指出**第一个断点**——
+流水线里第一个断点之后的异常都只是后果，修别处是白费力气：
+
+```
+[FAIL] NapCat WebUI       WebUI 认证网络错误: ...
+       └ 影响: 无法查询登录状态 / 获取二维码
+[?]    QQ 登录              WebUI 不可达，无法判断登录状态
+[FAIL] OneBot WebSocket   127.0.0.1:3001 未监听，消息无法进入
+       └ 影响: 收不到任何新消息（草稿与简报都会停）
+[OK]   本地数据库 / 大模型
+
+第一个断点: NapCat WebUI
+提示: 链路上后续环节的异常通常是这个断点的后果，先修这里。
+```
+
+客户端运行期间，监控会以 30 秒为周期持续探测，并在**状态发生变化时**（而非每次）写入日志，
+避免刷屏。状态用三值：`OK` / `?`（尚未验证）/ `FAIL`——**「尚未验证」与「已知故障」严格区分**，
+不会把没检查过的东西报成正常。
 
 ### 回复触发与冷却
 
