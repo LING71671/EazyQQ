@@ -24,6 +24,7 @@ EazyQQ_Data/
 
 # Protocol Submodules & Third-party References
 napcat/
+src-tauri/resources/napcat/
 refer/
 
 # Environment Variables & Secrets (CRITICAL: Never commit keys!)

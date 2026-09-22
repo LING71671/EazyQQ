@@ -36,6 +36,33 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Prepare bundled NapCat
+        shell: pwsh
+        run: |
+          $dest = "src-tauri/resources/napcat"
+          New-Item -ItemType Directory -Force -Path $dest
+          Write-Host "Fetching latest NapCat assets from GitHub..."
+          $headers = @{ "User-Agent" = "EazyQQ-CI" }
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/NapNeko/NapCatQQ/releases/latest" -Headers $headers
+          $oneKey = $release.assets | Where-Object { $_.name -like "*OneKey*.zip" } | Select-Object -First 1
+          if ($oneKey) {
+            Write-Host "Downloading $($oneKey.name)..."
+            Invoke-WebRequest -Uri $oneKey.browser_download_url -OutFile "napcat_onekey.zip"
+            Expand-Archive -Path "napcat_onekey.zip" -DestinationPath "temp_onekey" -Force
+            if (Test-Path "temp_onekey/bootmain") {
+              Copy-Item -Path "temp_onekey/bootmain/*" -Destination $dest -Recurse -Force
+            }
+            $innerZip = Get-ChildItem -Path "temp_onekey" -Filter "NapCat.Shell.zip" -Recurse | Select-Object -First 1
+            if ($innerZip) {
+              Expand-Archive -Path $innerZip.FullName -DestinationPath $dest -Force
+            }
+            Remove-Item -Recurse -Force "temp_onekey", "napcat_onekey.zip"
+            Write-Host "NapCat bundled successfully into $dest"
+          } else {
+            Write-Error "Failed to locate NapCat asset on GitHub releases."
+            exit 1
+          }
+
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:

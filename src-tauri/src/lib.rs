@@ -31,21 +31,38 @@ pub fn run() {
     let data_dir = services::logging::data_dir();
     services::logging::ensure_dir(&data_dir);
 
-    // Locate the NapCat installation that sits alongside the app's workspace.
-    //
-    // There is deliberately no absolute-path fallback: a hardcoded path only works on the
-    // machine it was written on, and would silently point a different user at a directory
-    // that does not exist. If NapCat is missing, say so and carry on - everything except
-    // protocol control still works.
-    let napcat_dir = root_dir.join("napcat");
+    // Locate the NapCat installation: prioritize workspace, bundled resources, or dynamic sibling paths.
+    let mut napcat_candidates = vec![
+        root_dir.join("napcat"),
+        root_dir.join("resources").join("napcat"),
+    ];
+
+    if let Some(parent) = root_dir.parent() {
+        if let Ok(entries) = std::fs::read_dir(parent) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    let name = entry.file_name().to_string_lossy().to_lowercase();
+                    if name.contains("napcat") {
+                        napcat_candidates.push(p);
+                    }
+                }
+            }
+        }
+    }
+
+    let napcat_dir = napcat_candidates
+        .iter()
+        .find(|p| p.join("NapCatWinBootMain.exe").exists() || p.join("napcat.mjs").exists())
+        .cloned()
+        .unwrap_or_else(|| root_dir.join("napcat"));
     let napcat_dir_str = napcat_dir.to_string_lossy().to_string();
     if napcat_dir.exists() {
-        tracing::info!("NapCat directory: {}", napcat_dir.display());
+        tracing::info!("NapCat directory resolved to: {}", napcat_dir.display());
     } else {
         tracing::warn!(
-            "NapCat directory not found at {} - protocol control will be unavailable until \
-             NapCat is installed there",
-            napcat_dir.display()
+            "NapCat directory not found (probed: {:?}) - protocol control will be unavailable until NapCat is ready",
+            napcat_candidates
         );
     }
 

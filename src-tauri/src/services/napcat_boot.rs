@@ -53,21 +53,81 @@ fn state() -> &'static Mutex<BootState> {
 /// guessed path would launch some other installation, or nothing.
 pub fn configured_qq_path(napcat_dir: &Path) -> Result<PathBuf, String> {
     let cfg = napcat_dir.join("config").join("qq_path.txt");
-    let raw = std::fs::read_to_string(&cfg)
-        .map_err(|e| format!("读取 {} 失败: {}", cfg.display(), e))?;
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return Err(format!("{} 为空，无法确定 QQ 路径", cfg.display()));
+    if let Ok(raw) = std::fs::read_to_string(&cfg) {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            let path = PathBuf::from(trimmed);
+            if path.exists() {
+                return Ok(path);
+            }
+        }
     }
-    let path = PathBuf::from(trimmed);
-    if !path.exists() {
-        return Err(format!(
-            "{} 指向的 QQ 不存在: {}（请在 NapCat 启动器中重新选择）",
-            cfg.display(),
-            path.display()
-        ));
+
+    // Dynamic auto-detection: running process -> Windows Registry -> standard ProgramFiles
+    #[cfg(target_os = "windows")]
+    {
+        // 1. Check if QQ is currently running
+        if let Ok(output) = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                "(Get-Process -Name QQ -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path -First 1)",
+            ])
+            .output()
+        {
+            let line = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !line.is_empty() {
+                let p = PathBuf::from(&line);
+                if p.is_file() {
+                    let _ = std::fs::create_dir_all(napcat_dir.join("config"));
+                    let _ = std::fs::write(&cfg, &line);
+                    tracing::info!("dynamically resolved QQ path from running process -> {}", line);
+                    return Ok(p);
+                }
+            }
+        }
+
+        // 2. Query Windows Registry for official QQNT install location
+        if let Ok(output) = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                "(Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\WOW6432Node\\Tencent\\QQNT','HKCU:\\Software\\Tencent\\QQNT' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Install -First 1)",
+            ])
+            .output()
+        {
+            let dir_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !dir_str.is_empty() {
+                let candidate = PathBuf::from(&dir_str).join("QQ.exe");
+                if candidate.is_file() {
+                    let path_str = candidate.to_string_lossy().to_string();
+                    let _ = std::fs::create_dir_all(napcat_dir.join("config"));
+                    let _ = std::fs::write(&cfg, &path_str);
+                    tracing::info!("dynamically resolved QQ path from registry -> {}", path_str);
+                    return Ok(candidate);
+                }
+            }
+        }
+
+        // 3. Fallback to standard ProgramFiles environment variables
+        for env_var in ["ProgramFiles", "ProgramFiles(x86)"] {
+            if let Ok(prog) = std::env::var(env_var) {
+                let candidate = PathBuf::from(prog).join("Tencent").join("QQNT").join("QQ.exe");
+                if candidate.is_file() {
+                    let path_str = candidate.to_string_lossy().to_string();
+                    let _ = std::fs::create_dir_all(napcat_dir.join("config"));
+                    let _ = std::fs::write(&cfg, &path_str);
+                    tracing::info!("resolved QQ path from standard environment -> {}", path_str);
+                    return Ok(candidate);
+                }
+            }
+        }
     }
-    Ok(path)
+
+    Err(format!(
+        "未在 {} 找到有效的 qq_path.txt，且未能自动探测到本地 QQNT 安装位置（请先启动一次 QQ 或在 NapCat 目录设置 qq_path.txt）",
+        cfg.display()
+    ))
 }
 
 /// Everything needed to start NapCat, resolved and checked up front.
