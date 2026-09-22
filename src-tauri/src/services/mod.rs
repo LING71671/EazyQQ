@@ -1,6 +1,7 @@
 pub mod accounts;
 pub mod archive;
 pub mod chain;
+pub mod config;
 pub mod cooldown;
 pub mod db;
 pub mod diagnostics;

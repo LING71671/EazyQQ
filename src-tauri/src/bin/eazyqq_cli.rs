@@ -296,6 +296,7 @@ fn cmd_help() {
          [--base-url <u>] [--model <m>] [--key <k>]
          [--temperature <t>] [--max-context <n>]
   ai-test                         对当前供应商发起真实连通性测试
+  config-audit                    审计配置项：找出「界面上能改但后端不读」的设置
   chain-status                    全链路状态：逐环节体检并定位第一个断点
   health [--deep]                 依赖与链路自检（--deep 会真实调用大模型）
   export                          导出脱敏诊断包 zip
@@ -2072,6 +2073,56 @@ async fn probe_chain_from_cli(svc: &Services) {
     record_unknown(Link::Frontend, "需客户端进程运行才能确认");
 }
 
+/// Report config fields the UI offers but the backend never reads.
+///
+/// A setting that silently does nothing is worse than a missing feature, and eight shipped
+/// that way before this check existed. Runs the same comparison as the unit test, but at
+/// runtime so it can be run against a real build.
+fn cmd_config_audit(args: &Args) -> Result<(), String> {
+    let rows = eazyqq_lib::services::config::audit();
+    let unread: Vec<&String> = rows
+        .iter()
+        .filter(|(_, consumer)| consumer.is_none())
+        .map(|(key, _)| key)
+        .collect();
+
+    if args.json() {
+        print_json(&serde_json::json!({
+            "total": rows.len(),
+            "unread": unread,
+            "fields": rows.iter().map(|(k, c)| serde_json::json!({
+                "key": k,
+                "consumedBy": c,
+            })).collect::<Vec<_>>(),
+        }));
+        return Ok(());
+    }
+
+    hr();
+    println!("配置项消费审计（{} 个字段）", rows.len());
+    hr();
+    for (key, consumer) in &rows {
+        match consumer {
+            Some(file) => println!("  [OK]   {:<32} <- {}", key, file),
+            None => println!("  [DEAD] {:<32} <- 后端从不读取", key),
+        }
+    }
+    hr();
+
+    if unread.is_empty() {
+        println!("所有配置项都有消费点，不存在「改了没用」的设置。");
+    } else {
+        println!("发现 {} 个只写不读的配置项：", unread.len());
+        for key in &unread {
+            println!("  - {}", key);
+        }
+        println!();
+        println!("这些字段在界面上可改但不会生效，属于「假装成功的功能」，应实现或移除。");
+    }
+    hr();
+    Ok(())
+}
+
 fn cmd_log_path() -> Result<(), String> {
     println!("{}", logging::active_log_path().display());
     let (dir, crash_count, last) = logging::diagnostics();
@@ -2160,6 +2211,7 @@ async fn main() -> ExitCode {
                 "set-config" => cmd_set_config(&svc, &args).await,
                 "health" => cmd_health(&svc, &args).await,
                 "chain-status" => cmd_chain_status(&svc, &args).await,
+                "config-audit" => cmd_config_audit(&args),
                 "ai-config" => cmd_ai_config(&svc, &args),
                 "ai-set" => cmd_ai_set(&svc, &args),
                 "ai-test" => cmd_ai_test(&svc, &args).await,

@@ -744,38 +744,8 @@ pub async fn get_config(state: State<'_, AppState>) -> Result<ApiResponse<serde_
         }
     }
 
-    let default_config = serde_json::json!({
-        "ai": {
-            "activeProvider": "tokenrhythm",
-            "model": "qwen3.8-flash",
-            "temperature": 0.7,
-            "maxContextMessages": 10,
-            "baseUrl": "https://tokenrhythm.studio/v1",
-            "apiKey": ""
-        },
-        "napcat": {
-            "wsPort": 3001,
-            "autoRestart": true,
-            "heartbeatIntervalSec": 15
-        },
-        "storage": {
-            "workspaceDir": "EazyQQ_Data",
-            "autoSyncFiles": true,
-            "maxFileSizeMb": 100
-        },
-        "summary": {
-            "enabled": true,
-            "intervalType": "6h",
-            "customIntervalMinutes": 360,
-            "slidingWindowHours": 6,
-            "autoForwardToPhone": false,
-            "customPrompt": "请提炼群聊核心讨论要点、决策事项与待办行动项，结构清晰明了。"
-        },
-        "window": {
-            "minimizeToTray": true,
-            "closeToTray": true
-        }
-    });
+    // Single source of truth, shared with the audit test in `services::config`.
+    let default_config = crate::services::config::default_app_config();
 
     Ok(ApiResponse::ok(default_config))
 }
