@@ -30,6 +30,7 @@ use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 
+use crate::services::db::Database;
 use crate::services::logging;
 
 /// Directory used before a QQ account is known.
@@ -466,9 +467,173 @@ pub fn sweep_napcat_artifacts(napcat_dir: &std::path::Path, uin: &str) -> Vec<St
     moved
 }
 
+/// Move data written before any account was known into the account that now owns it.
+///
+/// The unbound directory exists because the account is only discovered once the protocol
+/// side answers, and the database has to be opened before that. Anything written in that
+/// window - rules created on first run, say - would otherwise stay in `_unbound` forever
+/// and never be seen again.
+pub fn migrate_unbound_if_needed(uin: &str) -> Vec<String> {
+    let unbound = account_dir(None);
+    let dest = account_dir(Some(uin));
+    let mut moved = Vec::new();
+
+    if !unbound.exists() || unbound == dest {
+        return moved;
+    }
+
+    for (from, to_rel) in [
+        (unbound.join("eazyqq.db"), "eazyqq.db"),
+        (unbound.join("eazyqq.db-shm"), "eazyqq.db-shm"),
+        (unbound.join("eazyqq.db-wal"), "eazyqq.db-wal"),
+        (unbound.join("logs"), "logs"),
+        (unbound.join("group_files"), "group_files"),
+        (unbound.join("diagnostics"), "diagnostics"),
+        (unbound.join("napcat_logs"), "napcat_logs"),
+    ] {
+        if !from.exists() {
+            continue;
+        }
+        let to = dest.join(to_rel);
+
+        if from.is_dir() {
+            if let Ok(n) = merge_dir(&from, &to) {
+                if n > 0 {
+                    moved.push(format!("{}({})", to_rel, n));
+                }
+            }
+            continue;
+        }
+
+        // A file already present in the account directory wins: it is the live one.
+        if to.exists() {
+            continue;
+        }
+        if std::fs::rename(&from, &to).is_ok() {
+            moved.push(to_rel.to_string());
+        }
+    }
+
+    if !moved.is_empty() {
+        tracing::info!(
+            "accounts: moved pre-login data into account {} ({})",
+            uin,
+            moved.join(", ")
+        );
+        // Remove the directory only if it is now empty, so a partial move cannot lose data.
+        if std::fs::read_dir(&unbound)
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(false)
+        {
+            let _ = std::fs::remove_dir(&unbound);
+        }
+    }
+    moved
+}
+
+/// Every other account directory on this machine, newest first.
+fn other_account_dirs(except_uin: &str) -> Vec<PathBuf> {
+    let machine = data_root().join("accounts").join(machine_id());
+    let mut dirs: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
+
+    let Ok(entries) = std::fs::read_dir(&machine) else {
+        return Vec::new();
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() || path == account_dir(Some(except_uin)) {
+            continue;
+        }
+        let stamp = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        dirs.push((stamp, path));
+    }
+
+    dirs.sort_by(|a, b| b.0.cmp(&a.0));
+    dirs.into_iter().map(|(_, p)| p).collect()
+}
+
+/// Give a brand-new account the settings that belong to the installation rather than to
+/// the account.
+///
+/// The AI provider, model and key, the tray behaviour and the summary defaults are things
+/// a person configures once. With one database per account they would otherwise have to be
+/// entered again for every QQ account - a needless regression, and an easy way to end up
+/// with a half-configured second account.
+///
+/// Runs only when the destination has no configuration yet, so it can never overwrite
+/// settings the user has already made for this account.
+pub fn seed_settings_if_missing(db: &Database, uin: &str) -> Option<String> {
+    if matches!(db.get_setting("app_config"), Ok(Some(_))) {
+        return None;
+    }
+
+    let mut sources = vec![account_dir(None)];
+    sources.extend(other_account_dirs(uin));
+
+    for dir in sources {
+        let path = dir.join("eazyqq.db");
+        if !path.exists() {
+            continue;
+        }
+        let Ok(conn) = rusqlite::Connection::open_with_flags(
+            &path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        ) else {
+            continue;
+        };
+        let Ok(value) = conn.query_row(
+            "SELECT value FROM app_settings WHERE key = 'app_config'",
+            [],
+            |row| row.get::<_, String>(0),
+        ) else {
+            continue;
+        };
+
+        if db.set_setting("app_config", &value).is_ok() {
+            return Some(format!(
+                "inherited installation settings from {}",
+                dir.display()
+            ));
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unbound_data_moves_into_the_adopted_account() {
+        // Simulate the window before an account is known: data written to `_unbound` must
+        // not be stranded once the account is discovered.
+        let uin = "555000111";
+        let unbound = account_dir(None);
+        let dest = account_dir(Some(uin));
+        let _ = std::fs::remove_dir_all(&unbound);
+        let _ = std::fs::remove_dir_all(&dest);
+
+        std::fs::create_dir_all(unbound.join("logs")).unwrap();
+        std::fs::write(unbound.join("eazyqq.db"), b"db").unwrap();
+        std::fs::write(unbound.join("logs").join("eazyqq.log"), "x").unwrap();
+
+        let moved = migrate_unbound_if_needed(uin);
+        assert!(!moved.is_empty(), "pre-login data must be moved");
+        assert!(dest.join("eazyqq.db").exists());
+        assert!(dest.join("logs").join("eazyqq.log").exists());
+        assert!(!unbound.exists(), "an emptied unbound directory should be removed");
+
+        let _ = std::fs::remove_dir_all(&dest);
+    }
+
+    #[test]
+    fn unbound_migration_is_a_noop_when_nothing_was_written() {
+        let unbound = account_dir(None);
+        let _ = std::fs::remove_dir_all(&unbound);
+        assert!(migrate_unbound_if_needed("555000112").is_empty());
+    }
 
     #[test]
     fn sweeping_removes_the_qr_and_moves_logs() {

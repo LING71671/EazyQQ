@@ -56,6 +56,9 @@ pub fn run() {
             if let Err(e) = services::accounts::migrate_legacy_if_needed(&uin) {
                 tracing::warn!("account data migration failed: {}", e);
             }
+            // Data written before the account was known would otherwise be stranded in
+            // the unbound directory forever.
+            services::accounts::migrate_unbound_if_needed(&uin);
             // NapCat keeps its own logs and cache in the shared `napcat/` directory, and
             // those logs contain message text. Sweep them into this account's directory.
             let swept = services::accounts::sweep_napcat_artifacts(&napcat_dir, &uin);
@@ -78,6 +81,15 @@ pub fn run() {
         panic!("Failed to init SQLite database: {}", e)
     }));
     tracing::info!("SQLite ready at {}", db_path.display());
+
+    // A brand-new account database inherits the settings that belong to the installation
+    // (AI provider and key, tray behaviour, summary defaults) so a second QQ account does
+    // not have to be configured from scratch.
+    if let Some(uin) = services::accounts::active() {
+        if let Some(note) = services::accounts::seed_settings_if_missing(&db, &uin) {
+            tracing::info!("{}", note);
+        }
+    }
 
     // --- WebView2 compatibility mode ---------------------------------------------
     //
