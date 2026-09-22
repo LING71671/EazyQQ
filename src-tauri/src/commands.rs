@@ -141,6 +141,24 @@ pub async fn logout() -> Result<ApiResponse<()>, String> {
     ))
 }
 
+/// Full end-to-end link report for the frontend.
+///
+/// Returns every hop with its health, what breaks if it is down, and - most usefully -
+/// the first break in pipeline order, since in a chain everything after the first failure
+/// is a consequence rather than a separate fault.
+#[command]
+pub async fn get_chain_status() -> Result<ApiResponse<serde_json::Value>, String> {
+    let links = crate::services::chain::snapshot();
+    let first = crate::services::chain::first_break();
+
+    Ok(ApiResponse::ok(serde_json::json!({
+        "links": links,
+        "firstBreak": first,
+        "hasFailure": crate::services::chain::has_failure(),
+        "uptimeSecs": crate::services::chain::uptime_secs(),
+    })))
+}
+
 /// Mark a conversation as read, clearing its unread badge.
 ///
 /// `at` is a millisecond timestamp; the frontend passes the newest message it has
@@ -170,7 +188,14 @@ pub async fn mark_read(
 #[command]
 pub async fn get_contacts(state: State<'_, AppState>) -> Result<ApiResponse<serde_json::Value>, String> {
     // Proof of life for the frontend: if the UI is up at all, it calls this on mount.
+    // Recorded into the chain monitor because a blank window and a working window are
+    // indistinguishable from the outside - this is the only reliable signal that the
+    // WebView actually executed the app.
     tracing::info!("IPC: get_contacts called from the frontend");
+    crate::services::chain::record_ok(
+        crate::services::chain::Link::Frontend,
+        "前端已加载并调用后端",
+    );
 
     // 1. Read existing whitelist and rules from SQLite
     let existing_rules = state.db.get_all_rules().map_err(|e| e.to_string())?;

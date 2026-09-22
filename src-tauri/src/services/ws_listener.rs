@@ -94,6 +94,10 @@ pub fn start_onebot_ws_listener(
             match connect_async(&ws_url).await {
                 Ok((ws_stream, _)) => {
                     info!("Successfully connected to OneBot WebSocket ({})", ws_url);
+                    crate::services::chain::record_ok(
+                        crate::services::chain::Link::OneBotWs,
+                        "已连接，正在接收消息",
+                    );
                     let (_, mut read) = ws_stream.split();
 
                     while let Some(msg_res) = read.next().await {
@@ -111,6 +115,12 @@ pub fn start_onebot_ws_listener(
                                                 false,
                                             )
                                             .await;
+                                            // Proof the ingress link is not just open but
+                                            // actually delivering events.
+                                            crate::services::chain::record_ok(
+                                                crate::services::chain::Link::OneBotWs,
+                                                format!("已连接，最近事件: {}", outcome.action),
+                                            );
                                             tracing::debug!("ws event: {}", outcome.summary());
                                         }
                                     }
@@ -118,6 +128,10 @@ pub fn start_onebot_ws_listener(
                             }
                             Err(e) => {
                                 warn!("WebSocket stream error: {}, will reconnect...", e);
+                                crate::services::chain::record_error(
+                                    crate::services::chain::Link::OneBotWs,
+                                    format!("连接中断: {}", e),
+                                );
                                 break;
                             }
                         }
@@ -125,6 +139,10 @@ pub fn start_onebot_ws_listener(
                 }
                 Err(e) => {
                     warn!("OneBot WebSocket connect failed ({}), retrying in 3s", e);
+                    crate::services::chain::record_error(
+                        crate::services::chain::Link::OneBotWs,
+                        format!("无法连接 {}: {}", ws_url, e),
+                    );
                     tokio::time::sleep(Duration::from_secs(3)).await;
                 }
             }

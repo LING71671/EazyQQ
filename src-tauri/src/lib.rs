@@ -11,6 +11,13 @@ use services::db::Database;
 use services::napcat::NapCatService;
 use services::onebot::OneBotClient;
 
+/// `app_settings` key holding whether the WebView2 compatibility fallback is enabled.
+///
+/// Deliberately a persisted setting rather than a build-time flag: the fallback disables
+/// Chromium's renderer sandbox, which must not be forced on every user to accommodate one
+/// machine. See the startup watchdog in `run()`.
+pub const WEBVIEW_COMPAT_SETTING: &str = "webview_compat_mode";
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Logging must come first so that everything below - including a failed SQLite
@@ -29,17 +36,63 @@ pub fn run() {
     }));
     tracing::info!("SQLite ready at {}", db_path.display());
 
-    // All runtime components are self-contained in the current workspace
-    let napcat_dir = if root_dir.join("napcat").exists() {
-        root_dir.join("napcat")
-    } else {
-        std::path::PathBuf::from("B:\\EazyQQ\\napcat")
-    };
-    let napcat_dir_str = napcat_dir.to_string_lossy().to_string();
+    // --- WebView2 compatibility mode ---------------------------------------------
+    //
+    // On some machines Chromium's renderer cannot start under its own sandbox: the
+    // frontend never executes, no crash dump is produced, and the user sees an empty
+    // window. Passing `--no-sandbox` works around it, but it disables the renderer
+    // sandbox - a real security property - so it must NOT be baked in for everyone just
+    // because one machine needs it.
+    //
+    // Instead the app always starts sandboxed, and the startup watchdog enables this
+    // mode only after a startup failure has actually been observed, then restarts once.
+    // A healthy machine never pays the cost; an affected one recovers by itself.
+    let webview_compat_mode = db
+        .get_setting(WEBVIEW_COMPAT_SETTING)
+        .ok()
+        .flatten()
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
 
+    if webview_compat_mode {
+        tracing::warn!(
+            "WebView compatibility mode is ON: adding --no-sandbox to the WebView2 command \
+             line because the renderer previously failed to start under its sandbox. This \
+             reduces security; once the underlying cause is fixed, clear the \
+             `{}` setting to restore the sandbox.",
+            WEBVIEW_COMPAT_SETTING
+        );
+        // WebView2 reads this when its environment is created, which happens when the
+        // Tauri builder below creates the window - so it has to be set before that.
+        std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--no-sandbox");
+    }
+
+    // All runtime components are self-contained in the current workspace
+    // Locate the NapCat installation that sits alongside the app's workspace.
+    //
+    // There is deliberately no absolute-path fallback: a hardcoded path only works on the
+    // machine it was written on, and would silently point a different user at a directory
+    // that does not exist. If NapCat is missing, say so and carry on - everything except
+    // protocol control still works.
+    let napcat_dir = root_dir.join("napcat");
+    let napcat_dir_str = napcat_dir.to_string_lossy().to_string();
+    if napcat_dir.exists() {
+        tracing::info!("NapCat directory: {}", napcat_dir.display());
+    } else {
+        tracing::warn!(
+            "NapCat directory not found at {} - protocol control will be unavailable until \
+             NapCat is installed there",
+            napcat_dir.display()
+        );
+    }
+
+    // The WebUI token is read from `napcat/config/webui.json` by the service. No built-in
+    // fallback is supplied on purpose: the token is generated per installation, so a
+    // hardcoded one would both fail on any other machine and ship a credential in the
+    // source tree.
     let napcat = Arc::new(NapCatService::new(
         "http://127.0.0.1:6099".to_string(),
-        "f7376db3d59d".to_string(),
+        String::new(),
         napcat_dir_str,
     ));
     let onebot = Arc::new(OneBotClient::new("http://127.0.0.1:3000".to_string()));
@@ -64,9 +117,26 @@ pub fn run() {
     tracing::info!("active AI provider -> {}", ai_config.describe());
     let ai = Arc::new(services::ai::AiService::new(ai_config));
 
+    // The OneBot WebSocket port comes from `napcat.wsPort`; 3001 is NapCat's default. Read
+    // from config rather than hardcoded so a non-default setup works without a rebuild.
+    let onebot_ws_port = {
+        let raw = db.get_setting("app_config").ok().flatten();
+        raw.as_deref()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+            .and_then(|v| {
+                v.get("napcat")
+                    .and_then(|n| n.get("wsPort"))
+                    .and_then(|p| p.as_u64())
+            })
+            .filter(|p| *p > 0 && *p < 65536)
+            .unwrap_or(3001)
+    };
+    tracing::info!("OneBot WebSocket port -> {}", onebot_ws_port);
+
     let app_state = AppState {
         db: db.clone(),
-        napcat,
+        // Cloned rather than moved so the chain monitor can keep probing it.
+        napcat: napcat.clone(),
         onebot: onebot.clone(),
         ai: ai.clone(),
     };
@@ -98,40 +168,71 @@ pub fn run() {
             // The failure mode this guards against is subtle: when the WebView cannot
             // execute JS, the frontend never mounts, `app_show_window` is never called,
             // and - crucially - no crash dump is produced. The process looks perfectly
-            // healthy from the outside while the user stares at nothing. So instead of
-            // merely revealing an empty window, reload once first, then report clearly.
+            // healthy from the outside while the user stares at nothing.
+            //
+            // Escalation, in order. The first step is what keeps the workaround off
+            // healthy machines: compatibility mode is never shipped enabled, it is only
+            // ever turned on by an observed failure on the machine that has the problem.
             {
                 let handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_secs(9)).await;
+                let watchdog_db = db.clone();
+                let compat_already_on = webview_compat_mode;
 
-                    let still_hidden = match handle.get_webview_window("main") {
-                        Some(w) => !w.is_visible().unwrap_or(false),
-                        None => false,
+                tauri::async_runtime::spawn(async move {
+                    let frontend_mounted = |h: &tauri::AppHandle| {
+                        h.get_webview_window("main")
+                            .map(|w| w.is_visible().unwrap_or(false))
+                            .unwrap_or(false)
                     };
 
-                    if still_hidden {
-                        tracing::warn!(
-                            "frontend has not reported ready after 9s; reloading the webview \
-                             once. Note: no crash dump accompanies this failure mode - it \
-                             usually means the WebView cannot execute JS, not that a \
-                             process died."
-                        );
-                        if let Some(w) = handle.get_webview_window("main") {
-                            let _ = w.eval("window.location.reload()");
-                        }
+                    tokio::time::sleep(std::time::Duration::from_secs(9)).await;
 
-                        tokio::time::sleep(std::time::Duration::from_secs(9)).await;
+                    if frontend_mounted(&handle) {
+                        return;
                     }
 
+                    // Step 1: first observed failure -> enable the fallback and restart.
+                    if !compat_already_on {
+                        tracing::warn!(
+                            "frontend did not mount within 9s and WebView compatibility mode \
+                             is off. Enabling it (adds --no-sandbox to the WebView2 command \
+                             line) and restarting once. This failure produces no crash dump \
+                             - it means the WebView could not execute JS, not that a process \
+                             died."
+                        );
+                        if let Err(e) =
+                            watchdog_db.set_setting(WEBVIEW_COMPAT_SETTING, "true")
+                        {
+                            tracing::error!(
+                                "could not persist `{}`: {} - the restart will not help",
+                                WEBVIEW_COMPAT_SETTING,
+                                e
+                            );
+                        }
+                        // Does not return: the process is replaced.
+                        handle.restart();
+                    }
+
+                    // Step 2: compatibility mode is already on, so reload once in case the
+                    // failure was transient.
+                    tracing::warn!(
+                        "compatibility mode is already enabled but the frontend still has \
+                         not mounted; reloading the webview once"
+                    );
+                    if let Some(w) = handle.get_webview_window("main") {
+                        let _ = w.eval("window.location.reload()");
+                    }
+
+                    tokio::time::sleep(std::time::Duration::from_secs(9)).await;
+
+                    // Step 3: never leave the app invisible.
                     if let Some(window) = handle.get_webview_window("main") {
                         if !window.is_visible().unwrap_or(false) {
                             tracing::error!(
-                                "frontend still has not reported ready after a reload; \
-                                 showing the window anyway. Likely causes, in order: the \
-                                 WebView runtime cannot run its renderer on this machine \
-                                 (check `additionalBrowserArgs` in tauri.conf.json), or the \
-                                 dev server is unreachable."
+                                "frontend still has not mounted after a reload; showing the \
+                                 window anyway. Likely causes: the WebView runtime cannot run \
+                                 its renderer on this machine, or the frontend could not be \
+                                 fetched."
                             );
                             let _ = window.show();
                             let _ = window.set_focus();
@@ -190,12 +291,30 @@ pub fn run() {
             let handle = app.handle().clone();
             services::ws_listener::start_onebot_ws_listener(
                 handle.clone(),
-                "ws://127.0.0.1:3001".to_string(),
+                format!("ws://127.0.0.1:{}", onebot_ws_port),
                 db.clone(),
-                onebot,
+                // Cloned: the chain monitor also needs it.
+                onebot.clone(),
                 ai.clone(),
             );
-            tracing::info!("OneBot WebSocket listener task spawned (ws://127.0.0.1:3001)");
+            tracing::info!(
+                "OneBot WebSocket listener task spawned (ws://127.0.0.1:{})",
+                onebot_ws_port
+            );
+
+            // --- End-to-end chain monitor ---------------------------------------------
+            // Polls the links that can be probed from outside (NapCat WebUI, QQ login,
+            // OneBot HTTP, database, AI provider) and records them alongside the links that
+            // report themselves (WebSocket, scheduler, frontend). Its purpose is to make a
+            // break *visible and located* rather than merely absent - several failures
+            // during development produced no error anywhere a human would look.
+            services::chain::spawn_monitor(
+                db.clone(),
+                napcat.clone(),
+                onebot.clone(),
+                ai.clone(),
+            );
+            tracing::info!("chain monitor started (link status is reported end to end)");
 
             // Background summarizer: honours the summary whitelist, per-group interval,
             // sliding window and custom prompt straight from SQLite.
@@ -223,6 +342,7 @@ pub fn run() {
             refresh_qrcode,
             logout,
             get_contacts,
+            get_chain_status,
             mark_read,
             update_rule,
             batch_update_mode,

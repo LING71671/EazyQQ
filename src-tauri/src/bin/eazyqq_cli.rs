@@ -21,7 +21,6 @@ use eazyqq_lib::services::onebot::OneBotClient;
 use eazyqq_lib::services::policy;
 
 const NAPCAT_WEBUI: &str = "http://127.0.0.1:6099";
-const NAPCAT_FALLBACK_TOKEN: &str = "f7376db3d59d";
 const ONEBOT_HTTP: &str = "http://127.0.0.1:3000";
 
 // ---------------------------------------------------------------------------
@@ -157,9 +156,12 @@ impl Services {
             std::path::PathBuf::from("B:\\EazyQQ\\napcat")
         };
 
+        // No fallback token: it is read from `napcat/config/webui.json`. A token is
+        // generated per installation, so a hardcoded one would fail on any other machine
+        // and would ship a credential in the source tree.
         let napcat = Arc::new(NapCatService::new(
             NAPCAT_WEBUI.to_string(),
-            NAPCAT_FALLBACK_TOKEN.to_string(),
+            String::new(),
             napcat_dir.to_string_lossy().to_string(),
         ));
 
@@ -251,6 +253,7 @@ fn cmd_help() {
          [--base-url <u>] [--model <m>] [--key <k>]
          [--temperature <t>] [--max-context <n>]
   ai-test                         对当前供应商发起真实连通性测试
+  chain-status                    全链路状态：逐环节体检并定位第一个断点
   health [--deep]                 依赖与链路自检（--deep 会真实调用大模型）
   export                          导出脱敏诊断包 zip
   simulate --target <id> --text <消息>  调试后门：注入模拟消息走完整处理链路
@@ -1874,6 +1877,158 @@ fn cmd_mark_read(svc: &Services, args: &Args) -> Result<(), String> {
     Ok(())
 }
 
+/// Report every hop of the chain and pinpoint the first break.
+///
+/// This is the "where is it broken" command: it walks the pipeline in order
+/// (NapCat WebUI -> QQ login -> OneBot HTTP -> WebSocket -> database -> AI -> scheduler ->
+/// frontend) and stops being interesting at the first failure, because everything after
+/// it is a consequence rather than a separate fault.
+async fn cmd_chain_status(svc: &Services, args: &Args) -> Result<(), String> {
+    // The CLI is a separate process from the GUI, so the in-process registry is empty
+    // here. Probe the links this process can reach, then merge in what the GUI has
+    // recorded if it is running.
+    probe_chain_from_cli(svc).await;
+
+    let links = eazyqq_lib::services::chain::snapshot();
+    let first = eazyqq_lib::services::chain::first_break();
+
+    if args.json() {
+        print_json(&serde_json::json!({
+            "links": links,
+            "firstBreak": first,
+            "hasFailure": eazyqq_lib::services::chain::has_failure(),
+        }));
+        return Ok(());
+    }
+
+    hr();
+    println!("全链路状态");
+    hr();
+    for link in &links {
+        let mark = match link.health {
+            eazyqq_lib::services::chain::Health::Ok => "[OK]  ",
+            eazyqq_lib::services::chain::Health::Unknown => "[?]   ",
+            eazyqq_lib::services::chain::Health::Failed => "[FAIL]",
+        };
+        println!("{} {:<18} {}", mark, link.label, link.detail);
+        if link.health == eazyqq_lib::services::chain::Health::Failed {
+            println!("       └ 影响: {}", link.impact);
+        }
+    }
+    hr();
+
+    match first {
+        Some(broken) => {
+            println!("第一个断点: {} —— {}", broken.label, broken.detail);
+            println!("影响范围  : {}", broken.impact);
+            println!();
+            println!("提示: 链路上后续环节的异常通常是这个断点的后果，先修这里。");
+        }
+        None => {
+            let unknown = links
+                .iter()
+                .filter(|l| l.health == eazyqq_lib::services::chain::Health::Unknown)
+                .count();
+            if unknown == 0 {
+                println!("链路完整，所有环节正常。");
+            } else {
+                println!("未发现断点，但有 {} 个环节尚未被验证（需要相应组件运行才能确认）。", unknown);
+            }
+        }
+    }
+    hr();
+    Ok(())
+}
+
+/// Probe the externally-reachable links from the CLI process.
+///
+/// Only links this process can honestly verify are touched; component-owned ones (the
+/// GUI's WebSocket, its scheduler, its frontend) are left alone rather than guessed at.
+async fn probe_chain_from_cli(svc: &Services) {
+    use eazyqq_lib::services::chain::{record_error, record_ok, record_unknown, Link};
+
+    match svc.db.get_setting("app_config") {
+        Ok(_) => record_ok(Link::Database, "读写正常"),
+        Err(e) => record_error(Link::Database, format!("{}", e)),
+    }
+
+    match svc.napcat.check_login().await {
+        Ok(v) => {
+            record_ok(Link::NapcatWebUi, "WebUI 可达");
+            let logged_in = v
+                .get("data")
+                .and_then(|d| d.get("isLogin"))
+                .and_then(|b| b.as_bool())
+                .unwrap_or(false);
+            if logged_in {
+                record_ok(Link::QqLogin, "已登录");
+            } else {
+                record_error(Link::QqLogin, "未登录（需要扫码或快速登录）");
+            }
+        }
+        Err(e) => {
+            record_error(Link::NapcatWebUi, e);
+            record_unknown(Link::QqLogin, "WebUI 不可达，无法判断登录状态");
+        }
+    }
+
+    match svc.onebot.get_login_info().await {
+        Ok(v) => {
+            let nick = v
+                .get("data")
+                .and_then(|d| d.get("nick"))
+                .and_then(|n| n.as_str())
+                .unwrap_or("");
+            record_ok(
+                Link::OneBotHttp,
+                if nick.is_empty() {
+                    "可达".to_string()
+                } else {
+                    format!("可达 ({})", nick)
+                },
+            );
+        }
+        Err(e) => record_error(Link::OneBotHttp, e),
+    }
+
+    let cfg = svc.ai.current();
+    if cfg.api_key.trim().is_empty() && cfg.requires_api_key() {
+        record_error(Link::AiProvider, "未配置 API Key");
+    } else {
+        match svc
+            .ai
+            .generate_with_system(
+                "只回复 ok",
+                &[eazyqq_lib::services::ai::ChatMessage {
+                    role: "user".to_string(),
+                    content: "ping".to_string(),
+                }],
+                0.0,
+            )
+            .await
+        {
+            Ok(_) => record_ok(Link::AiProvider, format!("{} 可用", cfg.model)),
+            Err(e) => record_error(Link::AiProvider, e),
+        }
+    }
+
+    // The WebSocket and the scheduler belong to the GUI process. From here we can at least
+    // say whether their port is open, and be explicit that this is not proof of health.
+    let ws_open = std::net::TcpStream::connect_timeout(
+        &std::net::SocketAddr::from(([127, 0, 0, 1], 3001)),
+        std::time::Duration::from_millis(800),
+    )
+    .is_ok();
+    if ws_open {
+        record_unknown(Link::OneBotWs, "端口开放；连接状态需由客户端进程确认");
+    } else {
+        record_error(Link::OneBotWs, "127.0.0.1:3001 未监听，消息无法进入");
+    }
+
+    record_unknown(Link::Scheduler, "需客户端进程运行才能确认");
+    record_unknown(Link::Frontend, "需客户端进程运行才能确认");
+}
+
 fn cmd_log_path() -> Result<(), String> {
     println!("{}", logging::active_log_path().display());
     let (dir, crash_count, last) = logging::diagnostics();
@@ -1953,6 +2108,7 @@ async fn main() -> ExitCode {
                 "config" => cmd_config(&svc, &args).await,
                 "set-config" => cmd_set_config(&svc, &args).await,
                 "health" => cmd_health(&svc, &args).await,
+                "chain-status" => cmd_chain_status(&svc, &args).await,
                 "ai-config" => cmd_ai_config(&svc, &args),
                 "ai-set" => cmd_ai_set(&svc, &args),
                 "ai-test" => cmd_ai_test(&svc, &args).await,

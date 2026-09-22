@@ -185,6 +185,12 @@ pub fn start_summary_scheduler(
             if !outcomes.is_empty() {
                 tracing::info!("scheduler: produced {} summary/summaries", outcomes.len());
             }
+            // Report liveness to the chain monitor: a scheduler that silently stopped is
+            // otherwise indistinguishable from one with nothing to do.
+            crate::services::chain::record_ok(
+                crate::services::chain::Link::Scheduler,
+                format!("运行中，最近一轮产出 {} 份简报", outcomes.len()),
+            );
             tokio::time::sleep(Duration::from_secs(TICK_SECONDS)).await;
         }
     });

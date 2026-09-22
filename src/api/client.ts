@@ -31,6 +31,35 @@ export const api = {
   getContacts: async (params?: { type?: string; searchKeyword?: string }): Promise<ApiResponse<{ list: ContactItemDto[]; total: number }>> => {
     return invoke('get_contacts', { params });
   },
+  /**
+   * End-to-end link report.
+   *
+   * `firstBreak` is the useful part: in a pipeline, everything after the first failure is
+   * a consequence, so fixing anything else is wasted effort.
+   */
+  getChainStatus: async (): Promise<
+    ApiResponse<{
+      links: Array<{
+        link: string;
+        label: string;
+        impact: string;
+        health: 'ok' | 'unknown' | 'failed';
+        detail: string;
+        last_ok_secs_ago: number | null;
+        last_error_secs_ago: number | null;
+      }>;
+      firstBreak: {
+        link: string;
+        label: string;
+        impact: string;
+        detail: string;
+      } | null;
+      hasFailure: boolean;
+      uptimeSecs: number;
+    }>
+  > => {
+    return invoke('get_chain_status');
+  },
   /** Clear a conversation's unread badge. `at` defaults to now on the backend. */
   markRead: async (targetId: string, at?: number): Promise<ApiResponse<number>> => {
     return invoke('mark_read', { targetId, at });
