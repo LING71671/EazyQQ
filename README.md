@@ -173,7 +173,9 @@ eazyqq_cli whitelist-groups
 eazyqq_cli files --target <群号>
 eazyqq_cli file-summarize --path <本地文件路径>            # 支持 txt/md/docx/xlsx/pptx
 
-# 诊断
+# 诊断与自检
+eazyqq_cli selftest                                      # ★ 关键不变量自检（15 项：安全边界/触发/冷却/脱敏/容器）
+eazyqq_cli config-audit                                  # ★ 找出「界面上能改但后端不读」的设置
 eazyqq_cli chain-status                                  # ★ 全链路状态：逐环节体检并定位第一个断点
 eazyqq_cli health --deep                                 # 依赖与链路自检（含真实模型调用）
 eazyqq_cli export                                        # 导出脱敏诊断包 zip
@@ -258,6 +260,23 @@ NapCat WebUI → QQ 登录 → OneBot HTTP → OneBot WebSocket
 客户端运行期间，监控会以 30 秒为周期持续探测，并在**状态发生变化时**（而非每次）写入日志，
 避免刷屏。状态用三值：`OK` / `?`（尚未验证）/ `FAIL`——**「尚未验证」与「已知故障」严格区分**，
 不会把没检查过的东西报成正常。
+
+### 自检与审计
+
+三个命令覆盖"这个安装是否健康"：
+
+| 命令 | 回答的问题 |
+| :--- | :--- |
+| `selftest` | 安全边界还成立吗？（默认拒绝、触发条件、冷却、路径包容性、脱敏、ZIP 结构） |
+| `config-audit` | 有没有「界面上能改、后端不读」的设置？ |
+| `chain-status` | 链路上哪个环节断了？ |
+
+`selftest` 与单元测试调用**同一批产品函数**（不复制逻辑）。它存在的理由是：一套跑不起来的测试
+保护不了任何人——本机的测试二进制因加载器问题无法启动（ISSUE-020），所以关键不变量必须另有入口。
+
+> 写这些检查时踩到两次**空转断言**：`snapshot()` 遍历 `Link::all()`，所以「报告含 8 个环节」永远通过；
+> 文件名检查用「是否含 `..` 子串」判断，而 `_.._evil.exe` 其实是安全的。
+> 现在的写法检验**性质**（是否越界、是否真有探测结论），而不是**表象**。
 
 ### 回复触发与冷却
 

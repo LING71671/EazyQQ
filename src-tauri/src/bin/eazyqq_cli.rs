@@ -2130,8 +2130,13 @@ fn cmd_config_audit(args: &Args) -> Result<(), String> {
 /// machine the test harness fails to load (ISSUE-020) and the cause is not a missing DLL.
 /// A test suite nobody can run protects nobody, so the properties whose failure would be
 /// dangerous or embarrassing are checkable here too.
-fn cmd_selftest(args: &Args) -> Result<(), String> {
+async fn cmd_selftest(svc_ctx: &Services, args: &Args) -> Result<(), String> {
     use eazyqq_lib::services as svc;
+
+    // Probe the chain first. Without this every link is "unverified" and the chain checks
+    // below would pass without testing anything - the same vacuous-pass trap the config
+    // audit exists to prevent.
+    probe_chain_from_cli(svc_ctx).await;
 
     struct Check {
         name: &'static str,
@@ -2165,14 +2170,42 @@ fn cmd_selftest(args: &Args) -> Result<(), String> {
         format!("死字段: {:?}", unread)
     );
 
-    // 2. Every chain link must be reported, and a healthy one must say why.
+    // 2. The chain report must reflect real probing.
+    //
+    // Asserting "8 links are listed" would be vacuous: snapshot() iterates Link::all(), so
+    // it returns 8 whatever happens. The property worth checking is that the report is not
+    // uniformly "unverified" - if nothing was ever probed, the monitor is not running and
+    // the report is decoration.
     let links = svc::chain::snapshot();
     check!("全链路报告覆盖全部 8 个环节", links.len() == 8, format!("{} 个", links.len()));
+
+    let probed = links
+        .iter()
+        .filter(|l| l.health != svc::chain::Health::Unknown)
+        .count();
+    check!(
+        "链路状态来自真实探测（非全部未验证）",
+        probed > 0,
+        format!("{}/{} 个环节有结论", probed, links.len())
+    );
+
     let unevidenced = links
         .iter()
         .filter(|l| l.health == svc::chain::Health::Ok && l.detail.trim().is_empty())
         .count();
-    check!("正常环节必须带证据", unevidenced == 0, format!("{} 个无说明", unevidenced));
+    check!("标记为正常的环节必须给出依据", unevidenced == 0, format!("{} 个无说明", unevidenced));
+
+    // A link claimed healthy must not also carry a recorded failure that was never cleared
+    // - that would mean the state machine only ever moves one way.
+    let contradictory = links
+        .iter()
+        .filter(|l| l.health == svc::chain::Health::Ok && l.last_ok_secs_ago.is_none())
+        .count();
+    check!(
+        "标记为正常必须有过成功记录",
+        contradictory == 0,
+        format!("{} 个正常但无成功记录", contradictory)
+    );
 
     // 3. Default deny: an unknown target is never tracked and never reaches AI.
     let policy = svc::policy::TargetPolicy::default();
@@ -2365,7 +2398,7 @@ async fn main() -> ExitCode {
                 "health" => cmd_health(&svc, &args).await,
                 "chain-status" => cmd_chain_status(&svc, &args).await,
                 "config-audit" => cmd_config_audit(&args),
-                "selftest" => cmd_selftest(&args),
+                "selftest" => cmd_selftest(&svc, &args).await,
                 "ai-config" => cmd_ai_config(&svc, &args),
                 "ai-set" => cmd_ai_set(&svc, &args),
                 "ai-test" => cmd_ai_test(&svc, &args).await,
