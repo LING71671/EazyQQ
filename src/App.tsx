@@ -74,7 +74,6 @@ export const App: React.FC = () => {
       heartbeatIntervalSec: 15,
     },
     storage: {
-      workspaceDir: 'EazyQQ_Data',
       autoSyncFiles: true,
       maxFileSizeMb: 100,
     },

@@ -11,23 +11,42 @@ use services::db::Database;
 use services::napcat::NapCatService;
 use services::onebot::OneBotClient;
 
-/// `app_settings` key holding whether the WebView2 compatibility fallback is enabled.
-///
-/// Deliberately a persisted setting rather than a build-time flag: the fallback disables
-/// Chromium's renderer sandbox, which must not be forced on every user to accommodate one
-/// machine. See the startup watchdog in `run()`.
-pub const WEBVIEW_COMPAT_SETTING: &str = "webview_compat_mode";
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Logging must come first so that everything below - including a failed SQLite
-    // open or a WebView2 startup problem - leaves a durable trace on disk.
+    // Resolve which account's data this process serves BEFORE anything touches the disk.
+    //
+    // Every private artefact is derived from that choice - the SQLite database, the log
+    // file (which contains message text verbatim), downloaded group files, diagnostics -
+    // so getting it wrong first would mean writing one account's data into another's
+    // directory. This is the earliest possible point, and it needs no logging.
+    let bootstrap = services::accounts::read_bootstrap();
+    services::accounts::set_active(bootstrap.last_account.clone());
+
+    // Logging next, so anything below leaves a durable trace - now inside the account's own
+    // directory instead of a shared one.
     services::logging::init(true);
     services::logging::log_paths();
 
     let root_dir = services::logging::workspace_root();
     let data_dir = services::logging::data_dir();
     services::logging::ensure_dir(&data_dir);
+
+    match services::accounts::active() {
+        Some(uin) => {
+            tracing::info!("serving account {} (data in {})", uin, data_dir.display());
+            // One-time relocation of data written before accounts were separated.
+            if let Err(e) = services::accounts::migrate_legacy_if_needed(&uin) {
+                tracing::warn!("account data migration failed: {}", e);
+            }
+        }
+        None => tracing::warn!(
+            "no QQ account recorded yet; using {} until the protocol side reports one",
+            data_dir.display()
+        ),
+    }
+    if let Err(e) = services::accounts::ensure_layout(services::accounts::active().as_deref()) {
+        tracing::error!("could not prepare the account data layout: {}", e);
+    }
 
     let db_path = data_dir.join("eazyqq.db");
     let db = Arc::new(Database::init(&db_path).unwrap_or_else(|e| {
@@ -47,20 +66,17 @@ pub fn run() {
     // Instead the app always starts sandboxed, and the startup watchdog enables this
     // mode only after a startup failure has actually been observed, then restarts once.
     // A healthy machine never pays the cost; an affected one recovers by itself.
-    let webview_compat_mode = db
-        .get_setting(WEBVIEW_COMPAT_SETTING)
-        .ok()
-        .flatten()
-        .map(|v| v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
+    // The flag lives in bootstrap.json rather than the database: it has to be read before
+    // the window exists, and the database is per account while this setting is app-wide.
+    let webview_compat_mode = bootstrap.webview_compat_mode;
 
     if webview_compat_mode {
         tracing::warn!(
             "WebView compatibility mode is ON: adding --no-sandbox to the WebView2 command \
              line because the renderer previously failed to start under its sandbox. This \
              reduces security; once the underlying cause is fixed, clear the \
-             `{}` setting to restore the sandbox.",
-            WEBVIEW_COMPAT_SETTING
+             `webviewCompatMode` field in {} to restore the sandbox.",
+            services::accounts::bootstrap_path().display()
         );
         // WebView2 reads this when its environment is created, which happens when the
         // Tauri builder below creates the window - so it has to be set before that.
@@ -175,7 +191,6 @@ pub fn run() {
             // ever turned on by an observed failure on the machine that has the problem.
             {
                 let handle = app.handle().clone();
-                let watchdog_db = db.clone();
                 let compat_already_on = webview_compat_mode;
 
                 tauri::async_runtime::spawn(async move {
@@ -200,12 +215,10 @@ pub fn run() {
                              - it means the WebView could not execute JS, not that a process \
                              died."
                         );
-                        if let Err(e) =
-                            watchdog_db.set_setting(WEBVIEW_COMPAT_SETTING, "true")
-                        {
+                        if let Err(e) = services::accounts::set_webview_compat(true) {
                             tracing::error!(
-                                "could not persist `{}`: {} - the restart will not help",
-                                WEBVIEW_COMPAT_SETTING,
+                                "could not persist the compatibility flag: {} - the restart \
+                                 will not help",
                                 e
                             );
                         }
@@ -313,12 +326,13 @@ pub fn run() {
                 napcat.clone(),
                 onebot.clone(),
                 ai.clone(),
+                napcat_dir.clone(),
             );
             tracing::info!("chain monitor started (link status is reported end to end)");
 
             // Background summarizer: honours the summary whitelist, per-group interval,
             // sliding window and custom prompt straight from SQLite.
-            services::scheduler::start_summary_scheduler(handle, db, ai);
+            services::scheduler::start_summary_scheduler(handle, db, ai, onebot.clone());
             Ok(())
         })
         .on_window_event(|window, event| {

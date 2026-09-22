@@ -20,12 +20,18 @@ fn qq_avatar(uin: Option<&String>) -> Option<String> {
 }
 
 #[command]
-pub async fn get_protocol_status(state: State<'_, AppState>) -> Result<ApiResponse<ProtocolStatusDto>, String> {
+pub async fn get_protocol_status(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ApiResponse<ProtocolStatusDto>, String> {
     // 1. First probe OneBot HTTP for active session
     if let Ok(info) = state.onebot.get_login_info().await {
         if let Some(data) = info.get("data") {
             let uin = data.get("user_id").and_then(|v| v.as_i64()).map(|n| n.to_string());
             let nickname = data.get("nickname").and_then(|v| v.as_str()).map(|s| s.to_string());
+            if let Some(observed) = &uin {
+                reconcile_account(&app, observed);
+            }
             if uin.is_some() {
                 let avatar_url = qq_avatar(uin.as_ref());
                 return Ok(ApiResponse::ok(ProtocolStatusDto {
@@ -157,6 +163,53 @@ pub async fn get_chain_status() -> Result<ApiResponse<serde_json::Value>, String
         "hasFailure": crate::services::chain::has_failure(),
         "uptimeSecs": crate::services::chain::uptime_secs(),
     })))
+}
+
+/// Keep this process's data directory aligned with the account actually signed in.
+///
+/// Every private path - database, log file, downloaded group files, diagnostics - is
+/// computed once at startup from the recorded account. If the protocol side reports a
+/// different one, carrying on would write this account's messages, drafts and logs into
+/// the previous account's directory, which is exactly the cross-account leak we must not
+/// have. So record the account and restart, which recomputes every path.
+///
+/// The restart happens once: after it, the recorded account matches the observed one.
+fn reconcile_account(app: &tauri::AppHandle, observed: &str) {
+    let observed = observed.trim();
+    if observed.is_empty() {
+        return;
+    }
+
+    match crate::services::accounts::active() {
+        Some(current) if current == observed => {}
+        Some(current) => {
+            tracing::warn!(
+                "account switched from {} to {}; restarting so each account keeps its own \
+                 data directory",
+                current,
+                observed
+            );
+            if let Err(e) = crate::services::accounts::adopt(observed) {
+                tracing::error!("could not record the new account: {} - not restarting", e);
+                return;
+            }
+            app.restart();
+        }
+        None => {
+            // First time the account is known: a fresh install, or data written before
+            // accounts were separated. Restarting now means the very first session already
+            // writes into the right directory instead of the unbound one.
+            tracing::info!(
+                "adopting account {} so its data is isolated from other accounts",
+                observed
+            );
+            if let Err(e) = crate::services::accounts::adopt(observed) {
+                tracing::warn!("could not record the account: {}", e);
+                return;
+            }
+            app.restart();
+        }
+    }
 }
 
 /// Mark a conversation as read, clearing its unread badge.

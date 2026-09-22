@@ -142,13 +142,37 @@ struct Services {
 impl Services {
     fn build() -> Result<Self, String> {
         let root = logging::workspace_root();
+
+        // Resolve the account before touching any data path, exactly as the GUI does -
+        // otherwise the CLI would read a different directory than the app writes to.
+        let bootstrap = eazyqq_lib::services::accounts::read_bootstrap();
+        eazyqq_lib::services::accounts::set_active(bootstrap.last_account.clone());
+
         let data_dir = logging::data_dir();
         logging::ensure_dir(&data_dir);
+
+        // Relocate pre-isolation data BEFORE creating a database: once an empty
+        // `eazyqq.db` exists in the account directory the migration is skipped by design,
+        // and the user would appear to have lost all their rules and drafts.
+        if let Some(uin) = eazyqq_lib::services::accounts::active() {
+            if let Err(e) = eazyqq_lib::services::accounts::migrate_legacy_if_needed(&uin) {
+                tracing::warn!("account data migration failed: {}", e);
+            }
+        }
 
         let db = Arc::new(
             Database::init(data_dir.join("eazyqq.db"))
                 .map_err(|e| format!("cannot open SQLite database: {}", e))?,
         );
+
+        match eazyqq_lib::services::accounts::active() {
+            Some(uin) => tracing::info!("using data for account {} at {}", uin, data_dir.display()),
+            None => tracing::warn!(
+                "no account recorded yet; using {} (run the app once while logged in to \
+                 bind this machine to an account)",
+                data_dir.display()
+            ),
+        }
 
         let napcat_dir = if root.join("napcat").exists() {
             root.join("napcat")
@@ -1265,7 +1289,7 @@ async fn cmd_scheduler_tick(svc: &Services, args: &Args) -> Result<(), String> {
         truncate(&settings.custom_prompt, 40)
     );
 
-    let outcomes = eazyqq_lib::services::scheduler::tick(&svc.db, &svc.ai, None).await;
+    let outcomes = eazyqq_lib::services::scheduler::tick(&svc.db, &svc.ai, &svc.onebot, None).await;
 
     if args.json() {
         let list: Vec<serde_json::Value> = outcomes
@@ -2065,6 +2089,14 @@ async fn main() -> ExitCode {
     if args.command == "version" {
         println!("eazyqq-cli {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
+    }
+
+    // Resolve the account before initialising logging: the log file is account-scoped
+    // (it contains message text), so initialising first would write into the wrong
+    // account's directory - or the unbound one.
+    {
+        let bootstrap = eazyqq_lib::services::accounts::read_bootstrap();
+        eazyqq_lib::services::accounts::set_active(bootstrap.last_account.clone());
     }
 
     logging::init(true);

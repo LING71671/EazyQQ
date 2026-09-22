@@ -20,6 +20,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::services::ai::AiService;
 use crate::services::db::Database;
+use crate::services::onebot::OneBotClient;
 use crate::services::summarizer::{self, SummaryRequest, DEFAULT_PROMPT};
 
 const TICK_SECONDS: u64 = 60;
@@ -85,10 +86,87 @@ fn now_ms() -> i64 {
         .as_millis() as i64
 }
 
+/// `summary.autoForwardToPhone` - has always been in the settings UI and read by nothing.
+fn forward_to_phone_enabled(db: &Database) -> bool {
+    let raw = match db.get_setting("app_config") {
+        Ok(Some(v)) => v,
+        _ => return false,
+    };
+    serde_json::from_str::<serde_json::Value>(&raw)
+        .ok()
+        .and_then(|v| {
+            v.get("summary")?
+                .get("autoForwardToPhone")?
+                .as_bool()
+        })
+        .unwrap_or(false)
+}
+
+/// Forward a finished summary to the account's own conversation.
+///
+/// Sending it to ourselves is what "forward to phone" actually means here: QQ syncs that
+/// conversation to the mobile client, so no separate push channel is needed.
+async fn forward_summary_to_self(onebot: &Arc<OneBotClient>, outcome: &summarizer::SummaryOutcome) {
+    let self_id = match onebot.get_login_info().await {
+        Ok(v) => {
+            let data = v.get("data").cloned().unwrap_or(serde_json::Value::Null);
+            // OneBot calls it `user_id`; NapCat's own API calls it `uin`.
+            data.get("user_id")
+                .or_else(|| data.get("uin"))
+                .map(|u| match u {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                })
+                .unwrap_or_default()
+        }
+        Err(e) => {
+            tracing::warn!("forward: cannot resolve own account, skipping forward: {}", e);
+            return;
+        }
+    };
+
+    if self_id.is_empty() {
+        tracing::warn!("forward: own account id unavailable, skipping forward");
+        return;
+    }
+
+    let s = &outcome.summary;
+    // Window covered by this summary, so the message is self-explanatory on the phone.
+    let window_hours = ((s.end_time - s.start_time).max(0) as f64 / 3_600_000.0).round() as i64;
+    let mut text = format!(
+        "【{} 简报 · 近 {} 小时】\n\n{}",
+        s.target_name,
+        window_hours.max(1),
+        s.summary_text
+    );
+    if !s.key_points.is_empty() {
+        text.push_str("\n\n核心要点：");
+        for p in &s.key_points {
+            text.push_str(&format!("\n· {}", p));
+        }
+    }
+    if !s.decisions.is_empty() {
+        text.push_str("\n\n决议与待办：");
+        for d in &s.decisions {
+            text.push_str(&format!("\n· {}", d));
+        }
+    }
+
+    match onebot.send_msg("private", &self_id, &text).await {
+        Ok(_) => tracing::info!(
+            "forward: summary for {} sent to own account ({})",
+            s.target_name,
+            self_id
+        ),
+        Err(e) => tracing::warn!("forward: sending summary to self failed: {}", e),
+    }
+}
+
 /// One scheduler pass. Returns the targets that were summarised.
 pub async fn tick(
     db: &Arc<Database>,
     ai: &Arc<AiService>,
+    onebot: &Arc<OneBotClient>,
     app_handle: Option<&AppHandle>,
 ) -> Vec<summarizer::SummaryOutcome> {
     let settings = read_settings(db);
@@ -161,6 +239,9 @@ pub async fn tick(
                 if let Some(handle) = app_handle {
                     let _ = handle.emit("new-summary", &outcome.summary);
                 }
+                if forward_to_phone_enabled(db) {
+                    forward_summary_to_self(onebot, &outcome).await;
+                }
                 outcomes.push(outcome);
             }
             Err(e) => {
@@ -177,11 +258,12 @@ pub fn start_summary_scheduler(
     app_handle: AppHandle,
     db: Arc<Database>,
     ai: Arc<AiService>,
+    onebot: Arc<OneBotClient>,
 ) {
     tauri::async_runtime::spawn(async move {
         tracing::info!("summary scheduler started (tick every {}s)", TICK_SECONDS);
         loop {
-            let outcomes = tick(&db, &ai, Some(&app_handle)).await;
+            let outcomes = tick(&db, &ai, &onebot, Some(&app_handle)).await;
             if !outcomes.is_empty() {
                 tracing::info!("scheduler: produced {} summary/summaries", outcomes.len());
             }

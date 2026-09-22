@@ -20,6 +20,8 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
+use crate::services::napcat_boot;
+
 /// Every hop in the chain, in the order a message travels through it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -227,7 +229,15 @@ pub fn has_failure() -> bool {
     snapshot().iter().any(|r| r.health == Health::Failed)
 }
 
-/// Periodically probe the links that can be probed from outside.
+/// Read `napcat.{key}` from the persisted config, with a fallback.
+fn napcat_setting(db: &crate::services::db::Database, key: &str) -> Option<serde_json::Value> {
+    let raw = db.get_setting("app_config").ok().flatten()?;
+    let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    parsed.get("napcat")?.get(key).cloned()
+}
+
+/// Periodically probe the links that can be probed from outside, and act on the one that
+/// can be acted upon.
 ///
 /// Component-owned links (WebSocket, frontend, scheduler) are not touched here - they
 /// report themselves, and polling them would either be meaningless or produce a false
@@ -235,13 +245,21 @@ pub fn has_failure() -> bool {
 pub fn spawn_monitor(db: std::sync::Arc<crate::services::db::Database>,
                      napcat: std::sync::Arc<crate::services::napcat::NapCatService>,
                      onebot: std::sync::Arc<crate::services::onebot::OneBotClient>,
-                     ai: std::sync::Arc<crate::services::ai::AiService>) {
+                     ai: std::sync::Arc<crate::services::ai::AiService>,
+                     napcat_dir: std::path::PathBuf) {
     tauri::async_runtime::spawn(async move {
         // First pass quickly, then settle into a slow cadence: this is a monitor, not a
         // hot path, and probing the AI provider costs a request.
         let mut tick: u64 = 0;
         loop {
-            let interval = if tick == 0 { 5 } else { 30 };
+            // `napcat.heartbeatIntervalSec` drives the cadence; clamped so a typo cannot
+            // turn the monitor into a busy loop or make it effectively never run.
+            let configured = napcat_setting(&db, "heartbeatIntervalSec")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(15)
+                .clamp(5, 3600);
+
+            let interval = if tick == 0 { 5 } else { configured };
             tokio::time::sleep(Duration::from_secs(interval)).await;
             tick += 1;
 
@@ -254,6 +272,7 @@ pub fn spawn_monitor(db: std::sync::Arc<crate::services::db::Database>,
             // NapCat WebUI + QQ login state.
             match napcat.check_login().await {
                 Ok(v) => {
+                    napcat_boot::note_healthy();
                     let logged_in = v
                         .get("data")
                         .and_then(|d| d.get("isLogin"))
@@ -268,6 +287,41 @@ pub fn spawn_monitor(db: std::sync::Arc<crate::services::db::Database>,
                 }
                 Err(e) => {
                     record_error(Link::NapcatWebUi, e);
+
+                    // The protocol side is the one link we can actually repair, so do it
+                    // when the user has asked for it. Without this the app could only ever
+                    // report that NapCat was down.
+                    let auto_restart = napcat_setting(&db, "autoRestart")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true);
+                    if auto_restart {
+                        let outcome = napcat_boot::start(&napcat_dir);
+                        if outcome.attempted {
+                            if outcome.ok {
+                                tracing::warn!(
+                                    "chain: NapCat was down and autoRestart is on - {}",
+                                    outcome.detail
+                                );
+                                record_unknown(
+                                    Link::NapcatWebUi,
+                                    format!("已自动拉起，等待就绪（{}）", outcome.detail),
+                                );
+                            } else {
+                                tracing::error!(
+                                    "chain: could not start NapCat - {}",
+                                    outcome.detail
+                                );
+                                record_error(
+                                    Link::NapcatWebUi,
+                                    format!("自动拉起失败: {}", outcome.detail),
+                                );
+                            }
+                        } else {
+                            // Throttled or out of attempts; say so rather than looking idle.
+                            tracing::debug!("chain: skipping NapCat restart - {}", outcome.detail);
+                        }
+                    }
+
                     record_unknown(Link::QqLogin, "NapCat WebUI 不可达，无法判断登录状态");
                 }
             }

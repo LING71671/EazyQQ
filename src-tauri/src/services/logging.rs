@@ -28,8 +28,15 @@ pub fn workspace_root() -> PathBuf {
     }
 }
 
+/// Data directory for the account this process is serving.
+///
+/// Every private artefact hangs off this one path - the SQLite database, the log file
+/// (which contains message text verbatim), downloaded group files and diagnostics - so
+/// scoping it by account is what keeps one QQ account's data away from another's. The
+/// active account is resolved once at startup by `accounts`; see that module for the
+/// layout.
 pub fn data_dir() -> PathBuf {
-    workspace_root().join("EazyQQ_Data")
+    crate::services::accounts::active_data_dir()
 }
 
 pub fn log_dir() -> PathBuf {

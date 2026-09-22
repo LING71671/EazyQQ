@@ -153,7 +153,6 @@ export interface AppConfig {
     heartbeatIntervalSec: number;
   };
   storage: {
-    workspaceDir: string;
     autoSyncFiles: boolean;
     maxFileSizeMb: number;
   };

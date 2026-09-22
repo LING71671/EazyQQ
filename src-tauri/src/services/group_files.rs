@@ -343,6 +343,33 @@ fn string_vec(value: Option<&Value>) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Is automatic download of uploaded group files enabled?
+///
+/// `storage.autoSyncFiles` was previously declared in the settings UI and read by nothing,
+/// so the toggle had no effect either way.
+fn auto_sync_enabled(db: &Database) -> bool {
+    read_config_bool(db, &["storage", "autoSyncFiles"], true)
+}
+
+fn read_config_bool(db: &Database, key_path: &[&str], fallback: bool) -> bool {
+    let raw = match db.get_setting("app_config") {
+        Ok(Some(v)) => v,
+        _ => return fallback,
+    };
+    let parsed: Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(_) => return fallback,
+    };
+    let mut cursor = &parsed;
+    for key in key_path {
+        match cursor.get(key) {
+            Some(next) => cursor = next,
+            None => return fallback,
+        }
+    }
+    cursor.as_bool().unwrap_or(fallback)
+}
+
 /// Handle a live `group_upload` notice: record the file and download it if the group is
 /// on the summary whitelist (i.e. the user explicitly opted in to tracking it).
 pub async fn handle_upload_notice(
@@ -378,6 +405,16 @@ pub async fn handle_upload_notice(
         updated_at: now_ms(),
     };
     let _ = db.upsert_group_file(&record);
+
+    // The file is always indexed so the list stays accurate; whether we pull the bytes is
+    // what the user's `storage.autoSyncFiles` setting controls.
+    if !auto_sync_enabled(db) {
+        tracing::info!(
+            "group upload {} indexed but not downloaded (storage.autoSyncFiles is off)",
+            file_name
+        );
+        return;
+    }
 
     match download_group_file(db, onebot, group_id, file_id).await {
         Ok(path) => tracing::info!("group upload auto-saved to {}", path.display()),

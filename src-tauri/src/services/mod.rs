@@ -1,3 +1,4 @@
+pub mod accounts;
 pub mod archive;
 pub mod chain;
 pub mod cooldown;
@@ -6,6 +7,7 @@ pub mod diagnostics;
 pub mod document;
 pub mod group_files;
 pub mod napcat;
+pub mod napcat_boot;
 pub mod onebot;
 pub mod ai;
 pub mod contacts;
