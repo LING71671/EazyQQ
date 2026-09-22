@@ -93,23 +93,48 @@ pub fn run() {
                 tracing::error!("main window handle not found during setup");
             }
 
-            // Safety net: if the frontend never reports ready (script error, WebView
-            // failure), show the window anyway rather than leaving the app invisible.
+            // Safety net with a self-heal attempt.
+            //
+            // The failure mode this guards against is subtle: when the WebView cannot
+            // execute JS, the frontend never mounts, `app_show_window` is never called,
+            // and - crucially - no crash dump is produced. The process looks perfectly
+            // healthy from the outside while the user stares at nothing. So instead of
+            // merely revealing an empty window, reload once first, then report clearly.
             {
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_secs(12)).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(9)).await;
+
+                    let still_hidden = match handle.get_webview_window("main") {
+                        Some(w) => !w.is_visible().unwrap_or(false),
+                        None => false,
+                    };
+
+                    if still_hidden {
+                        tracing::warn!(
+                            "frontend has not reported ready after 9s; reloading the webview \
+                             once. Note: no crash dump accompanies this failure mode - it \
+                             usually means the WebView cannot execute JS, not that a \
+                             process died."
+                        );
+                        if let Some(w) = handle.get_webview_window("main") {
+                            let _ = w.eval("window.location.reload()");
+                        }
+
+                        tokio::time::sleep(std::time::Duration::from_secs(9)).await;
+                    }
+
                     if let Some(window) = handle.get_webview_window("main") {
-                        match window.is_visible() {
-                            Ok(true) => {}
-                            _ => {
-                                tracing::warn!(
-                                    "frontend did not report ready within 12s; \
-                                     showing the window anyway"
-                                );
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
+                        if !window.is_visible().unwrap_or(false) {
+                            tracing::error!(
+                                "frontend still has not reported ready after a reload; \
+                                 showing the window anyway. Likely causes, in order: the \
+                                 WebView runtime cannot run its renderer on this machine \
+                                 (check `additionalBrowserArgs` in tauri.conf.json), or the \
+                                 dev server is unreachable."
+                            );
+                            let _ = window.show();
+                            let _ = window.set_focus();
                         }
                     }
                 });
