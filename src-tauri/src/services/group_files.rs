@@ -110,21 +110,50 @@ pub async fn sync_group_files(
         group_id
     );
 
+    let all_existing = db.get_group_files(group_id).unwrap_or_default();
     let mut records = Vec::new();
     for f in remote {
-        let existing = db.find_group_file(group_id, &f.file_id).ok().flatten();
+        // Match existing record by file_id OR by file_name in the same group
+        let existing = all_existing
+            .iter()
+            .find(|r| r.file_id == f.file_id || r.file_name == f.file_name);
+
+        // If an older duplicate row existed under a different file_id (e.g. from group_upload event), clean it up
+        if let Some(old) = existing {
+            if old.file_id != f.file_id {
+                let _ = db.delete_group_file(group_id, &old.file_id);
+            }
+        }
+
+        let is_downloaded = existing.map(|e| e.download_status.as_str() == "downloaded").unwrap_or(false);
+        let local_path = existing.and_then(|e| e.local_path.clone());
+        let uploader_name = f.uploader_name.unwrap_or_default();
+        let final_uploader = if !uploader_name.is_empty() && !uploader_name.chars().all(|c| c.is_ascii_digit()) {
+            uploader_name
+        } else if let Some(old) = existing {
+            if !old.uploader_name.chars().all(|c| c.is_ascii_digit()) && !old.uploader_name.is_empty() {
+                old.uploader_name.clone()
+            } else {
+                uploader_name
+            }
+        } else {
+            uploader_name
+        };
+
         let record = GroupFileRecord {
             file_id: f.file_id,
             group_id: group_id.to_string(),
             file_name: f.file_name,
             file_size: f.file_size.unwrap_or(0),
             busid: f.busid.unwrap_or(0),
-            uploader_name: f.uploader_name.unwrap_or_default(),
+            uploader_name: final_uploader,
             upload_time: f.upload_time.unwrap_or(0),
-            local_path: existing.as_ref().and_then(|e| e.local_path.clone()),
-            download_status: existing
-                .map(|e| e.download_status)
-                .unwrap_or_else(|| "remote".to_string()),
+            local_path,
+            download_status: if is_downloaded {
+                "downloaded".to_string()
+            } else {
+                "remote".to_string()
+            },
             updated_at: now_ms(),
         };
         if let Err(e) = db.upsert_group_file(&record) {
@@ -249,7 +278,23 @@ pub async fn summarize_file(
     ai: &Arc<AiService>,
     local_path: &str,
 ) -> Result<FileSummaryResultDto, String> {
-    let path = Path::new(local_path);
+    let mut resolved_path = PathBuf::from(local_path);
+    if !resolved_path.exists() {
+        let candidate = Path::new("EazyQQ_Data").join("group_files").join(local_path);
+        if candidate.exists() {
+            resolved_path = candidate;
+        } else if let Ok(entries) = std::fs::read_dir("EazyQQ_Data/group_files") {
+            for entry in entries.flatten() {
+                let sub = entry.path().join(local_path);
+                if sub.exists() {
+                    resolved_path = sub;
+                    break;
+                }
+            }
+        }
+    }
+    let path = &resolved_path;
+
     let file_name = path
         .file_name()
         .and_then(|n| n.to_str())
@@ -394,16 +439,40 @@ pub async fn handle_upload_notice(
         return;
     }
 
+    let all_existing = db.get_group_files(group_id).unwrap_or_default();
+    let existing = all_existing.iter().find(|r| r.file_id == file_id || r.file_name == file_name);
+    if let Some(old) = existing {
+        if old.file_id != file_id {
+            let _ = db.delete_group_file(group_id, &old.file_id);
+        }
+    }
+
+    let resolved_uploader = if uploader_name.chars().all(|c| c.is_ascii_digit()) {
+        if let Ok(rules) = db.get_all_rules() {
+            rules
+                .into_iter()
+                .find(|r| r.target_id == uploader_name)
+                .map(|r| r.name)
+                .unwrap_or_else(|| uploader_name.to_string())
+        } else {
+            uploader_name.to_string()
+        }
+    } else {
+        uploader_name.to_string()
+    };
+
     let record = GroupFileRecord {
         file_id: file_id.to_string(),
         group_id: group_id.to_string(),
         file_name: file_name.to_string(),
         file_size,
         busid,
-        uploader_name: uploader_name.to_string(),
+        uploader_name: resolved_uploader,
         upload_time: now_ms(),
-        local_path: None,
-        download_status: "remote".to_string(),
+        local_path: existing.and_then(|e| e.local_path.clone()),
+        download_status: existing
+            .map(|e| e.download_status.clone())
+            .unwrap_or_else(|| "remote".to_string()),
         updated_at: now_ms(),
     };
     let _ = db.upsert_group_file(&record);

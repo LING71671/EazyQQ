@@ -404,7 +404,10 @@ impl Database {
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             ON CONFLICT(msg_id) DO UPDATE SET
                 content = excluded.content,
-                ai_reply_status = excluded.ai_reply_status",
+                ai_reply_status = CASE 
+                    WHEN messages_log.ai_reply_status != 'none' THEN messages_log.ai_reply_status 
+                    ELSE excluded.ai_reply_status 
+                END",
             params![
                 msg.id,
                 msg.target_id,
@@ -452,7 +455,41 @@ impl Database {
             list.push(r?);
         }
         list.reverse();
-        Ok(list)
+
+        // Deduplicate messages with identical content and direction within 60s
+        let mut deduped: Vec<crate::models::MessageItemDto> = Vec::new();
+        let mut ids_to_delete: Vec<String> = Vec::new();
+
+        for m in list {
+            if let Some(last) = deduped.last_mut() {
+                let same_content = last.content == m.content;
+                let same_dir = last.is_from_me == m.is_from_me;
+                let close_time = (last.timestamp - m.timestamp).abs() < 60_000;
+                if same_content && same_dir && close_time {
+                    // Merge AI status if one was marked auto_replied or draft
+                    if last.ai_reply_status == "none" && m.ai_reply_status != "none" {
+                        last.ai_reply_status = m.ai_reply_status.clone();
+                    }
+                    if (last.sender_name == "好友" || last.sender_name == "我")
+                        && m.sender_name != "好友"
+                        && m.sender_name != "我"
+                    {
+                        last.sender_name = m.sender_name.clone();
+                    }
+                    ids_to_delete.push(m.id);
+                    continue;
+                }
+            }
+            deduped.push(m);
+        }
+
+        if !ids_to_delete.is_empty() {
+            for del_id in ids_to_delete {
+                let _ = conn.execute("DELETE FROM messages_log WHERE msg_id = ?1", params![del_id]);
+            }
+        }
+
+        Ok(deduped)
     }
 
     /// Messages for a target inside a sliding time window, oldest-first.
@@ -563,6 +600,15 @@ impl Database {
             .get_group_files(group_id)?
             .into_iter()
             .find(|f| f.file_id == file_id))
+    }
+
+    pub fn delete_group_file(&self, group_id: &str, file_id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM group_files WHERE group_id = ?1 AND file_id = ?2",
+            params![group_id, file_id],
+        )?;
+        Ok(())
     }
 
     // --- Read state / unread counts ---

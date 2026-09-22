@@ -71,6 +71,7 @@ pub fn configured_qq_path(napcat_dir: &Path) -> Result<PathBuf, String> {
 }
 
 /// Everything needed to start NapCat, resolved and checked up front.
+#[derive(Debug)]
 struct BootFiles {
     launcher: PathBuf,
     hook_dll: PathBuf,
@@ -409,6 +410,16 @@ pub fn consecutive_failures() -> u32 {
     state().lock().map(|s| s.consecutive_failures).unwrap_or(0)
 }
 
+/// Force manual restart of NapCat, clearing previous failure counters.
+pub fn restart(napcat_dir: &Path) -> BootOutcome {
+    if let Ok(mut st) = state().lock() {
+        st.consecutive_failures = 0;
+        st.last_attempt = None;
+        st.awaiting_readiness = false;
+    }
+    start(napcat_dir)
+}
+
 /// Launch NapCat. Returns immediately; readiness is confirmed later by the chain monitor.
 pub fn start(napcat_dir: &Path) -> BootOutcome {
     if let Err(reason) = may_attempt() {
@@ -475,6 +486,13 @@ pub fn start(napcat_dir: &Path) -> BootOutcome {
         .env("NAPCAT_LAUNCHER_PATH", &files.launcher)
         .env("NAPCAT_MAIN_PATH", &files.main_mjs)
         .env("QQ_PATH_CONFIG", napcat_dir.join("config").join("qq_path.txt"));
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
 
     // Capture the launcher's output.
     //

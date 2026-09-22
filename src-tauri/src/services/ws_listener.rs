@@ -340,7 +340,12 @@ async fn handle_message_event(
         .unwrap_or_default()
         .as_millis() as i64;
 
-    let msg_id = format!("msg_{}_{}", target_id, now_ms);
+    let msg_id_val = event
+        .get("message_id")
+        .map(|v| v.to_string().replace('"', ""))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| now_ms.to_string());
+    let msg_id = format!("msg_{}_{}", target_id, msg_id_val);
 
     // Outgoing messages (our own account) arrive as normal message events; mark them so
     // summaries and AI context can tell the two directions apart.
@@ -527,7 +532,7 @@ async fn execute_auto_reply(
         return Err("大模型返回了空回复".to_string());
     }
 
-    onebot
+    let send_res = onebot
         .send_msg(&target_type, &target_id, &reply_content)
         .await
         .map_err(|e| format!("自动回复发送失败: {}", e))?;
@@ -537,8 +542,15 @@ async fn execute_auto_reply(
         .unwrap_or_default()
         .as_millis() as i64;
 
+    let msg_id_val = send_res
+        .get("data")
+        .and_then(|d| d.get("message_id"))
+        .map(|v| v.to_string().replace('"', ""))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("reply_{}", reply_ms));
+
     let reply_dto = MessageItemDto {
-        id: format!("reply_{}", reply_ms),
+        id: format!("msg_{}_{}", target_id, msg_id_val),
         target_id: target_id.clone(),
         sender_id: "me".to_string(),
         sender_name: "我 (AI自动秒回)".to_string(),

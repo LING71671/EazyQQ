@@ -14,8 +14,10 @@ import {
   ShieldAlert,
   Send,
   Sliders,
+  ExternalLink,
+  Zap,
 } from 'lucide-react';
-import type { AiProviderId, AppConfig, DependencyHealthReport } from '@/api/contracts';
+import type { AiProviderId, AppConfig, DependencyHealthReport, AppUpdateInfo } from '@/api/contracts';
 import { api } from '@/api/client';
 
 /**
@@ -78,9 +80,17 @@ const AI_PRESETS: Record<
     sub: '默认云端服务',
     local: false,
   },
+  opencode: {
+    baseUrl: 'https://opencode.ai/zen/v1',
+    model: 'qwen3.8-flash',
+    label: 'OpenCode 官方免费/Zen',
+    sub: '官方免费通道 · 动态模型',
+    local: false,
+  },
 };
 
 const AI_PROVIDER_ORDER: AiProviderId[] = [
+  'opencode',
   'ollama',
   'lmstudio',
   'llamacpp',
@@ -126,15 +136,91 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [apiKey, setApiKey] = useState(config.ai?.apiKey || '');
   const [baseUrl, setBaseUrl] = useState(config.ai?.baseUrl || '');
 
-  // Switching provider refreshes the endpoint and model from the preset, unless the
-  // preset matches what is already there.
-  const handleSelectProvider = (id: AiProviderId) => {
-    setProvider(id);
-    const preset = AI_PRESETS[id];
-    if (preset) {
-      setBaseUrl(preset.baseUrl);
-      setModel(preset.model);
+  // Isolated per-provider settings memory (prevents switching from wiping custom configs)
+  const [providersMap, setProvidersMap] = useState<
+    Record<string, { model: string; baseUrl?: string; apiKey?: string }>
+  >(config.ai?.providers || {});
+
+  // 1-Click Action states
+  const [isRestartingNapcat, setIsRestartingNapcat] = useState(false);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+
+  const handleRestartProtocol = async () => {
+    setIsRestartingNapcat(true);
+    setActionNotice('正在唤醒/重启 NapCat 协议端...');
+    try {
+      const res = await api.restartNapCat();
+      if (res.success) {
+        setActionNotice(`NapCat 唤醒指令已发送: ${res.data?.detail || '已尝试引导启动'}`);
+        setTimeout(() => {
+          loadChain();
+          onCheckHealth();
+        }, 2000);
+      } else {
+        setActionNotice(`唤醒失败: ${res.error?.message || '未知错误'}`);
+      }
+    } catch (e: any) {
+      setActionNotice(`唤醒异常: ${e?.message || e}`);
+    } finally {
+      setIsRestartingNapcat(false);
     }
+  };
+
+  const handleOpenQqDownload = () => {
+    window.open('https://im.qq.com/pcqq/index.shtml', '_blank');
+  };
+
+  const handleQuickSwitchOpenCode = () => {
+    handleSelectProvider('opencode');
+  };
+
+  // Dynamic model fetching state
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchModelError, setFetchModelError] = useState<string | null>(null);
+
+  const fetchModelsForEndpoint = async (targetProvider: string, targetUrl?: string, targetKey?: string) => {
+    setFetchingModels(true);
+    setFetchModelError(null);
+    try {
+      const res = await api.fetchProviderModels(targetProvider, targetUrl, targetKey);
+      if (res.success && res.data && res.data.length > 0) {
+        setFetchedModels(res.data);
+      } else {
+        setFetchModelError(res.error?.message || '未获取到模型列表');
+      }
+    } catch (e: any) {
+      setFetchModelError(e?.message || '无法连接该端点获取模型');
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  // Switching provider stores current inputs into providersMap, then loads target's saved values or presets
+  const handleSelectProvider = (id: AiProviderId) => {
+    // 1. Snapshot current provider's inputs into map
+    const updatedMap = {
+      ...providersMap,
+      [provider]: {
+        model: model.trim(),
+        baseUrl: baseUrl.trim(),
+        apiKey: apiKey.trim(),
+      },
+    };
+    setProvidersMap(updatedMap);
+
+    // 2. Load newly selected provider's settings or fallback to preset
+    setProvider(id);
+    const existing = updatedMap[id];
+    const preset = AI_PRESETS[id] || AI_PRESETS.opencode;
+    const nextBaseUrl = existing?.baseUrl || preset.baseUrl;
+    const nextModel = existing?.model || preset.model;
+    const nextKey = existing?.apiKey !== undefined ? existing.apiKey : (id === 'opencode' ? apiKey : '');
+
+    setBaseUrl(nextBaseUrl);
+    setModel(nextModel);
+    setApiKey(nextKey);
+    fetchModelsForEndpoint(id, nextBaseUrl, nextKey);
   };
 
   // Summary Settings (Zero hardcoding, completely dynamic)
@@ -188,6 +274,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  // Remote Updater State
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
+  const handleCheckUpdate = async () => {
+    setIsCheckingUpdate(true);
+    setUpdateError(null);
+    try {
+      const res = await api.checkAppUpdate();
+      if (res.success && res.data) {
+        setUpdateInfo(res.data);
+      } else {
+        setUpdateError(res.error?.message || '检查更新失败');
+      }
+    } catch (e: any) {
+      setUpdateError(e?.message || String(e));
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
   useEffect(() => {
     loadChain();
   }, []);
@@ -196,10 +304,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // only ever see the placeholder defaults. Re-seed whenever the real config lands,
   // otherwise the page silently shows (and would then save) wrong values.
   useEffect(() => {
-    setProvider((config.ai?.activeProvider as AiProviderId) || 'tokenrhythm');
-    setModel(config.ai?.model || AI_PRESETS.tokenrhythm.model);
-    setApiKey(config.ai?.apiKey || '');
-    setBaseUrl(config.ai?.baseUrl || AI_PRESETS.tokenrhythm.baseUrl);
+    const curProvider = (config.ai?.activeProvider as AiProviderId) || 'opencode';
+    const savedMap = config.ai?.providers || {};
+    setProvidersMap(savedMap);
+
+    const saved = savedMap[curProvider];
+    const preset = AI_PRESETS[curProvider] || AI_PRESETS.opencode;
+
+    const curBaseUrl = saved?.baseUrl || config.ai?.baseUrl || preset.baseUrl;
+    const curModel = saved?.model || config.ai?.model || preset.model;
+    const curKey = saved?.apiKey !== undefined ? saved.apiKey : (config.ai?.apiKey || '');
+
+    setProvider(curProvider);
+    setModel(curModel);
+    setApiKey(curKey);
+    setBaseUrl(curBaseUrl);
+
+    fetchModelsForEndpoint(curProvider, curBaseUrl, curKey);
 
     setSummaryEnabled(config.summary?.enabled ?? true);
     setIntervalType(config.summary?.intervalType || '6h');
@@ -234,6 +355,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleSaveAll = () => {
+    const updatedMap = {
+      ...providersMap,
+      [provider]: {
+        model: model.trim(),
+        baseUrl: baseUrl.trim(),
+        apiKey: apiKey.trim(),
+      },
+    };
+    setProvidersMap(updatedMap);
+
     onUpdateConfig({
       ai: {
         ...config.ai,
@@ -241,6 +372,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         model: model.trim(),
         apiKey: apiKey.trim(),
         baseUrl: baseUrl.trim(),
+        providers: updatedMap,
       },
       summary: {
         ...config.summary,
@@ -501,7 +633,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <label className="text-xs font-semibold text-slate-700 block mb-2">
                 选择大脑类型：
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {AI_PROVIDER_ORDER.map((id) => {
                   const preset = AI_PRESETS[id];
                   const active = provider === id;
@@ -516,8 +648,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
                       }`}
                     >
-                      <span className="text-xs font-semibold flex items-center gap-1.5">
+                      <span className="text-xs font-semibold flex items-center gap-1.5 flex-wrap">
                         {preset.label}
+                        {id === 'opencode' && (
+                          <span className="text-[9px] px-1 py-px rounded bg-sky-100 text-sky-700 font-medium">
+                            官方推荐
+                          </span>
+                        )}
                         {preset.local && (
                           <span className="text-[9px] px-1 py-px rounded bg-emerald-100 text-emerald-700 font-medium">
                             本地
@@ -531,55 +668,147 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  接口地址 (Base URL)：
-                </label>
-                <input
-                  type="text"
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="http://127.0.0.1:11434/v1"
-                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
-                />
+            <div className="space-y-3 pt-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    接口地址 (Base URL)：
+                  </label>
+                  <input
+                    type="text"
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                    placeholder="http://127.0.0.1:11434/v1"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-700">
+                      模型名称 (Model)：
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => fetchModelsForEndpoint(provider, baseUrl, apiKey)}
+                      disabled={fetchingModels}
+                      className="flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-700 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${fetchingModels ? 'animate-spin' : ''}`} />
+                      <span>{fetchingModels ? '拉取中...' : '从接口动态获取可用模型'}</span>
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    list="dynamic-models-list"
+                    placeholder="可输入或直接点击下方模型..."
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
+                  />
+                  <datalist id="dynamic-models-list">
+                    {fetchedModels.map((m) => (
+                      <option key={m} value={m} />
+                    ))}
+                  </datalist>
+                </div>
               </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  模型名称 (Model)：
-                </label>
-                <input
-                  type="text"
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  placeholder="qwen2.5:7b"
-                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
-                />
-              </div>
-            </div>
 
-            {isLocalEndpoint(baseUrl) ? (
-              <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-100 text-[11px] text-emerald-900 leading-relaxed">
-                本地端点无需 API Key，请求不会离开本机，适合用来节省 token 费用。
-              </div>
-            ) : (
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  API Key：
-                </label>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk-..."
-                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
-                />
-              </div>
-            )}
+              {/* Dynamic live models chips */}
+              {fetchedModels.length > 0 && (
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                      <span>接口实时可用模型 (共 {fetchedModels.length} 个 · 点击选用)：</span>
+                    </span>
+                    {provider === 'opencode' && (
+                      <span className="text-[10px] text-emerald-700 bg-emerald-100/70 font-medium px-1.5 py-0.5 rounded">
+                        已高亮 OpenCode 官方免费模型
+                      </span>
+                    )}
+                  </div>
+                  <div className="max-h-32 overflow-y-auto pr-1 flex flex-wrap gap-1.5">
+                    {fetchedModels.map((m) => {
+                      const isFree = m.toLowerCase().includes('free');
+                      const isSelected = model === m;
+                      return (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setModel(m)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-mono transition-all flex items-center gap-1.5 cursor-pointer ${
+                            isSelected
+                              ? 'bg-sky-600 text-white font-semibold shadow-xs ring-1 ring-sky-600'
+                              : isFree
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 font-medium'
+                              : 'bg-white text-slate-700 border border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          {isFree && (
+                            <span className="text-[9px] bg-emerald-600 text-white px-1 py-px rounded font-semibold">
+                              免费
+                            </span>
+                          )}
+                          <span>{m}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
-            <div className="text-[11px] text-slate-400 leading-relaxed">
-              切换供应商会自动填入其默认地址与模型；使用 OneAPI / vLLM / 自建网关时，直接修改上方两项即可。
-              保存后立即生效，无需重启。
+              {fetchModelError && (
+                <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>动态拉取模型提示: {fetchModelError} (您仍可手动在输入框填写任意模型)</span>
+                </div>
+              )}
+
+              {/* API Key */}
+              {isLocalEndpoint(baseUrl) ? (
+                <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-100 text-[11px] text-emerald-900 leading-relaxed">
+                  本地端点无需 API Key，请求不会离开本机，适合用来节省 token 费用。
+                </div>
+              ) : provider === 'opencode' ? (
+                <div className="p-3 rounded-xl bg-sky-50/50 border border-sky-100 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-800">
+                      OpenCode 官方凭证 (API Key)：
+                    </label>
+                    <span className="text-[10px] text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      <span>已自动识别本机 OpenCode Key</span>
+                    </span>
+                  </div>
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="留空自动读取本机 auth.json 密钥 (推荐)"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
+                  />
+                  <div className="text-[11px] text-slate-500 leading-relaxed">
+                    应用已自动载入 OpenCode 官方凭证，无需手动填 Key。官方模型随服务端动态更新，点选上方标签即可无缝切换。
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    API Key：
+                  </label>
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="sk-..."
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+              )}
+
+              <div className="text-[11px] text-slate-400 leading-relaxed">
+                模型不硬编码，实时从供应商端点拉取。使用自建网关或官方渠道均可即时更新；保存后立即生效，无需重启。
+              </div>
             </div>
           </div>
         </div>
@@ -608,11 +837,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <span className="text-slate-400 text-[11px] truncate max-w-[180px] block">
                   {health.qqNt?.path || '默认路径已捕获'}
                 </span>
+                {!health.qqNt?.ready && (
+                  <button
+                    onClick={handleOpenQqDownload}
+                    className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-700 font-medium hover:underline"
+                  >
+                    <span>前往官网下载安装</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </button>
+                )}
               </div>
               {health.qqNt?.ready ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
               ) : (
-                <AlertCircle className="w-4 h-4 text-amber-500" />
+                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
               )}
             </div>
 
@@ -620,14 +858,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
               <div>
                 <span className="font-semibold block text-slate-800">本地 OpenCode</span>
-                <span className="text-slate-400 text-[11px]">
-                  {health.openCode?.ready ? '已就绪 (免 API 模式)' : '未检测到，自动使用云端'}
+                <span className="text-slate-400 text-[11px] block">
+                  {health.openCode?.ready ? '已就绪 (免 API 模式)' : '未运行本地服务'}
                 </span>
+                {!health.openCode?.ready && (
+                  <button
+                    onClick={handleQuickSwitchOpenCode}
+                    className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-700 font-medium hover:underline"
+                  >
+                    <span>一键切换 Zen 云端免费通道</span>
+                    <Zap className="w-3 h-3 text-amber-500" />
+                  </button>
+                )}
               </div>
               {health.openCode?.ready ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
               ) : (
-                <AlertCircle className="w-4 h-4 text-amber-500" />
+                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
               )}
             </div>
 
@@ -643,9 +890,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </span>
               </div>
               {health.storage?.isWritable ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
               ) : (
-                <AlertCircle className="w-4 h-4 text-red-500" />
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
               )}
             </div>
 
@@ -654,13 +901,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div>
                 <span className="font-semibold block text-slate-800">整体就绪状态</span>
                 <span className="text-slate-400 text-[11px]">
-                  {health.isAllReady ? '全部前置条件已满足' : '存在未就绪项，详见上方条目'}
+                  {health.isAllReady ? '全部前置条件已满足' : '存在未就绪项，点击各条目一键修复'}
                 </span>
               </div>
               {health.isAllReady ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
               ) : (
-                <AlertCircle className="w-4 h-4 text-amber-500" />
+                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
               )}
             </div>
           </div>
@@ -670,32 +917,67 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
             <div>
-              <h4 className="text-xs font-semibold text-slate-900">全链路状态</h4>
+              <h4 className="text-xs font-semibold text-slate-900">全链路状态检测与一键修复</h4>
               <p className="text-[11px] text-slate-400">
-                从协议端到界面的 8 个环节逐个体检。流水线里第一个断点之后的异常都只是后果，先修第一个。
+                从协议端到界面的 8 个环节逐个体检。若链路断裂，可直接点击一键唤醒或切换，杜绝未知故障。
               </p>
             </div>
-            <button
-              onClick={loadChain}
-              disabled={chainLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-50 transition-colors shrink-0"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${chainLoading ? 'animate-spin' : ''}`} />
-              <span>{chainLoading ? '检测中…' : '重新检测'}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRestartProtocol}
+                disabled={isRestartingNapcat}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 text-xs font-medium disabled:opacity-50 transition-colors shrink-0"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRestartingNapcat ? 'animate-spin' : ''}`} />
+                <span>{isRestartingNapcat ? '唤醒中…' : '一键唤醒协议端'}</span>
+              </button>
+              <button
+                onClick={loadChain}
+                disabled={chainLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-50 transition-colors shrink-0"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${chainLoading ? 'animate-spin' : ''}`} />
+                <span>{chainLoading ? '检测中…' : '重新检测'}</span>
+              </button>
+            </div>
           </div>
 
+          {actionNotice && (
+            <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 text-xs text-sky-800 flex items-center justify-between animate-in fade-in">
+              <span>{actionNotice}</span>
+              <button onClick={() => setActionNotice(null)} className="text-sky-500 hover:text-sky-700 font-bold ml-2">✕</button>
+            </div>
+          )}
+
           {chainFirstBreak ? (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-[11px] leading-relaxed">
-              <span className="font-semibold text-red-900 block">
-                第一个断点：{chainFirstBreak.label}
-              </span>
-              <span className="text-red-800 block mt-0.5">{chainFirstBreak.detail}</span>
-              <span className="text-red-700 block mt-1">影响：{chainFirstBreak.impact}</span>
+            <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-[11px] leading-relaxed flex items-center justify-between gap-3">
+              <div>
+                <span className="font-semibold text-red-900 block">
+                  首要阻断链路：{chainFirstBreak.label}
+                </span>
+                <span className="text-red-800 block mt-0.5">{chainFirstBreak.detail}</span>
+                <span className="text-red-700 block mt-1">影响：{chainFirstBreak.impact}</span>
+              </div>
+              {chainFirstBreak.label.includes('NapCat') || chainFirstBreak.label.includes('OneBot') ? (
+                <button
+                  onClick={handleRestartProtocol}
+                  disabled={isRestartingNapcat}
+                  className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium text-xs shrink-0 shadow-xs transition-colors"
+                >
+                  一键启动/重启
+                </button>
+              ) : chainFirstBreak.label.includes('大模型') ? (
+                <button
+                  onClick={handleQuickSwitchOpenCode}
+                  className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-medium text-xs shrink-0 shadow-xs transition-colors"
+                >
+                  切至官方免费通道
+                </button>
+              ) : null}
             </div>
           ) : chainLinks.length > 0 ? (
             <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-[11px] text-emerald-900">
-              未发现断点。
+              全链路通畅，未发现断点。
               {chainLinks.some((l) => l.health === 'unknown') &&
                 ' 其中部分环节尚未被验证（需要对应组件运行才能确认）。'}
             </div>
@@ -705,26 +987,51 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             {chainLinks.map((link) => (
               <div
                 key={link.link}
-                className="flex items-start gap-2.5 py-1.5 border-b border-slate-50 last:border-0"
+                className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0 gap-3"
               >
-                {link.health === 'ok' ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
-                ) : link.health === 'failed' ? (
-                  <AlertCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 shrink-0" />
-                ) : (
-                  <HelpCircle className="w-3.5 h-3.5 text-slate-300 mt-0.5 shrink-0" />
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-xs font-medium text-slate-800 shrink-0">{link.label}</span>
-                    <span className="text-[11px] text-slate-500 truncate">{link.detail}</span>
-                  </div>
-                  {link.health === 'failed' && (
-                    <span className="text-[10px] text-red-600 block mt-0.5">
-                      影响：{link.impact}
-                    </span>
+                <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                  {link.health === 'ok' ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                  ) : link.health === 'failed' ? (
+                    <AlertCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 shrink-0" />
+                  ) : (
+                    <HelpCircle className="w-3.5 h-3.5 text-slate-300 mt-0.5 shrink-0" />
                   )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xs font-medium text-slate-800 shrink-0">{link.label}</span>
+                      <span className="text-[11px] text-slate-500 truncate">{link.detail}</span>
+                    </div>
+                    {link.health === 'failed' && (
+                      <span className="text-[10px] text-red-600 block mt-0.5">
+                        影响：{link.impact}
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {/* 1-Click Action Buttons for Links */}
+                {link.health !== 'ok' && (
+                  <div className="shrink-0">
+                    {(link.link.includes('napcat') || link.link.includes('one_bot')) && (
+                      <button
+                        onClick={handleRestartProtocol}
+                        disabled={isRestartingNapcat}
+                        className="px-2.5 py-1 text-[11px] rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 font-medium transition-colors"
+                      >
+                        一键拉起
+                      </button>
+                    )}
+                    {link.link.includes('ai_provider') && (
+                      <button
+                        onClick={handleQuickSwitchOpenCode}
+                        className="px-2.5 py-1 text-[11px] rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 font-medium transition-colors"
+                      >
+                        切免费通道
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -750,6 +1057,78 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {diagnosticsPath && (
             <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-100 text-[11px] text-emerald-900 font-mono break-all">
               已生成: {diagnosticsPath}
+            </div>
+          )}
+        </div>
+
+        {/* 7. About & Remote Update */}
+        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-semibold text-slate-900">关于与版本更新</h4>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-sky-50 text-sky-700 border border-sky-200/60">
+                  v0.1.0-beta
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                支持连接 GitHub Releases 官方通道自动检索版本更新
+              </p>
+            </div>
+            <button
+              onClick={handleCheckUpdate}
+              disabled={isCheckingUpdate}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium transition-colors shrink-0 disabled:opacity-50 shadow-xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+              <span>{isCheckingUpdate ? '检查中...' : '检查更新'}</span>
+            </button>
+          </div>
+
+          {updateError && (
+            <div className="p-2.5 rounded-xl bg-red-50 border border-red-100 text-[11px] text-red-600 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{updateError}</span>
+            </div>
+          )}
+
+          {updateInfo && (
+            <div className={`p-3 rounded-xl border text-xs space-y-2 ${
+              updateInfo.hasUpdate 
+                ? 'bg-amber-50/60 border-amber-200/80 text-amber-900' 
+                : 'bg-slate-50 border-slate-200 text-slate-600'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-semibold">
+                  {updateInfo.hasUpdate ? (
+                    <>
+                      <Sparkles className="w-4 h-4 text-amber-500" />
+                      <span>发现新版本：{updateInfo.latestVersion}</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                      <span>当前已是最新版本 (v{updateInfo.currentVersion})</span>
+                    </>
+                  )}
+                </div>
+                {updateInfo.hasUpdate && (
+                  <a
+                    href={updateInfo.downloadUrl || updateInfo.htmlUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-medium transition-colors shadow-2xs"
+                  >
+                    <span>下载最新 Release</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
+              {updateInfo.releaseNotes && (
+                <div className="text-[11px] opacity-80 whitespace-pre-wrap font-sans bg-white/60 p-2 rounded-lg border border-amber-100/50">
+                  {updateInfo.releaseNotes}
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -61,6 +61,35 @@
   }
 }
 
+/* Interactive elements: hand cursor and micro-tactile feedback */
+button,
+select,
+summary,
+[role="button"],
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+input[type="checkbox"],
+input[type="radio"] {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  transition: transform 0.12s cubic-bezier(0.2, 0, 0, 1), background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+button:not(:disabled):active,
+[role="button"]:not([aria-disabled="true"]):active {
+  transform: scale(0.97);
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 /* Boot splash animations (shared by index.html's pre-React splash and BootSplash.tsx) */
 @keyframes boot-spin {
   to {

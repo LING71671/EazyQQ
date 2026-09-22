@@ -244,4 +244,46 @@ impl OneBotClient {
 
         Ok(bytes.to_vec())
     }
+
+    /// Pull roaming message history for a friend
+    pub async fn get_friend_msg_history(&self, user_id: &str, count: i32) -> Result<Vec<Value>, String> {
+        let url = format!("{}/get_friend_msg_history", self.http_base_url);
+        let uid = user_id.parse::<i64>().unwrap_or(0);
+        let resp = self
+            .client
+            .post(&url)
+            .json(&serde_json::json!({
+                "user_id": uid,
+                "count": count,
+            }))
+            .send()
+            .await
+            .map_err(|e| format!("Network error querying friend history: {}", e))?;
+        let json: Value = resp.json().await.map_err(|e| format!("Parse error: {}", e))?;
+        if let Some(msgs) = json.get("data").and_then(|d| d.get("messages")).and_then(|m| m.as_array()) {
+            return Ok(msgs.clone());
+        }
+        Ok(vec![])
+    }
+
+    /// Pull roaming message history for a group
+    pub async fn get_group_msg_history(&self, group_id: &str, count: i32) -> Result<Vec<Value>, String> {
+        let url = format!("{}/get_group_msg_history", self.http_base_url);
+        let gid = group_id.parse::<i64>().unwrap_or(0);
+        let resp = self
+            .client
+            .post(&url)
+            .json(&serde_json::json!({
+                "group_id": gid,
+                "count": count,
+            }))
+            .send()
+            .await
+            .map_err(|e| format!("Network error querying group history: {}", e))?;
+        let json: Value = resp.json().await.map_err(|e| format!("Parse error: {}", e))?;
+        if let Some(msgs) = json.get("data").and_then(|d| d.get("messages")).and_then(|m| m.as_array()) {
+            return Ok(msgs.clone());
+        }
+        Ok(vec![])
+    }
 }

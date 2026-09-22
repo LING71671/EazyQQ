@@ -24,6 +24,13 @@ export interface ProtocolStatusDto {
   nickname?: string;
   avatarUrl?: string;
   connectTime?: number;
+  quickLoginAccounts?: QuickLoginAccountDto[];
+}
+
+export interface QuickLoginAccountDto {
+  uin: string;
+  nickname: string;
+  faceUrl?: string;
 }
 
 export interface ContactItemDto {
@@ -138,7 +145,8 @@ export type AiProviderId =
   | 'vllm'
   | 'deepseek'
   | 'openai'
-  | 'tokenrhythm';
+  | 'tokenrhythm'
+  | 'opencode';
 
 export interface AppConfig {
   ai: {
@@ -148,6 +156,7 @@ export interface AppConfig {
     maxContextMessages: number;
     baseUrl?: string;
     apiKey?: string;
+    providers?: Record<string, { model: string; baseUrl?: string; apiKey?: string }>;
   };
   napcat: {
     wsPort: number;
@@ -177,4 +186,15 @@ export interface AppConfig {
 export interface WindowBehaviorDto {
   minimizeToTray: boolean;
   closeToTray: boolean;
+}
+
+export interface AppUpdateInfo {
+  currentVersion: string;
+  latestVersion: string;
+  hasUpdate: boolean;
+  releaseName: string;
+  releaseNotes: string;
+  htmlUrl: string;
+  downloadUrl?: string;
+  publishedAt: string;
 }

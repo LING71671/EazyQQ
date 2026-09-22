@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Send, Sparkles, Bot, Shield, User, Copy, Check, 
-  ArrowDownCircle, RefreshCw, MessageSquare
+  ArrowDownCircle, RefreshCw, MessageSquare, FileText
 } from 'lucide-react';
 import type { ContactItemDto, MessageItemDto, RoutingRuleDto } from '@/api/contracts';
 
@@ -13,6 +13,228 @@ interface ChatDrawerProps {
   onSendMessage: (targetType: string, targetId: string, content: string) => Promise<void>;
   onTriggerAiReply?: (targetId: string, contextSnippet: string) => Promise<string>;
   onUpdateMode?: (targetId: string, mode: RoutingRuleDto['mode']) => void;
+}
+
+interface MessageSegment {
+  type: 'text' | 'image' | 'file' | 'face' | 'at' | 'card';
+  text?: string;
+  url?: string;
+  fileName?: string;
+  fileSize?: number;
+  summary?: string;
+  qq?: string;
+  title?: string;
+  desc?: string;
+  icon?: string;
+}
+
+function unescapeCq(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&#91;/g, '[')
+    .replace(/&#93;/g, ']')
+    .replace(/&#44;/g, ',')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function parseParams(rawParams: string): Record<string, string> {
+  const params: Record<string, string> = {};
+  const paramPairs = rawParams.split(',');
+  for (const pair of paramPairs) {
+    const eqIdx = pair.indexOf('=');
+    if (eqIdx !== -1) {
+      const k = pair.slice(0, eqIdx).trim();
+      const v = pair.slice(eqIdx + 1);
+      params[k] = unescapeCq(v);
+    }
+  }
+  return params;
+}
+
+function parseCqMessage(content: string): MessageSegment[] {
+  if (!content) return [];
+  const segments: MessageSegment[] = [];
+  let i = 0;
+
+  while (i < content.length) {
+    const cqStart = content.indexOf('[CQ:', i);
+    if (cqStart === -1) {
+      const text = content.slice(i);
+      if (text) segments.push({ type: 'text', text: unescapeCq(text) });
+      break;
+    }
+
+    if (cqStart > i) {
+      const text = content.slice(i, cqStart);
+      if (text) segments.push({ type: 'text', text: unescapeCq(text) });
+    }
+
+    const colonIdx = cqStart + 4;
+    const commaIdx = content.indexOf(',', colonIdx);
+    const closeBracket = content.indexOf(']', colonIdx);
+
+    if (closeBracket === -1) {
+      segments.push({ type: 'text', text: content.slice(cqStart) });
+      break;
+    }
+
+    const typeEnd = (commaIdx !== -1 && commaIdx < closeBracket) ? commaIdx : closeBracket;
+    const type = content.slice(colonIdx, typeEnd).trim().toLowerCase();
+
+    let cqEnd = -1;
+    let paramsStr = '';
+
+    if (type === 'json') {
+      // Find start of JSON object: data={
+      const dataBrace = content.indexOf('{', typeEnd);
+      let jsonEnd = -1;
+      if (dataBrace !== -1) {
+        let braceCount = 0;
+        let inQuote = false;
+        let escaped = false;
+        for (let j = dataBrace; j < content.length; j++) {
+          const ch = content[j];
+          if (escaped) {
+            escaped = false;
+            continue;
+          }
+          if (ch === '\\') {
+            escaped = true;
+            continue;
+          }
+          if (ch === '"') {
+            inQuote = !inQuote;
+            continue;
+          }
+          if (!inQuote) {
+            if (ch === '{') braceCount++;
+            else if (ch === '}') {
+              braceCount--;
+              if (braceCount === 0) {
+                jsonEnd = j;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      if (jsonEnd !== -1) {
+        const nextBracket = content.indexOf(']', jsonEnd);
+        cqEnd = nextBracket !== -1 ? nextBracket + 1 : jsonEnd + 1;
+        paramsStr = content.slice(typeEnd + 1, nextBracket !== -1 ? nextBracket : jsonEnd + 1);
+      } else {
+        const nextBracket = content.indexOf(']', typeEnd);
+        cqEnd = nextBracket !== -1 ? nextBracket + 1 : content.length;
+        paramsStr = content.slice(typeEnd + 1, cqEnd - 1);
+      }
+    } else if (type === 'xml') {
+      const xmlClose = content.indexOf('>]', typeEnd);
+      if (xmlClose !== -1) {
+        cqEnd = xmlClose + 2;
+        paramsStr = content.slice(typeEnd + 1, xmlClose + 1);
+      } else {
+        const nextBracket = content.indexOf(']', typeEnd);
+        cqEnd = nextBracket !== -1 ? nextBracket + 1 : content.length;
+        paramsStr = content.slice(typeEnd + 1, cqEnd - 1);
+      }
+    } else {
+      const nextBracket = content.indexOf(']', typeEnd);
+      if (nextBracket === -1) {
+        segments.push({ type: 'text', text: content.slice(cqStart) });
+        break;
+      }
+      cqEnd = nextBracket + 1;
+      paramsStr = content.slice(typeEnd + 1, nextBracket);
+    }
+
+    // Process parsed CQ type
+    if (type === 'json') {
+      let rawJson = paramsStr.startsWith('data=') ? paramsStr.slice(5) : paramsStr;
+      rawJson = unescapeCq(rawJson);
+      try {
+        const parsed = JSON.parse(rawJson);
+        const metaObj = parsed.meta || {};
+        const metaKeys = Object.keys(metaObj);
+        const detail = metaKeys.length > 0 ? (metaObj[metaKeys[0]] || {}) : {};
+        const title = detail.title || parsed.prompt || '小程序卡片';
+        const desc = detail.desc || detail.preview || '';
+        const icon = detail.icon || detail.preview;
+        const prompt = unescapeCq(parsed.prompt || '');
+
+        segments.push({
+          type: 'card',
+          title: unescapeCq(title),
+          desc: unescapeCq(desc),
+          icon,
+          summary: prompt || '[小程序卡片]',
+        });
+      } catch {
+        const promptMatch = rawJson.match(/"prompt":"([^"]+)"/);
+        const titleMatch = rawJson.match(/"title":"([^"]+)"/);
+        const descMatch = rawJson.match(/"desc":"([^"]+)"/);
+        segments.push({
+          type: 'card',
+          title: titleMatch ? unescapeCq(titleMatch[1]) : '小程序卡片',
+          desc: descMatch ? unescapeCq(descMatch[1]) : (promptMatch ? unescapeCq(promptMatch[1]) : '卡片消息'),
+          summary: promptMatch ? unescapeCq(promptMatch[1]) : '[小程序卡片]',
+        });
+      }
+    } else if (type === 'image') {
+      const params = parseParams(paramsStr);
+      const url = params['url'] || (params['file']?.startsWith('http') ? params['file'] : '');
+      segments.push({
+        type: 'image',
+        url,
+        summary: params['summary'] || (url ? '图片' : params['file'] || '图片'),
+      });
+    } else if (type === 'file') {
+      const params = parseParams(paramsStr);
+      segments.push({
+        type: 'file',
+        fileName: params['file'] || '文件',
+        fileSize: params['file_size'] ? parseInt(params['file_size'], 10) : undefined,
+      });
+    } else if (type === 'at') {
+      const params = parseParams(paramsStr);
+      segments.push({
+        type: 'at',
+        qq: params['qq'] || '',
+        text: `@${params['qq'] || '全体成员'}`,
+      });
+    } else if (type === 'face') {
+      segments.push({
+        type: 'face',
+        text: '[表情]',
+      });
+    } else if (type === 'record') {
+      segments.push({
+        type: 'text',
+        text: '[语音消息]',
+      });
+    } else if (type === 'video') {
+      segments.push({
+        type: 'text',
+        text: '[视频消息]',
+      });
+    } else if (type === 'reply') {
+      segments.push({
+        type: 'text',
+        text: '[回复]',
+      });
+    } else {
+      segments.push({
+        type: 'text',
+        text: `[${type}]`,
+      });
+    }
+
+    i = cqEnd;
+  }
+
+  return segments.length > 0 ? segments : [{ type: 'text', text: content }];
 }
 
 export const ChatDrawer: React.FC<ChatDrawerProps> = ({
@@ -30,6 +252,30 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   const [copiedUin, setCopiedUin] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Deduplicate messages by content & direction within 60s
+  const displayMessages = React.useMemo(() => {
+    const deduped: MessageItemDto[] = [];
+    for (const msg of messages) {
+      if (deduped.length > 0) {
+        const prev = deduped[deduped.length - 1];
+        const sameContent = prev.content === msg.content;
+        const sameDir = prev.isFromMe === msg.isFromMe;
+        const closeTime = Math.abs(prev.timestamp - msg.timestamp) < 60000;
+        if (sameContent && sameDir && closeTime) {
+          if (prev.aiReplyStatus === 'none' && msg.aiReplyStatus !== 'none') {
+            prev.aiReplyStatus = msg.aiReplyStatus;
+          }
+          if ((prev.senderName === '好友' || prev.senderName === '我') && msg.senderName !== '好友' && msg.senderName !== '我') {
+            prev.senderName = msg.senderName;
+          }
+          continue;
+        }
+      }
+      deduped.push({ ...msg });
+    }
+    return deduped;
+  }, [messages]);
+
   // Auto scroll to bottom
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -42,8 +288,6 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   }, [isOpen, messages]);
 
   if (!isOpen || !contact) return null;
-
-  const isTestContact = contact.targetId === '1739677116';
 
   const handleSend = async () => {
     const text = inputText.trim();
@@ -120,11 +364,6 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                 <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
                   {contact.name}
                 </h3>
-                {isTestContact && (
-                  <span className="text-[10px] bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300 font-semibold px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 shrink-0">
-                    唯一指定测试联系人
-                  </span>
-                )}
               </div>
               <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
                 <span>QQ: {contact.targetId}</span>
@@ -160,7 +399,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
 
         {/* Message Stream */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/30 dark:bg-slate-950/20">
-          {messages.length === 0 ? (
+          {displayMessages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400">
               <div className="w-12 h-12 rounded-2xl bg-sky-50 dark:bg-sky-950/40 text-sky-500 flex items-center justify-center mb-3">
                 <MessageSquare className="w-6 h-6" />
@@ -173,7 +412,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
               </p>
             </div>
           ) : (
-            messages.map((msg) => {
+            displayMessages.map((msg) => {
               const isMe = msg.isFromMe;
               const isAiAuto = msg.aiReplyStatus === 'auto_replied';
               const isAiDraft = msg.aiReplyStatus === 'draft_pending' || (msg as any).msgType === 'ai_draft_sent';
@@ -211,7 +450,134 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                         : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 rounded-tl-xs'
                     }`}
                   >
-                    <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                    {/* Rich Segments Rendering (CQ codes -> native elements) */}
+                    <div className="space-y-1.5">
+                      {parseCqMessage(msg.content).map((seg, idx) => {
+                        if (seg.type === 'image') {
+                          return seg.url ? (
+                            <div key={idx} className="rounded-xl overflow-hidden my-1 max-w-[280px]">
+                              <img
+                                src={seg.url}
+                                alt={seg.summary || '图片'}
+                                className="w-full max-h-64 object-contain rounded-xl bg-black/5 hover:opacity-95 transition-opacity cursor-pointer"
+                                loading="lazy"
+                                onError={(e) => {
+                                  const target = e.target as HTMLElement;
+                                  target.style.display = 'none';
+                                  if (target.parentElement) {
+                                    target.parentElement.innerHTML = `<span class="text-xs italic opacity-80">[图片: ${seg.summary || '已过期或无法加载'}]</span>`;
+                                  }
+                                }}
+                              />
+                            </div>
+                          ) : (
+                            <span key={idx} className="italic opacity-80 block">
+                              [{seg.summary || '图片'}]
+                            </span>
+                          );
+                        }
+
+                        if (seg.type === 'file') {
+                          const sizeStr = seg.fileSize
+                            ? seg.fileSize > 1024 * 1024
+                              ? `${(seg.fileSize / (1024 * 1024)).toFixed(1)} MB`
+                              : `${(seg.fileSize / 1024).toFixed(1)} KB`
+                            : '';
+                          return (
+                            <div
+                              key={idx}
+                              className={`flex items-center gap-3 p-2.5 rounded-xl my-1 border transition-all ${
+                                isMe
+                                  ? 'bg-white/15 border-white/20 text-white'
+                                  : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100'
+                              }`}
+                            >
+                              <div
+                                className={`p-2 rounded-lg ${
+                                  isMe
+                                    ? 'bg-white/20 text-white'
+                                    : 'bg-sky-100 dark:bg-sky-950/60 text-sky-600'
+                                }`}
+                              >
+                                <FileText className="w-5 h-5" />
+                              </div>
+                              <div className="min-w-0 flex-1 text-left">
+                                <span
+                                  className="text-xs font-semibold block truncate max-w-[200px]"
+                                  title={seg.fileName}
+                                >
+                                  {seg.fileName}
+                                </span>
+                                {sizeStr && (
+                                  <span
+                                    className={`text-[10px] block mt-0.5 ${
+                                      isMe ? 'text-white/70' : 'text-slate-400 font-mono'
+                                    }`}
+                                  >
+                                    {sizeStr}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        if (seg.type === 'card') {
+                          return (
+                            <div
+                              key={idx}
+                              className={`rounded-xl p-3 my-1 border transition-all max-w-[280px] ${
+                                isMe
+                                  ? 'bg-white/15 border-white/20 text-white'
+                                  : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 mb-1.5">
+                                {seg.icon ? (
+                                  <img
+                                    src={seg.icon}
+                                    alt="icon"
+                                    className="w-4 h-4 rounded-full object-cover shrink-0"
+                                    onError={(e) => {
+                                      (e.target as HTMLElement).style.display = 'none';
+                                    }}
+                                  />
+                                ) : (
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                )}
+                                <span className={`text-[10px] font-semibold truncate ${isMe ? 'text-white/80' : 'text-slate-500'}`}>
+                                  {seg.title || 'QQ小程序'}
+                                </span>
+                              </div>
+                              <div className="text-xs font-semibold leading-snug line-clamp-2">
+                                {seg.desc || seg.summary}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        if (seg.type === 'at') {
+                          return (
+                            <span
+                              key={idx}
+                              className={`font-semibold mx-0.5 px-1 py-0.2 rounded text-[11px] ${
+                                isMe
+                                  ? 'bg-white/20 text-white'
+                                  : 'bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300'
+                              }`}
+                            >
+                              {seg.text}
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <span key={idx} className="whitespace-pre-wrap break-words block">
+                            {seg.text}
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               );

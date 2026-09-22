@@ -12,7 +12,9 @@ import type {
   GroupSummaryDto,
   DependencyHealthReport,
   AppConfig,
-  WindowBehaviorDto
+  WindowBehaviorDto,
+  QuickLoginAccountDto,
+  AppUpdateInfo,
 } from './contracts';
 
 export const api = {
@@ -22,6 +24,12 @@ export const api = {
   },
   refreshQrCode: async (): Promise<ApiResponse<{ qrcodeBase64: string; expiresInSeconds: number }>> => {
     return invoke('refresh_qrcode');
+  },
+  quickLogin: async (uin: string): Promise<ApiResponse<void>> => {
+    return invoke('quick_login', { uin });
+  },
+  getQuickLoginAccounts: async (): Promise<ApiResponse<QuickLoginAccountDto[]>> => {
+    return invoke('get_quick_login_accounts');
   },
   logout: async (): Promise<ApiResponse<void>> => {
     return invoke('logout');
@@ -60,6 +68,9 @@ export const api = {
   > => {
     return invoke('get_chain_status');
   },
+  restartNapCat: async (): Promise<ApiResponse<{ attempted: boolean; ok: boolean; detail: string }>> => {
+    return invoke('restart_napcat');
+  },
   /** Clear a conversation's unread badge. `at` defaults to now on the backend. */
   markRead: async (targetId: string, at?: number): Promise<ApiResponse<number>> => {
     return invoke('mark_read', { targetId, at });
@@ -72,8 +83,8 @@ export const api = {
   },
 
   // Messages & Drafts
-  getMessages: async (targetId: string, limit = 30, offset = 0): Promise<ApiResponse<MessageItemDto[]>> => {
-    return invoke('get_messages', { targetId, limit, offset });
+  getMessages: async (targetId: string, limit = 30, offset = 0, targetType?: string): Promise<ApiResponse<MessageItemDto[]>> => {
+    return invoke('get_messages', { targetId, limit, offset, targetType });
   },
   sendMessage: async (targetId: string, content: string): Promise<ApiResponse<{ messageId: string }>> => {
     return invoke('send_message', { targetId, content });
@@ -126,6 +137,9 @@ export const api = {
   testAiConnection: async (provider: string, modelId?: string): Promise<ApiResponse<{ isSuccess: boolean; latencyMs: number }>> => {
     return invoke('test_ai_connection', { provider, modelId });
   },
+  fetchProviderModels: async (provider: string, baseUrl?: string, apiKey?: string): Promise<ApiResponse<string[]>> => {
+    return invoke('fetch_provider_models', { provider, baseUrl, apiKey });
+  },
   checkDependencies: async (): Promise<ApiResponse<DependencyHealthReport>> => {
     return invoke('check_dependencies');
   },
@@ -169,5 +183,9 @@ export const api = {
   },
   getWindowBehavior: async (): Promise<ApiResponse<WindowBehaviorDto>> => {
     return invoke('app_get_window_behavior');
+  },
+  // Remote Updater
+  checkAppUpdate: async (): Promise<ApiResponse<AppUpdateInfo>> => {
+    return invoke('check_app_update');
   }
 };

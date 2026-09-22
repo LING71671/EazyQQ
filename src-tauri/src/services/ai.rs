@@ -9,6 +9,8 @@
 //! OpenCode" or "DeepSeek" in the UI changed nothing - and the user could not tell that
 //! their traffic was still going to the cloud.
 
+use std::fs;
+use std::path::PathBuf;
 use std::sync::RwLock;
 use std::time::Duration;
 
@@ -31,12 +33,14 @@ const PRESET_VLLM: &str = "http://127.0.0.1:8000/v1";
 const PRESET_DEEPSEEK: &str = "https://api.deepseek.com/v1";
 const PRESET_OPENAI: &str = "https://api.openai.com/v1";
 const PRESET_TOKENRHYTHM: &str = "https://tokenrhythm.studio/v1";
+const PRESET_OPENCODE: &str = "https://opencode.ai/zen/v1";
 
 const DEFAULT_MODEL_OLLAMA: &str = "qwen2.5:7b";
 const DEFAULT_MODEL_LM_STUDIO: &str = "local-model";
 const DEFAULT_MODEL_DEEPSEEK: &str = "deepseek-chat";
 const DEFAULT_MODEL_OPENAI: &str = "gpt-4o-mini";
 const DEFAULT_MODEL_TOKENRHYTHM: &str = "qwen3.8-flash";
+const DEFAULT_MODEL_OPENCODE: &str = "qwen3.8-flash";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiRuntimeConfig {
@@ -82,6 +86,7 @@ fn preset_base_url(provider: &str) -> Option<&'static str> {
         "deepseek" => Some(PRESET_DEEPSEEK),
         "openai" => Some(PRESET_OPENAI),
         "tokenrhythm" => Some(PRESET_TOKENRHYTHM),
+        "opencode" | "opencode-go" => Some(PRESET_OPENCODE),
         _ => None,
     }
 }
@@ -94,6 +99,7 @@ fn preset_model(provider: &str) -> Option<&'static str> {
         "deepseek" => Some(DEFAULT_MODEL_DEEPSEEK),
         "openai" => Some(DEFAULT_MODEL_OPENAI),
         "tokenrhythm" => Some(DEFAULT_MODEL_TOKENRHYTHM),
+        "opencode" | "opencode-go" => Some(DEFAULT_MODEL_OPENCODE),
         _ => None,
     }
 }
@@ -123,6 +129,7 @@ pub fn known_providers() -> Vec<(String, String, String, bool)> {
         "deepseek",
         "openai",
         "tokenrhythm",
+        "opencode",
     ]
     .iter()
     .filter_map(|p| {
@@ -132,6 +139,116 @@ pub fn known_providers() -> Vec<(String, String, String, bool)> {
         Some((p.to_string(), url.to_string(), model.to_string(), local))
     })
     .collect()
+}
+
+/// Try to detect an existing OpenCode API key from environment variables or auth files.
+pub fn detect_opencode_auth_key() -> Option<String> {
+    if let Ok(k) = std::env::var("OPENCODE_API_KEY") {
+        if !k.trim().is_empty() {
+            return Some(k.trim().to_string());
+        }
+    }
+    if let Ok(k) = std::env::var("OPENCODE_GO_API_KEY") {
+        if !k.trim().is_empty() {
+            return Some(k.trim().to_string());
+        }
+    }
+
+    let mut candidates = Vec::new();
+    candidates.push(PathBuf::from(r"A:\DevEnv\nvim-home\data\opencode\auth.json"));
+
+    if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
+        let home_p = PathBuf::from(&home);
+        candidates.push(home_p.join(".local").join("share").join("opencode").join("auth.json"));
+        candidates.push(home_p.join(".opencode").join("auth.json"));
+        candidates.push(home_p.join(".config").join("opencode").join("auth.json"));
+    }
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        candidates.push(PathBuf::from(&local_app_data).join("opencode").join("auth.json"));
+    }
+    if let Ok(app_data) = std::env::var("APPDATA") {
+        candidates.push(PathBuf::from(&app_data).join("opencode").join("auth.json"));
+    }
+
+    for path in candidates {
+        if path.is_file() {
+            if let Ok(content) = fs::read_to_string(&path) {
+                if let Ok(json) = serde_json::from_str::<Value>(&content) {
+                    if let Some(key) = json.get("opencode-go").and_then(|v| v.get("key")).and_then(|v| v.as_str()) {
+                        if !key.trim().is_empty() {
+                            return Some(key.trim().to_string());
+                        }
+                    }
+                    if let Some(key) = json.get("opencode").and_then(|v| v.get("key")).and_then(|v| v.as_str()) {
+                        if !key.trim().is_empty() {
+                            return Some(key.trim().to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Dynamically fetch supported models from an OpenAI-compatible `/models` endpoint.
+pub async fn fetch_models_from_endpoint(
+    base_url: &str,
+    api_key: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let client = if is_local_endpoint(base_url) {
+        Client::builder()
+            .timeout(Duration::from_secs(15))
+            .no_proxy()
+            .build()
+            .unwrap_or_default()
+    } else {
+        Client::builder()
+            .timeout(Duration::from_secs(15))
+            .build()
+            .unwrap_or_default()
+    };
+
+    let base = base_url.trim_end_matches('/');
+    let url = if base.ends_with("/models") {
+        base.to_string()
+    } else {
+        format!("{}/models", base)
+    };
+
+    let mut req = client.get(&url);
+    if let Some(key) = api_key.filter(|k| !k.trim().is_empty()) {
+        req = req.header("Authorization", format!("Bearer {}", key.trim()));
+    }
+
+    let resp = req.send().await.map_err(|e| format!("请求失败: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("接口返回错误码: {}", resp.status()));
+    }
+
+    let json: Value = resp.json().await.map_err(|e| format!("解析响应失败: {e}"))?;
+    let mut model_ids = Vec::new();
+
+    if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
+        for item in data {
+            if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
+                model_ids.push(id.to_string());
+            }
+        }
+    } else if let Some(models) = json.get("models").and_then(|m| m.as_array()) {
+        for item in models {
+            if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
+                model_ids.push(name.to_string());
+            }
+        }
+    }
+
+    if model_ids.is_empty() {
+        return Err("未在响应中解析到任何模型".to_string());
+    }
+
+    Ok(model_ids)
 }
 
 impl AiRuntimeConfig {
@@ -154,12 +271,23 @@ impl AiRuntimeConfig {
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| cfg.provider.clone());
 
+        let (p_base_url, p_model, p_key) = if let Some(p) = ai.get("providers").and_then(|m| m.get(&provider)) {
+            (
+                p.get("baseUrl").and_then(|v| v.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+                p.get("model").and_then(|v| v.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+                p.get("apiKey").and_then(|v| v.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+            )
+        } else {
+            (None, None, None)
+        };
+
         cfg.provider = provider.clone();
         cfg.base_url = ai
             .get("baseUrl")
             .and_then(|v| v.as_str())
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
+            .or(p_base_url)
             .or_else(|| preset_base_url(&provider).map(|s| s.to_string()))
             .unwrap_or_default();
 
@@ -168,15 +296,24 @@ impl AiRuntimeConfig {
             .and_then(|v| v.as_str())
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
+            .or(p_model)
             .or_else(|| preset_model(&provider).map(|s| s.to_string()))
             .unwrap_or_default();
 
-        cfg.api_key = ai
+        let mut key = ai
             .get("apiKey")
             .and_then(|v| v.as_str())
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
+            .or(p_key)
             .unwrap_or_else(|| fallback_key.to_string());
+
+        if key.is_empty() && (provider == "opencode" || provider == "opencode-go") {
+            if let Some(auto_k) = detect_opencode_auth_key() {
+                key = auto_k;
+            }
+        }
+        cfg.api_key = key;
 
         cfg.temperature = ai
             .get("temperature")
@@ -194,6 +331,10 @@ impl AiRuntimeConfig {
     }
 
     pub fn requires_api_key(&self) -> bool {
+        if self.provider == "opencode" || self.provider == "opencode-go" {
+            // If opencode auth key is detected on machine, user doesn't need to manually input key
+            return detect_opencode_auth_key().is_none();
+        }
         !is_local_endpoint(&self.base_url)
     }
 
@@ -634,13 +775,12 @@ mod tests {
     }
 
     #[test]
-    fn opencode_is_not_offered_as_a_provider() {
-        // Probing a live `opencode serve` showed /v1/* and /api/* return its HTML web UI,
-        // so it is not an OpenAI-compatible endpoint and must not be advertised as one.
+    fn opencode_is_offered_with_zen_endpoint() {
+        let (url, model) = provider_preset("opencode");
+        assert_eq!(url.as_deref(), Some(PRESET_OPENCODE));
+        assert_eq!(model.as_deref(), Some(DEFAULT_MODEL_OPENCODE));
         let ids: Vec<String> = known_providers().into_iter().map(|(id, ..)| id).collect();
-        assert!(!ids.contains(&"opencode".to_string()), "got {ids:?}");
-        assert!(ids.contains(&"ollama".to_string()));
-        assert!(ids.contains(&"tokenrhythm".to_string()));
+        assert!(ids.contains(&"opencode".to_string()));
     }
 
     #[test]

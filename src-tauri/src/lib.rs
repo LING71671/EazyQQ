@@ -412,6 +412,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_protocol_status,
             refresh_qrcode,
+            quick_login,
+            get_quick_login_accounts,
             logout,
             get_contacts,
             get_chain_status,
@@ -435,7 +437,9 @@ pub fn run() {
             get_config,
             update_config,
             test_ai_connection,
+            fetch_provider_models,
             check_dependencies,
+            restart_napcat,
             export_diagnostics_bundle,
             app_minimize_window,
             app_toggle_maximize_window,
@@ -443,6 +447,7 @@ pub fn run() {
             app_start_drag_window,
             app_show_window,
             app_get_window_behavior,
+            check_app_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EazyQQ application");

@@ -88,6 +88,37 @@ const TriggerControls: React.FC<{
   );
 };
 
+function formatSnippet(snippet?: string): string {
+  if (!snippet) return '暂无动态消息';
+
+  if (snippet.includes('[CQ:json')) {
+    const promptMatch = snippet.match(/"prompt":"([^"]+)"/);
+    if (promptMatch) {
+      return promptMatch[1]
+        .replace(/&#91;/g, '[')
+        .replace(/&#93;/g, ']')
+        .replace(/&#44;/g, ',')
+        .replace(/&amp;/g, '&');
+    }
+    const titleMatch = snippet.match(/"title":"([^"]+)"/);
+    if (titleMatch) {
+      return `[卡片] ${titleMatch[1]}`;
+    }
+    return '[卡片消息]';
+  }
+
+  return snippet
+    .replace(/\[CQ:image,[^\]]*summary=([^,\]]+)[^\]]*\]/g, '$1')
+    .replace(/\[CQ:image,[^\]]*\]/g, '[图片]')
+    .replace(/\[CQ:file,[^\]]*file=([^,\]]+)[^\]]*\]/g, '[文件] $1')
+    .replace(/\[CQ:record,[^\]]*\]/g, '[语音]')
+    .replace(/\[CQ:video,[^\]]*\]/g, '[视频]')
+    .replace(/\[CQ:face,[^\]]*\]/g, '[表情]')
+    .replace(/\[CQ:at,qq=([^,\]]+)\]/g, '@$1')
+    .replace(/\[CQ:[^\]]+\]/g, '')
+    .trim() || '暂无动态消息';
+}
+
 export const ContactsView: React.FC<ContactsViewProps> = ({
   contacts,
   onUpdateMode,
@@ -206,11 +237,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
               return (
                 <div
                   key={contact.id}
-                  className={`flex items-center justify-between p-3.5 rounded-2xl bg-white border transition-all shadow-2xs ${
-                    isTestUser
-                      ? 'border-sky-300 ring-2 ring-sky-100 dark:ring-sky-900/30 bg-sky-50/20'
-                      : 'border-slate-200/80 hover:border-sky-200'
-                  }`}
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-white border border-slate-200/80 hover:border-sky-200 transition-all shadow-2xs"
                 >
                   {/* Left: Avatar + Details */}
                   <div 
@@ -238,12 +265,6 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                         <span className="text-sm font-semibold text-slate-900 group-hover:text-sky-600 transition-colors">
                           {contact.name}
                         </span>
-                        {isTestUser && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 shadow-2xs">
-                            <Shield className="w-3 h-3 text-emerald-600" />
-                            <span>唯一指定测试联系人</span>
-                          </span>
-                        )}
                         <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-500 font-mono">
                           {isGroup ? '群' : '私聊'}
                         </span>
@@ -252,7 +273,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                         </span>
                       </div>
                       <span className="text-xs text-slate-400 truncate max-w-sm mt-0.5">
-                        {contact.lastMessageSnippet || '暂无动态消息'}
+                        {formatSnippet(contact.lastMessageSnippet)}
                       </span>
                     </div>
                   </div>
@@ -262,11 +283,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                     {/* Open Chat Drawer Button */}
                     <button
                       onClick={() => onOpenChat(contact)}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors shadow-2xs ${
-                        isTestUser
-                          ? 'bg-sky-600 text-white border-sky-600 hover:bg-sky-700 shadow-sky-200/50'
-                          : 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100'
-                      }`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 transition-colors shadow-2xs"
                       title="打开私聊会话与实时 AI 对话窗口"
                     >
                       <MessageSquare className="w-3.5 h-3.5" />

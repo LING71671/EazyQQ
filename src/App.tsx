@@ -44,7 +44,13 @@ export const App: React.FC = () => {
   const [isSummarizing, setIsSummarizing] = useState(false);
 
   // Group file (Phase 4) state
-  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState(() => {
+    try {
+      return localStorage.getItem('eazyqq_selected_group_id') || '';
+    } catch {
+      return '';
+    }
+  });
   const [isSyncingFiles, setIsSyncingFiles] = useState(false);
   const [filesError, setFilesError] = useState<string | undefined>(undefined);
   const [activeFileSummary, setActiveFileSummary] = useState<FileSummaryResultDto | undefined>(undefined);
@@ -168,7 +174,21 @@ export const App: React.FC = () => {
         ]);
 
         if (contactsRes.status === 'fulfilled' && contactsRes.value.success && contactsRes.value.data) {
-          setContacts(contactsRes.value.data.list);
+          const list = contactsRes.value.data.list;
+          setContacts(list);
+
+          // Auto-select and preload group files
+          const groups = list.filter((c) => c.targetType === 'group');
+          const savedGid = localStorage.getItem('eazyqq_selected_group_id');
+          const matchedGroup = (savedGid && groups.find((g) => g.targetId === savedGid)) || groups[0];
+          if (matchedGroup) {
+            setSelectedGroupId(matchedGroup.targetId);
+            api.getGroupFiles(matchedGroup.targetId).then((fRes) => {
+              if (fRes.success && fRes.data) {
+                setFiles(fRes.data);
+              }
+            });
+          }
         }
         if (summariesRes.status === 'fulfilled' && summariesRes.value.success && summariesRes.value.data) {
           setSummaries(summariesRes.value.data);
@@ -310,6 +330,28 @@ export const App: React.FC = () => {
     }
   };
 
+  const [isQuickLoggingIn, setIsQuickLoggingIn] = useState<string | null>(null);
+
+  const handleQuickLogin = async (uin: string) => {
+    setIsQuickLoggingIn(uin);
+    setQrError(null);
+    try {
+      const res = await api.quickLogin(uin);
+      if (res.success) {
+        const sRes = await api.getProtocolStatus();
+        if (sRes.success && sRes.data) {
+          setProtocolStatus(sRes.data);
+        }
+      } else {
+        setQrError(res.error?.message || '快速登录未成功，请稍候重试');
+      }
+    } catch (e) {
+      setQrError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsQuickLoggingIn(null);
+    }
+  };
+
   // 1. Message Receiving Whitelist Mode Update
   const handleUpdateMode = async (targetId: string, mode: any) => {
     // Optimistic UI update
@@ -380,7 +422,7 @@ export const App: React.FC = () => {
     setSelectedChatContact(contact);
     setIsChatDrawerOpen(true);
     try {
-      const res = await api.getMessages(contact.targetId);
+      const res = await api.getMessages(contact.targetId, 50, 0, contact.targetType);
       if (res.success && res.data) {
         setChatMessages(res.data);
         // The user is looking at the conversation now, so the badge should clear.
@@ -490,6 +532,9 @@ export const App: React.FC = () => {
 
   const handleSelectGroup = async (groupId: string) => {
     setSelectedGroupId(groupId);
+    try {
+      localStorage.setItem('eazyqq_selected_group_id', groupId);
+    } catch {}
     setActiveFileSummary(undefined);
     setFilesError(undefined);
     if (!groupId) {
@@ -662,6 +707,8 @@ export const App: React.FC = () => {
               onRefreshQr={handleRefreshQr}
               isLoading={isRefreshingQr}
               error={qrError || protocolStatus.qrcodeError}
+              onQuickLogin={handleQuickLogin}
+              isQuickLoggingIn={isQuickLoggingIn}
             />
           )}
           {currentView === 'contacts' && (

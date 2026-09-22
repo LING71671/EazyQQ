@@ -1,6 +1,6 @@
 [package]
 name = "eazyqq"
-version = "0.10.0"
+version = "0.1.0-beta"
 description = "EazyQQ Desktop Application"
 authors = ["EazyQQ Team"]
 edition = "2021"

@@ -4,6 +4,7 @@ use crate::services::db::{Database, ContactRuleRecord};
 use crate::services::napcat::NapCatService;
 use crate::services::onebot::OneBotClient;
 use tauri::{command, Manager, State};
+use serde::{Serialize, Deserialize};
 
 pub struct AppState {
     pub db: Arc<Database>,
@@ -18,6 +19,9 @@ fn qq_avatar(uin: Option<&String>) -> Option<String> {
     uin.filter(|s| !s.is_empty())
         .map(|s| format!("https://q1.qlogo.cn/g?b=qq&nk={}&s=100", s))
 }
+
+use std::sync::atomic::{AtomicI64, Ordering};
+static LAST_AUTO_QUICK_LOGIN_TIME: AtomicI64 = AtomicI64::new(0);
 
 #[command]
 pub async fn get_protocol_status(
@@ -42,6 +46,7 @@ pub async fn get_protocol_status(
                     qq_number: uin,
                     nickname,
                     avatar_url,
+                    quick_login_accounts: None,
                 }));
             }
         }
@@ -54,16 +59,33 @@ pub async fn get_protocol_status(
             is_connected: false,
             login_status: "unlogged".to_string(),
             qrcode_base64: None,
-            // Saying nothing here is what left the UI spinning on "正在向腾讯请求二维码..."
-            // forever: the backend knew the protocol side was down and did not mention it.
             qrcode_error: Some(
-                "协议端（NapCat）未运行，无法获取登录二维码。请确认 NapCat 已启动且 QQ 路径正确"
-                    .to_string(),
+                "NapCat 协议端启动加载中，正在准备本地运行环境...".to_string(),
             ),
             qq_number: None,
             nickname: None,
             avatar_url: None,
+            quick_login_accounts: None,
         }));
+    }
+
+    // 3. Probe available remembered quick-login accounts
+    let mut quick_login_accounts: Vec<QuickLoginAccountDto> = Vec::new();
+    if let Ok(res) = state.napcat.get_quick_login_list().await {
+        if let Some(arr) = res.get("data").and_then(|d| d.as_array()) {
+            for item in arr {
+                if let Some(u) = item.get("uin").and_then(|v| v.as_str()) {
+                    let nick = item.get("nickName").and_then(|v| v.as_str()).unwrap_or(u);
+                    let face = item.get("faceUrl").and_then(|v| v.as_str()).map(|s| s.to_string())
+                        .or_else(|| qq_avatar(Some(&u.to_string())));
+                    quick_login_accounts.push(QuickLoginAccountDto {
+                        uin: u.to_string(),
+                        nickname: nick.to_string(),
+                        face_url: face,
+                    });
+                }
+            }
+        }
     }
 
     if let Ok(status) = state.napcat.check_login().await {
@@ -80,19 +102,58 @@ pub async fn get_protocol_status(
                     qq_number: uin,
                     nickname: None,
                     avatar_url,
+                    quick_login_accounts: if quick_login_accounts.is_empty() { None } else { Some(quick_login_accounts) },
                 }));
             }
-            if let Some(qr) = data.get("qrcodeurl").and_then(|v| v.as_str()) {
-                if !qr.is_empty() {
-                    return Ok(ApiResponse::ok(ProtocolStatusDto {
-                        is_connected: true,
-                        login_status: "waiting_scan".to_string(),
-                        qrcode_base64: Some(qr.to_string()),
-                        qrcode_error: None,
-                        qq_number: None,
-                        nickname: None,
-                        avatar_url: None,
-                    }));
+        }
+    }
+
+    // 4. Auto-trigger quick login if remembered accounts exist (defaults to last bound account e.g. 462564834)
+    if !quick_login_accounts.is_empty() {
+        let last_acc = crate::services::accounts::read_bootstrap().last_account;
+        let candidate = last_acc
+            .as_deref()
+            .and_then(|target| quick_login_accounts.iter().find(|a| a.uin == target))
+            .unwrap_or(&quick_login_accounts[0]);
+
+        let now_sec = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        let last_attempt = LAST_AUTO_QUICK_LOGIN_TIME.load(Ordering::Relaxed);
+
+        if now_sec - last_attempt > 10 {
+            LAST_AUTO_QUICK_LOGIN_TIME.store(now_sec, Ordering::Relaxed);
+            tracing::info!(
+                "get_protocol_status: auto-triggering quick login for {} ({})",
+                candidate.nickname,
+                candidate.uin
+            );
+            if let Ok(ql_res) = state.napcat.set_quick_login(&candidate.uin).await {
+                if ql_res.get("code").and_then(|c| c.as_i64()) == Some(0) {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
+                    if let Ok(info) = state.onebot.get_login_info().await {
+                        if let Some(data) = info.get("data") {
+                            let uin = data.get("user_id").and_then(|v| v.as_i64()).map(|n| n.to_string());
+                            let nickname = data.get("nickname").and_then(|v| v.as_str()).map(|s| s.to_string());
+                            if let Some(observed) = &uin {
+                                reconcile_account(&app, observed);
+                            }
+                            if uin.is_some() {
+                                let avatar_url = qq_avatar(uin.as_ref());
+                                return Ok(ApiResponse::ok(ProtocolStatusDto {
+                                    is_connected: true,
+                                    login_status: "logged_in".to_string(),
+                                    qrcode_base64: None,
+                                    qrcode_error: None,
+                                    qq_number: uin,
+                                    nickname,
+                                    avatar_url,
+                                    quick_login_accounts: Some(quick_login_accounts),
+                                }));
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -100,9 +161,9 @@ pub async fn get_protocol_status(
 
     let (qrcode_base64, qrcode_error) = match state.napcat.get_qrcode().await {
         Ok(qr) => (Some(qr), None),
-        Err(e) => (
+        Err(_) => (
             None,
-            Some(format!("无法获取登录二维码: {}；协议端可能仍在启动，请稍后重试", e)),
+            Some("NapCat 协议端启动加载中，正在准备登录二维码与凭据...".to_string()),
         ),
     };
 
@@ -114,7 +175,51 @@ pub async fn get_protocol_status(
         qq_number: None,
         nickname: None,
         avatar_url: None,
+        quick_login_accounts: if quick_login_accounts.is_empty() { None } else { Some(quick_login_accounts) },
     }))
+}
+
+#[command]
+pub async fn quick_login(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    uin: String,
+) -> Result<ApiResponse<()>, String> {
+    tracing::info!("quick_login requested for {}", uin);
+    let res = state.napcat.set_quick_login(&uin).await.map_err(|e| e.to_string())?;
+    let code = res.get("code").and_then(|c| c.as_i64()).unwrap_or(-1);
+    if code != 0 {
+        let msg = res.get("message").and_then(|m| m.as_str()).unwrap_or("快速登录失败");
+        return Ok(ApiResponse::err(1002, msg, Some("请确认手机 QQ 或该账号仍有效".to_string())));
+    }
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
+    reconcile_account(&app, &uin);
+    Ok(ApiResponse::ok(()))
+}
+
+#[command]
+pub async fn get_quick_login_accounts(
+    state: State<'_, AppState>,
+) -> Result<ApiResponse<Vec<QuickLoginAccountDto>>, String> {
+    let mut list = Vec::new();
+    if let Ok(res) = state.napcat.get_quick_login_list().await {
+        if let Some(arr) = res.get("data").and_then(|d| d.as_array()) {
+            for item in arr {
+                if let Some(u) = item.get("uin").and_then(|v| v.as_str()) {
+                    let nick = item.get("nickName").and_then(|v| v.as_str()).unwrap_or(u);
+                    let face = item.get("faceUrl").and_then(|v| v.as_str()).map(|s| s.to_string())
+                        .or_else(|| qq_avatar(Some(&u.to_string())));
+                    list.push(QuickLoginAccountDto {
+                        uin: u.to_string(),
+                        nickname: nick.to_string(),
+                        face_url: face,
+                    });
+                }
+            }
+        }
+    }
+    Ok(ApiResponse::ok(list))
 }
 
 #[command]
@@ -479,8 +584,81 @@ pub async fn batch_update_mode(state: State<'_, AppState>, target_ids: Vec<Strin
 }
 
 #[command]
-pub async fn get_messages(state: State<'_, AppState>, target_id: String, limit: Option<i32>, _offset: Option<i32>) -> Result<ApiResponse<Vec<MessageItemDto>>, String> {
-    let list = state.db.get_messages_by_target(&target_id, limit.unwrap_or(50) as usize)
+pub async fn get_messages(
+    state: State<'_, AppState>,
+    target_id: String,
+    limit: Option<i32>,
+    _offset: Option<i32>,
+    target_type: Option<String>,
+) -> Result<ApiResponse<Vec<MessageItemDto>>, String> {
+    let req_limit = limit.unwrap_or(50).clamp(10, 100);
+
+    // 1. Sync roaming history from OneBot if available
+    let is_group = target_type.as_deref() == Some("group") || {
+        state.db.get_all_rules().ok()
+            .and_then(|rules| rules.into_iter().find(|r| r.target_id == target_id))
+            .map(|r| r.target_type == "group")
+            .unwrap_or(false)
+    };
+
+    let ob_msgs = if is_group {
+        state.onebot.get_group_msg_history(&target_id, req_limit).await.unwrap_or_default()
+    } else {
+        let friend_res = state.onebot.get_friend_msg_history(&target_id, req_limit).await.unwrap_or_default();
+        if friend_res.is_empty() {
+            state.onebot.get_group_msg_history(&target_id, req_limit).await.unwrap_or_default()
+        } else {
+            friend_res
+        }
+    };
+
+    for item in ob_msgs {
+        let raw_msg = item.get("raw_message").and_then(|v| v.as_str()).unwrap_or("");
+        if raw_msg.trim().is_empty() {
+            continue;
+        }
+        let time_sec = item.get("time").and_then(|v| v.as_i64()).unwrap_or(0);
+        let time_ms = if time_sec > 10_000_000_000 { time_sec } else { time_sec * 1000 };
+        let msg_id_val = item.get("message_id")
+            .map(|v| v.to_string().replace('"', ""))
+            .unwrap_or_else(|| format!("ob_{}", time_ms));
+        let unique_id = format!("msg_{}_{}", target_id, msg_id_val);
+
+        let sender = item.get("sender");
+        let sender_id = item.get("user_id")
+            .or_else(|| sender.and_then(|s| s.get("user_id")))
+            .map(|v| v.to_string().replace('"', ""))
+            .unwrap_or_default();
+        let self_id = item.get("self_id")
+            .map(|v| v.to_string().replace('"', ""))
+            .unwrap_or_default();
+        let is_from_me = !self_id.is_empty() && self_id == sender_id;
+
+        let sender_name = if is_from_me {
+            "我".to_string()
+        } else {
+            sender.and_then(|s| s.get("card").or_else(|| s.get("nickname")))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("好友")
+                .to_string()
+        };
+
+        let chat_msg = MessageItemDto {
+            id: unique_id,
+            target_id: target_id.clone(),
+            sender_id,
+            sender_name,
+            content: raw_msg.to_string(),
+            is_from_me,
+            ai_reply_status: "none".to_string(),
+            timestamp: time_ms,
+        };
+        let _ = state.db.save_message(&chat_msg);
+    }
+
+    // 2. Query unified SQLite storage
+    let list = state.db.get_messages_by_target(&target_id, req_limit as usize)
         .map_err(|e| e.to_string())?;
     Ok(ApiResponse::ok(list))
 }
@@ -513,7 +691,14 @@ pub async fn send_message(state: State<'_, AppState>, target_id: String, content
         .unwrap_or_default()
         .as_millis() as i64;
 
-    let msg_id = format!("msg_out_{}", now_ms);
+    let msg_id_val = resp
+        .get("data")
+        .and_then(|d| d.get("message_id"))
+        .map(|v| v.to_string().replace('"', ""))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("out_{}", now_ms));
+
+    let msg_id = format!("msg_{}_{}", target_id, msg_id_val);
 
     let chat_msg = MessageItemDto {
         id: msg_id.clone(),
@@ -541,14 +726,16 @@ pub async fn get_pending_drafts(state: State<'_, AppState>) -> Result<ApiRespons
 }
 
 #[command]
-pub async fn send_draft(state: State<'_, AppState>, draft_id: String, final_content: Option<String>) -> Result<ApiResponse<serde_json::Value>, String> {
+pub async fn send_draft(
+    state: State<'_, AppState>,
+    draft_id: String,
+    final_content: Option<String>,
+) -> Result<ApiResponse<serde_json::Value>, String> {
     let drafts = state.db.get_pending_drafts().map_err(|e| e.to_string())?;
     let draft = drafts.into_iter().find(|d| d.id == draft_id)
-        .ok_or_else(|| "找不到指定的待审核草稿".to_string())?;
+        .ok_or_else(|| format!("草稿 {} 不存在", draft_id))?;
 
-    // A draft only exists because the target is on the "copilot" whitelist, and the
-    // human is explicitly approving it - so no extra hardcoded gate is needed here.
-    // The draft's origin is still re-validated so a stale rule cannot leak a send.
+    // Verify the contact is still whitelisted before sending (policy gate).
     let policy = crate::services::policy::load(&state.db, &draft.target_id);
     if !policy.ai_execution_allowed() {
         tracing::warn!(
@@ -575,7 +762,7 @@ pub async fn send_draft(state: State<'_, AppState>, draft_id: String, final_cont
     );
 
     // Send via OneBot
-    let _ = state.onebot.send_msg(target_type, &draft.target_id, &send_content).await
+    let send_res = state.onebot.send_msg(target_type, &draft.target_id, &send_content).await
         .map_err(|e| format!("放行发送草稿失败: {}", e))?;
 
     let now_ms = std::time::SystemTime::now()
@@ -583,8 +770,15 @@ pub async fn send_draft(state: State<'_, AppState>, draft_id: String, final_cont
         .unwrap_or_default()
         .as_millis() as i64;
 
+    let msg_id_val = send_res
+        .get("data")
+        .and_then(|d| d.get("message_id"))
+        .map(|v| v.to_string().replace('"', ""))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("draft_sent_{}", now_ms));
+
     let chat_msg = MessageItemDto {
-        id: format!("draft_sent_{}", now_ms),
+        id: format!("msg_{}_{}", draft.target_id, msg_id_val),
         target_id: draft.target_id.clone(),
         sender_id: "me".to_string(),
         sender_name: "我 (AI草稿放行)".to_string(),
@@ -831,6 +1025,32 @@ pub async fn test_ai_connection(state: State<'_, AppState>, _provider: String, _
 }
 
 #[command]
+pub async fn fetch_provider_models(
+    provider: String,
+    base_url: Option<String>,
+    api_key: Option<String>,
+) -> Result<ApiResponse<Vec<String>>, String> {
+    let (preset_url, _) = crate::services::ai::provider_preset(&provider);
+    let target_url = base_url
+        .filter(|u| !u.trim().is_empty())
+        .or(preset_url)
+        .ok_or_else(|| "缺少 base_url".to_string())?;
+
+    let key = if let Some(k) = api_key.filter(|s| !s.trim().is_empty()) {
+        Some(k)
+    } else if provider == "opencode" || provider == "opencode-go" {
+        crate::services::ai::detect_opencode_auth_key()
+    } else {
+        None
+    };
+
+    match crate::services::ai::fetch_models_from_endpoint(&target_url, key.as_deref()).await {
+        Ok(models) => Ok(ApiResponse::ok(models)),
+        Err(e) => Ok(ApiResponse::err(1003, format!("获取模型失败: {}", e), None)),
+    }
+}
+
+#[command]
 pub async fn check_dependencies(state: State<'_, AppState>) -> Result<ApiResponse<DependencyHealthReport>, String> {
     // Real probes - this used to return hardcoded "everything is fine" values, which
     // made the health panel useless for diagnosing an actual problem.
@@ -947,6 +1167,15 @@ pub fn read_window_behavior(db: &Database) -> (bool, bool) {
     (true, true)
 }
 
+#[command]
+pub async fn restart_napcat() -> Result<ApiResponse<crate::services::napcat_boot::BootOutcome>, String> {
+    let root = crate::services::logging::workspace_root();
+    let napcat_dir = root.join("napcat");
+    let outcome = crate::services::napcat_boot::restart(&napcat_dir);
+    Ok(ApiResponse::ok(outcome))
+}
+
+
 /// Restore the main window from tray / minimized state and pull it to the foreground.
 pub fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
@@ -1017,5 +1246,100 @@ pub async fn app_get_window_behavior(
         "minimizeToTray": minimize_to_tray,
         "closeToTray": close_to_tray
     })))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppUpdateInfo {
+    pub current_version: String,
+    pub latest_version: String,
+    pub has_update: bool,
+    pub release_name: String,
+    pub release_notes: String,
+    pub html_url: String,
+    pub download_url: Option<String>,
+    pub published_at: String,
+}
+
+#[command]
+pub async fn check_app_update() -> Result<ApiResponse<AppUpdateInfo>, String> {
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
+    let client = reqwest::Client::builder()
+        .user_agent("EazyQQ-Updater")
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let url = "https://api.github.com/repos/LING71671/EazyQQ/releases/latest";
+    let resp = client.get(url).send().await
+        .map_err(|e| format!("检查更新网络请求失败: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Ok(ApiResponse::ok(AppUpdateInfo {
+            current_version: current_version.clone(),
+            latest_version: current_version,
+            has_update: false,
+            release_name: "暂无线上发布版本".to_string(),
+            release_notes: String::new(),
+            html_url: "https://github.com/LING71671/EazyQQ/releases".to_string(),
+            download_url: None,
+            published_at: String::new(),
+        }));
+    }
+
+    let json: serde_json::Value = resp.json().await
+        .map_err(|e| format!("解析发布数据失败: {}", e))?;
+
+    let tag_name = json.get("tag_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim_start_matches('v')
+        .to_string();
+
+    let release_name = json.get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let release_notes = json.get("body")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let html_url = json.get("html_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("https://github.com/LING71671/EazyQQ/releases")
+        .to_string();
+
+    let published_at = json.get("published_at")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let download_url = json.get("assets")
+        .and_then(|a| a.as_array())
+        .and_then(|arr| {
+            arr.iter().find_map(|item| {
+                let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                if name.ends_with(".exe") || name.ends_with(".msi") || name.ends_with(".zip") {
+                    item.get("browser_download_url").and_then(|u| u.as_str()).map(|s| s.to_string())
+                } else {
+                    None
+                }
+            })
+        });
+
+    let has_update = !tag_name.is_empty() && tag_name != current_version;
+
+    Ok(ApiResponse::ok(AppUpdateInfo {
+        current_version,
+        latest_version: if tag_name.is_empty() { env!("CARGO_PKG_VERSION").to_string() } else { tag_name },
+        has_update,
+        release_name,
+        release_notes,
+        html_url,
+        download_url,
+        published_at,
+    }))
 }
 

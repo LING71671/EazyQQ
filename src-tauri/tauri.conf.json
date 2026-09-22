@@ -1,8 +1,15 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
   "productName": "EazyQQ",
-  "version": "1.0.0",
+  "version": "0.1.0-beta",
   "identifier": "com.eazyqq.app",
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/LING71671/EazyQQ/releases/latest/download/latest.json"
+      ]
+    }
+  },
   "build": {
     "beforeDevCommand": "pnpm run dev",
     "devUrl": "http://127.0.0.1:1420",

@@ -69,6 +69,17 @@ pub struct ProtocolStatusDto {
     pub nickname: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quick_login_accounts: Option<Vec<QuickLoginAccountDto>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickLoginAccountDto {
+    pub uin: String,
+    pub nickname: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub face_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
