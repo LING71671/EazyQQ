@@ -44,7 +44,9 @@ pub fn group_dir(group_id: &str) -> PathBuf {
 
 /// Strip path separators and reserved characters so a remote filename cannot escape the
 /// workspace or break the filesystem.
-fn sanitize_file_name(name: &str) -> String {
+/// Public because it is a safety boundary, not an implementation detail: it is what stops
+/// a remote filename from escaping the workspace. The runtime self-check exercises it.
+pub fn sanitize_file_name(name: &str) -> String {
     let cleaned: String = name
         .chars()
         .map(|c| match c {

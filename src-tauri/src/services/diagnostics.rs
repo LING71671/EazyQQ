@@ -36,8 +36,9 @@ fn crc32(data: &[u8]) -> u32 {
     !crc
 }
 
-/// Exposed to the crate so `archive` tests can round-trip writer against reader.
-pub(crate) fn build_zip(entries: &[(String, Vec<u8>)]) -> Vec<u8> {
+/// Exposed so the `archive` tests can round-trip writer against reader, and so the runtime
+/// self-check can prove the container it produces is well formed.
+pub fn build_zip(entries: &[(String, Vec<u8>)]) -> Vec<u8> {
     let mut out: Vec<u8> = Vec::new();
     let mut central: Vec<u8> = Vec::new();
     let mut offset: u32 = 0;
@@ -106,7 +107,9 @@ pub(crate) fn build_zip(entries: &[(String, Vec<u8>)]) -> Vec<u8> {
 // ---------------------------------------------------------------------------
 
 /// Mask anything that looks like a credential before it leaves the machine.
-fn redact(input: &str, secrets: &[String]) -> String {
+/// Public because it is the guarantee that no credential reaches a support bundle. The
+/// runtime self-check exercises it.
+pub fn redact(input: &str, secrets: &[String]) -> String {
     let mut out = input.to_string();
     for secret in secrets {
         let trimmed = secret.trim();

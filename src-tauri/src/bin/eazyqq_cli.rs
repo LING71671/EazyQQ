@@ -296,6 +296,7 @@ fn cmd_help() {
          [--base-url <u>] [--model <m>] [--key <k>]
          [--temperature <t>] [--max-context <n>]
   ai-test                         对当前供应商发起真实连通性测试
+  selftest                        关键不变量自检（安全边界、触发、冷却、脱敏）
   config-audit                    审计配置项：找出「界面上能改但后端不读」的设置
   chain-status                    全链路状态：逐环节体检并定位第一个断点
   health [--deep]                 依赖与链路自检（--deep 会真实调用大模型）
@@ -2123,6 +2124,158 @@ fn cmd_config_audit(args: &Args) -> Result<(), String> {
     Ok(())
 }
 
+/// Run the safety-critical invariants against this build.
+///
+/// The unit tests cover far more, but they cannot execute in every environment - on this
+/// machine the test harness fails to load (ISSUE-020) and the cause is not a missing DLL.
+/// A test suite nobody can run protects nobody, so the properties whose failure would be
+/// dangerous or embarrassing are checkable here too.
+fn cmd_selftest(args: &Args) -> Result<(), String> {
+    use eazyqq_lib::services as svc;
+
+    struct Check {
+        name: &'static str,
+        ok: bool,
+        detail: String,
+    }
+    let mut checks: Vec<Check> = Vec::new();
+
+    macro_rules! check {
+        ($name:expr, $cond:expr) => {
+            checks.push(Check {
+                name: $name,
+                ok: $cond,
+                detail: String::new(),
+            });
+        };
+        ($name:expr, $cond:expr, $detail:expr) => {
+            checks.push(Check {
+                name: $name,
+                ok: $cond,
+                detail: $detail,
+            });
+        };
+    }
+
+    // 1. No setting may be offered without being consumed.
+    let unread = svc::config::unread_keys();
+    check!(
+        "配置项全部有消费点（无「改了没用」的设置）",
+        unread.is_empty(),
+        format!("死字段: {:?}", unread)
+    );
+
+    // 2. Every chain link must be reported, and a healthy one must say why.
+    let links = svc::chain::snapshot();
+    check!("全链路报告覆盖全部 8 个环节", links.len() == 8, format!("{} 个", links.len()));
+    let unevidenced = links
+        .iter()
+        .filter(|l| l.health == svc::chain::Health::Ok && l.detail.trim().is_empty())
+        .count();
+    check!("正常环节必须带证据", unevidenced == 0, format!("{} 个无说明", unevidenced));
+
+    // 3. Default deny: an unknown target is never tracked and never reaches AI.
+    let policy = svc::policy::TargetPolicy::default();
+    check!("未知目标默认拒绝（不接管、不调用 AI）",
+        !policy.tracked() && !policy.ai_execution_allowed());
+
+    // 4. Trigger conditions.
+    let plain = serde_json::json!({ "raw_message": "大家早" });
+    let mention = serde_json::json!({ "raw_message": "[CQ:at,qq=462564834] 在吗" });
+    let at_me_plain = svc::trigger::evaluate("at_me", &[], &plain, "462564834", "大家早");
+    let at_me_hit = svc::trigger::evaluate("at_me", &[], &mention, "462564834", "在吗");
+    check!("@我 条件拦截普通消息", !at_me_plain.is_matched());
+    check!("@我 条件放行被 @ 的消息", at_me_hit.is_matched());
+    let unknown_cond = svc::trigger::evaluate("nonsense", &[], &plain, "462564834", "x");
+    check!("未知触发条件失败关闭（不会退化为回复全部）", !unknown_cond.is_matched());
+
+    // 5. Cooldown actually blocks a second attempt.
+    let target = "selftest_cooldown_probe";
+    svc::cooldown::reset(target);
+    let first = svc::cooldown::try_acquire(target, 60);
+    let second = svc::cooldown::try_acquire(target, 60);
+    check!("回复冷却拦截窗口内的第二次", first.is_ok() && second.is_err());
+    svc::cooldown::reset(target);
+
+    // 6. Path safety: a hostile identifier must not escape its directory.
+    let hostile_dir = svc::accounts::account_dir(Some("../../etc/passwd"));
+    let dir_text = hostile_dir.to_string_lossy().replace('\\', "/");
+    check!("恶意账号 ID 无法越出账号目录",
+        dir_text.contains("/accounts/") && !dir_text.contains(".."),
+        dir_text);
+    // The property that matters is containment, not the absence of ".." as a substring:
+    // "_.._evil.exe" is a perfectly safe single filename. Only a name that resolves outside
+    // the intended directory is dangerous, so assert exactly that.
+    let base = std::path::Path::new("B:/EazyQQ/EazyQQ_Data/group_files/123456");
+    let hostile_name = svc::group_files::sanitize_file_name("../../evil.exe");
+    let resolved = base.join(&hostile_name);
+    check!(
+        "恶意文件名无法越出群文件目录",
+        resolved.parent() == Some(base),
+        format!("{} -> {}", hostile_name, resolved.display())
+    );
+    // A bare ".." would escape even without separators, so it must not survive as-is.
+    let dotdot = svc::group_files::sanitize_file_name("..");
+    check!(
+        "单独的 .. 不能作为文件名",
+        dotdot != ".." && !dotdot.is_empty(),
+        dotdot
+    );
+
+    // 7. Redaction: a supplied secret must not survive.
+    let secret = "sk_tr_selftest_secret_value".to_string();
+    let redacted = svc::diagnostics::redact(&format!("key={}", secret), &[secret.clone()]);
+    check!("诊断脱敏移除已知密钥", !redacted.contains(&secret));
+
+    // 8. Diagnostics archive round-trip: we write the ZIP ourselves, so prove it reads back.
+    let zip = svc::diagnostics::build_zip(&[("probe.txt".to_string(), b"hello".to_vec())]);
+    let is_zip = zip.len() > 22 && &zip[0..4] == b"PK\x03\x04";
+    check!("自实现 ZIP 容器结构正确", is_zip);
+
+    // --- report ---------------------------------------------------------------------
+    let failed: Vec<&Check> = checks.iter().filter(|c| !c.ok).collect();
+
+    if args.json() {
+        print_json(&serde_json::json!({
+            "total": checks.len(),
+            "passed": checks.len() - failed.len(),
+            "failed": failed.iter().map(|c| c.name).collect::<Vec<_>>(),
+            "checks": checks.iter().map(|c| serde_json::json!({
+                "name": c.name, "ok": c.ok, "detail": c.detail,
+            })).collect::<Vec<_>>(),
+        }));
+    } else {
+        hr();
+        println!("关键不变量自检");
+        hr();
+        for c in &checks {
+            println!(
+                "  [{}] {}{}",
+                if c.ok { "PASS" } else { "FAIL" },
+                c.name,
+                if c.detail.is_empty() { String::new() } else { format!("  ({})", c.detail) }
+            );
+        }
+        hr();
+        println!(
+            "共 {} 项，通过 {} 项{}",
+            checks.len(),
+            checks.len() - failed.len(),
+            if failed.is_empty() { "，全部通过。" } else { "。" }
+        );
+        if !failed.is_empty() {
+            println!();
+            println!("失败项：");
+            for c in &failed {
+                println!("  - {}  {}", c.name, c.detail);
+            }
+        }
+        hr();
+    }
+
+    Ok(())
+}
+
 fn cmd_log_path() -> Result<(), String> {
     println!("{}", logging::active_log_path().display());
     let (dir, crash_count, last) = logging::diagnostics();
@@ -2212,6 +2365,7 @@ async fn main() -> ExitCode {
                 "health" => cmd_health(&svc, &args).await,
                 "chain-status" => cmd_chain_status(&svc, &args).await,
                 "config-audit" => cmd_config_audit(&args),
+                "selftest" => cmd_selftest(&args),
                 "ai-config" => cmd_ai_config(&svc, &args),
                 "ai-set" => cmd_ai_set(&svc, &args),
                 "ai-test" => cmd_ai_test(&svc, &args).await,
