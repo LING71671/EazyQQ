@@ -118,7 +118,7 @@ EazyQQ 侧的处理是**自适应降级**（默认关闭、失败后自动启用
 ### 前置
 
 1. **NapCat 协议端**运行中，且 QQ 已登录（HTTP `127.0.0.1:3000`、WebSocket `127.0.0.1:3001`、WebUI `127.0.0.1:6099`）。
-2. **大模型 API Key**（默认使用 TokenRhythm），写入 `app_settings.tokenrhythm_api_key` 或环境变量 `TOKENRHYTHM_API_KEY`。
+2. **大模型**：出厂预设默认使用 **OpenCode 官方免费通道 (Zen)**，零配置开箱即用；亦可在「系统设置」随时切换为 DeepSeek、TokenRhythm、OpenAI 或本地 Ollama/LM Studio。
 
 ### 图形界面
 

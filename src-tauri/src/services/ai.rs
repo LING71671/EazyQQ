@@ -55,10 +55,10 @@ pub struct AiRuntimeConfig {
 impl Default for AiRuntimeConfig {
     fn default() -> Self {
         Self {
-            provider: "tokenrhythm".to_string(),
-            base_url: PRESET_TOKENRHYTHM.to_string(),
+            provider: "opencode".to_string(),
+            base_url: PRESET_OPENCODE.to_string(),
             api_key: String::new(),
-            model: DEFAULT_MODEL_TOKENRHYTHM.to_string(),
+            model: DEFAULT_MODEL_OPENCODE.to_string(),
             temperature: 0.7,
             max_context_messages: 10,
         }
@@ -632,11 +632,11 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn default_config_points_at_tokenrhythm() {
+    fn default_config_points_at_opencode() {
         let cfg = AiRuntimeConfig::default();
-        assert_eq!(cfg.provider, "tokenrhythm");
-        assert_eq!(cfg.base_url, PRESET_TOKENRHYTHM);
-        assert!(cfg.requires_api_key());
+        assert_eq!(cfg.provider, "opencode");
+        assert_eq!(cfg.base_url, PRESET_OPENCODE);
+        assert!(!cfg.requires_api_key());
     }
 
     #[test]
@@ -732,24 +732,24 @@ mod tests {
     #[test]
     fn missing_config_falls_back_to_defaults_with_the_fallback_key() {
         let cfg = AiRuntimeConfig::from_app_config(None, "sk-env");
-        assert_eq!(cfg.provider, "tokenrhythm");
+        assert_eq!(cfg.provider, "opencode");
         assert_eq!(cfg.api_key, "sk-env");
     }
 
     #[test]
-    fn blank_provider_falls_back_to_tokenrhythm() {
+    fn blank_provider_falls_back_to_opencode() {
         let cfg = AiRuntimeConfig::from_app_config(
             Some(&json!({ "activeProvider": "   " })),
             "",
         );
-        assert_eq!(cfg.provider, "tokenrhythm");
-        assert_eq!(cfg.base_url, PRESET_TOKENRHYTHM);
+        assert_eq!(cfg.provider, "opencode");
+        assert_eq!(cfg.base_url, PRESET_OPENCODE);
     }
 
     #[test]
     fn reconfigure_swaps_the_active_configuration() {
         let service = AiService::new(AiRuntimeConfig::default());
-        assert_eq!(service.model(), DEFAULT_MODEL_TOKENRHYTHM);
+        assert_eq!(service.model(), DEFAULT_MODEL_OPENCODE);
 
         service.reconfigure(AiRuntimeConfig {
             provider: "ollama".to_string(),
@@ -771,7 +771,7 @@ mod tests {
             ..AiRuntimeConfig::default()
         };
         assert!(local.describe().contains("无需 Key"));
-        assert!(AiRuntimeConfig::default().describe().contains("tokenrhythm"));
+        assert!(AiRuntimeConfig::default().describe().contains("opencode"));
     }
 
     #[test]

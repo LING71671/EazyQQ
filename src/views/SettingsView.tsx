@@ -130,7 +130,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   // AI Settings
   const [provider, setProvider] = useState<AiProviderId>(
-    (config.ai?.activeProvider as AiProviderId) || 'tokenrhythm'
+    (config.ai?.activeProvider as AiProviderId) || 'opencode'
   );
   const [model, setModel] = useState(config.ai?.model || '');
   const [apiKey, setApiKey] = useState(config.ai?.apiKey || '');

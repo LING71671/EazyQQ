@@ -69,8 +69,9 @@ export const App: React.FC = () => {
 
   const [config, setConfig] = useState<AppConfig>({
     ai: {
-      activeProvider: 'tokenrhythm',
+      activeProvider: 'opencode',
       model: 'qwen3.8-flash',
+      baseUrl: 'https://opencode.ai/zen/v1',
       temperature: 0.7,
       maxContextMessages: 10,
     },

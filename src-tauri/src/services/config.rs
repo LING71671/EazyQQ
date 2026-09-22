@@ -21,11 +21,11 @@ use serde_json::{json, Value};
 pub fn default_app_config() -> Value {
     json!({
         "ai": {
-            "activeProvider": "tokenrhythm",
+            "activeProvider": "opencode",
             "model": "qwen3.8-flash",
             "temperature": 0.7,
             "maxContextMessages": 10,
-            "baseUrl": "https://tokenrhythm.studio/v1",
+            "baseUrl": "https://opencode.ai/zen/v1",
             "apiKey": ""
         },
         "napcat": {
