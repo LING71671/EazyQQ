@@ -1,11 +1,40 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'path';
+import { appendFileSync } from 'fs';
 
 // https://vitejs.dev/config/
+
+/**
+ * Logs every request the dev server receives.
+ *
+ * When the desktop window shows nothing, the first question is whether the WebView
+ * fetched the page at all. Without this the dev server is silent, so "the frontend
+ * never loaded" and "the frontend loaded but did not paint" look identical from the
+ * outside - which is exactly the ambiguity that made a blank window hard to diagnose.
+ */
+const requestLogger = (): Plugin => ({
+  name: 'eazyqq-request-logger',
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      const started = Date.now();
+      res.on('finish', () => {
+        const line = `[vite] ${req.method} ${req.url} (${Date.now() - started}ms)`;
+        console.log(line);
+        try {
+          appendFileSync('EazyQQ_Data/vite_requests.log', line + '\n');
+        } catch {
+          /* logging must never break the dev server */
+        }
+      });
+      next();
+    });
+  }
+});
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [requestLogger(), react(), tailwindcss()],
   resolve: {
     alias: {
       '@': resolve(__dirname, './src')

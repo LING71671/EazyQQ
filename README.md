@@ -20,15 +20,31 @@
 
 **1. GUI 窗口黑屏 → 白屏 → 卡死（必须处理，否则界面不可用）**
 
-根因：Windhawk 默认对**所有进程**注入 `windhawk.dll`，其中包括 `msedgewebview2.exe`。注入破坏了 WebView2 浏览器进程，触发 `msedge.dll` 内的 Chromium CHECK 断言，浏览器进程崩溃 → 窗口只剩背景色且不再响应。
+**1. 窗口白屏 / 黑屏 —— 已修复**
 
-修复（需管理员权限，然后重启 Windhawk 服务或在 Windhawk UI 中把 `msedgewebview2.exe` 加入排除列表）：
+现象：窗口能创建、标题栏正常，但内容区只有一片背景色，随后变黑且不再响应。
 
+根因（已用崩溃转储与对照实验确认）：**Chromium 的 GPU 子进程以访问违规（`0xC0000005`）死亡**，
+浏览器主进程判定「GPU 不可用」后主动终止，渲染进程随之无法合成画面，窗口只剩配置的背景色 `#f8fafc`。
+
+> 早先的结论是「Windhawk 注入导致」，**该结论已被证伪**：机器上有 19 个正常工作的 `msedgewebview2.exe`，
+> 其中 9 个同样加载了 `windhawk.dll`（连 Windhawk 的 mod DLL 也注入了）；且崩溃栈上 95~99 个返回地址
+> **全部落在 `msedge.dll` 内，指向 `windhawk.dll` 的为 0**。因此无需再对 Windhawk 做任何排除操作。
+
+已采用的修复（写入 `tauri.conf.json`，无需用户操作）：
+
+```json
+"additionalBrowserArgs": "--no-sandbox"
 ```
-reg add "HKLM\SOFTWARE\Windhawk\Engine\Settings" /v Exclude /t REG_SZ /d "msedgewebview2.exe" /f
-```
 
-排查证据见 [ISSUE.md](ISSUE.md) 的 ISSUE-013。在修复之前，**请使用下方 CLI 通道**，后端功能完全不受影响。
+逐参数隔离测试表明：`--no-sandbox` 单独使用即可恢复正常，而 `--disable-gpu`、
+`--use-angle=swiftshader`、`--disable-gpu-compositing`、`--disable-features=Vulkan` **均无效**，
+说明问题出在**沙箱/进程环境**，而非显卡驱动或渲染后端。
+
+**安全权衡（需知晓）**：`--no-sandbox` 会关闭 Chromium 的渲染进程沙箱。本应用只加载本地打包内容、
+不浏览任意网页，风险相对可控，但**这仍是一项真实的安全降级**，应视为临时规避手段。
+建议后续**临时完全停用 Windhawk（需管理员）复测**：若停用后无需该参数即可正常，则应改为保留排除方案，
+而不是长期关闭沙箱。完整排查过程见 [ISSUE.md](ISSUE.md) 的 ISSUE-013。
 
 **2. 群文件下载不可用**
 

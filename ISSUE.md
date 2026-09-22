@@ -353,3 +353,76 @@
   3. `NapCatService` 客户端加 `.no_proxy()`；
   4. `ai-detect` 同样按目标地址选择客户端，使探测结论不再被代理污染。
 - **验证**: 修复后探测已关闭的本地端口正确返回"端口未监听或拒绝连接"，而云端端点正确返回"需鉴权"（无 Key 时 401），二者不再混淆。
+
+---
+
+### ISSUE-013 更正与最终定位：不是 Windhawk，而是 Chromium 沙箱被干扰
+
+> 本节推翻此前「Windhawk 注入导致 WebView2 崩溃」的结论。原结论建立在一个**不成立的推理**上：
+> 观察到 `windhawk.dll` 存在于崩溃的 `msedgewebview2.exe` 进程中，且崩溃时间相关，就认定其为因。
+> 这是把「相关」当成了「因果」。以下为重新取证的过程与最终结论。
+
+#### 一、原结论被证伪的证据
+
+1. **对照实验**：机器上同时有 **19 个正在运行的 `msedgewebview2.exe`**（来自其它正常工作的 WebView2 应用），
+   其中 **9 个同样加载了 `windhawk.dll`**，**22 个 `chrome.exe` 中有 8 个**同样加载；
+   更进一步，Windhawk 的 **mod DLL 本体**（`explorer-details-better-file-sizes_1.5_147899.dll`）也被注入进了这些**正常工作的** WebView2 进程。
+   既然注入相同而结果不同，注入就不是判别因素。
+2. **崩溃栈分析**（自写 minidump 解析器，从异常流的 CONTEXT 取 RSP 后逐字扫描）：
+   - EazyQQ 崩溃栈上 **95~99 个返回地址全部落在 `msedge.dll` 内**（另有 6 个 `msctf.dll`，即输入法框架）；
+   - **指向 `windhawk.dll` 的返回地址为 0 个** —— 它根本不在崩溃调用链上。
+3. **Windhawk 配置**：已安装的 12 个 mod（explorer / taskbar / start-menu 等）**没有任何一个以 `msedgewebview2.exe` 为目标**。
+
+#### 二、真正的根因
+
+从崩溃转储中提取到 Chromium 的遗言：
+
+```
+ERROR:content\browser\gpu\gpu_process_host.cc:1114] GPU process exited unexpectedly: exit_code=-1073741819
+FATAL:content\browser\gpu\gpu_data_manager_impl_private.cc:436] GPU process isn't usable. Goodbye.
+```
+
+`-1073741819` 即 **`0xC0000005` STATUS_ACCESS_VIOLATION**：**Chromium 的 GPU 子进程访问违规死亡**，
+浏览器主进程判定「GPU 不可用」后主动终止（这正是 `msedge.dll` 中那个 `0x80000003` / CHECK）。
+渲染进程随之无法合成画面，**窗口只剩下配置的背景色 `#f8fafc`**，即用户看到的「白屏」。
+
+#### 三、定位过程（含被我自己的测试方法误导的两次）
+
+1. **误判一：把「空白窗口」当成渲染故障**。当时用 `(pnpm dev &)` 启动前端服务，该进程随命令结束被回收，
+   导致 WebView 无内容可加载——**空白是必然结果**。必须用受管后台进程保持前端存活，测试才有效。
+2. **误判二：依赖 `PrintWindow` 截图判断渲染**。该方法对 WebView2 的 DirectComposition 图层存在已知局限。
+   改用**不依赖截图的独立判据**：前端一旦挂载必然调用 `get_contacts`，于是在该命令中加日志作为「存活探针」。
+   同时在 Vite 侧加请求日志，从服务端反向确认 WebView 的抓取行为。
+3. **决定性证据**（双通道）：
+   - Vite 收到请求：`index.html` → `main.tsx` → `@vite/client` → `react.js` → `App.tsx` → `react-dom_client.js`，**然后戛然而止**；
+   - 后端 `get_contacts` 调用次数为 **0**；
+   - 即：**页面取到一半，渲染进程死亡，React 从未挂载**。
+
+#### 四、修复与验证
+
+逐参数隔离测试：
+
+| 参数 | 崩溃转储 | `get_contacts` 调用 | 结论 |
+| :--- | :--- | :--- | :--- |
+| `--no-sandbox` | 不新增 | 4 → 6 | **生效** |
+| `--disable-gpu` | 不新增 | 6 → 6 | 无效 |
+| `--disable-gpu-compositing --use-angle=swiftshader --disable-features=Vulkan` | 仍新增 | 0 | 无效（参数确已生效，见转储内的 flag 字符串） |
+
+最终修复：`tauri.conf.json` → `app.windows[].additionalBrowserArgs = "--no-sandbox"`。
+
+验证结果（`PrintWindow` 抓取窗口自身渲染）：
+- 修复前：**98.7% 的像素为单一背景色 `(248,250,252)`** —— 只有窗口底色；
+- 修复后：`(255,255,255)` 62.8% + `(249,251,252)` 29.3% + `(240,249,255)` 2.4% + 边框色 —— **真实 UI 内容**，
+  界面可见完整侧边栏（账号状态 / 联系人规则 / 草稿审核 / 群文件同步 / 智能简报 / 系统设置），
+  且**草稿审核徽标显示「11」**，说明前端已成功读取后端真实数据。
+
+#### 五、结论与权衡（需使用者知晓）
+
+- **成因**：本机上存在某种因素干扰 Chromium 的沙箱机制，使 GPU 子进程以访问违规告终。
+  由于 `--no-sandbox` 可规避、而各类渲染后端参数均无效，问题出在**沙箱/进程环境**而非显卡驱动或渲染后端。
+- **首选排查方向**：**临时完全停用 Windhawk（需管理员）后复测**。虽然已证明其注入不是直接原因，
+  但它确实会 hook 进程创建路径，是成本最低、最值得先排除的变量；若停用后无需 `--no-sandbox` 即可正常，
+  则应保留排除方案而不是长期关闭沙箱。
+- **安全权衡**：`--no-sandbox` 会关闭 Chromium 的渲染进程沙箱。本应用只加载本地打包内容、不浏览任意网页，
+  风险相对可控，但**这仍是一项真实的安全降级**，应视为临时规避手段而非最终方案。
+- **后续**：建议在排除干扰源后移除该参数；同时把「WebView 是否真的加载了前端」纳入 `health --deep` 自检项。

@@ -169,6 +169,9 @@ pub async fn mark_read(
 
 #[command]
 pub async fn get_contacts(state: State<'_, AppState>) -> Result<ApiResponse<serde_json::Value>, String> {
+    // Proof of life for the frontend: if the UI is up at all, it calls this on mount.
+    tracing::info!("IPC: get_contacts called from the frontend");
+
     // 1. Read existing whitelist and rules from SQLite
     let existing_rules = state.db.get_all_rules().map_err(|e| e.to_string())?;
     let mut rule_map = std::collections::HashMap::new();
