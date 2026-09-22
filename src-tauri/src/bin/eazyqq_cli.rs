@@ -296,7 +296,7 @@ fn cmd_help() {
          [--base-url <u>] [--model <m>] [--key <k>]
          [--temperature <t>] [--max-context <n>]
   ai-test                         对当前供应商发起真实连通性测试
-  selftest                        关键不变量自检（安全边界、触发、冷却、脱敏）
+  napcat-doctor                   协议端启动路径诊断：逐步骤走查，指出第一个卡住的地方\n  selftest                        关键不变量自检（安全边界、触发、冷却、脱敏）
   config-audit                    审计配置项：找出「界面上能改但后端不读」的设置
   chain-status                    全链路状态：逐环节体检并定位第一个断点
   health [--deep]                 依赖与链路自检（--deep 会真实调用大模型）
@@ -2337,6 +2337,84 @@ async fn cmd_selftest(svc_ctx: &Services, args: &Args) -> Result<(), String> {
     Ok(())
 }
 
+/// Walk the whole protocol-side start-up path and report every step.
+///
+/// One "NapCat WebUI is DOWN" covers a dozen unrelated failures that each need a different
+/// fix. This walks them in order and stops being interesting at the first red line.
+fn cmd_napcat_doctor(args: &Args) -> Result<(), String> {
+    let napcat_dir = eazyqq_lib::services::logging::workspace_root().join("napcat");
+    let uin = eazyqq_lib::services::accounts::active();
+    let steps = eazyqq_lib::services::napcat_boot::diagnose(&napcat_dir, uin.as_deref());
+    let blocker = steps.iter().position(|s| !s.ok);
+
+    if args.json() {
+        print_json(&serde_json::json!({
+            "napcatDir": napcat_dir.display().to_string(),
+            "account": uin,
+            "ok": blocker.is_none(),
+            "steps": steps.iter().map(|s| serde_json::json!({
+                "name": s.name, "ok": s.ok, "detail": s.detail,
+            })).collect::<Vec<_>>(),
+        }));
+        return Ok(());
+    }
+
+    hr();
+    println!("协议端启动路径诊断");
+    println!("  NapCat 目录 : {}", napcat_dir.display());
+    println!("  账号        : {}", uin.as_deref().unwrap_or("（未确定）"));
+    hr();
+
+    for (i, s) in steps.iter().enumerate() {
+        let flag = if s.ok { "OK  " } else { "卡住" };
+        println!("  [{}] {}. {}", flag, i + 1, s.name);
+        if !s.detail.is_empty() {
+            for line in wrap(&s.detail, 66) {
+                println!("         {}", line);
+            }
+        }
+    }
+    hr();
+
+    match blocker {
+        None => println!("协议端启动路径没有发现阻塞项。"),
+        Some(i) => {
+            println!(
+                "第一个阻塞项是「{}」。这一步通过之前，后面的都无从谈起。",
+                steps[i].name
+            );
+        }
+    }
+    hr();
+    Ok(())
+}
+
+/// Wrap a string for terminal output, counting characters rather than bytes so CJK text
+/// lines up.
+fn wrap(text: &str, width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut cur = String::new();
+    let mut n = 0usize;
+    for ch in text.chars() {
+        if ch == '\n' {
+            lines.push(std::mem::take(&mut cur));
+            n = 0;
+            continue;
+        }
+        let w = if (ch as u32) > 0x2000 { 2 } else { 1 };
+        if n + w > width {
+            lines.push(std::mem::take(&mut cur));
+            n = 0;
+        }
+        cur.push(ch);
+        n += w;
+    }
+    if !cur.is_empty() {
+        lines.push(cur);
+    }
+    lines
+}
+
 fn cmd_log_path() -> Result<(), String> {
     println!("{}", logging::active_log_path().display());
     let (dir, crash_count, last) = logging::diagnostics();
@@ -2427,6 +2505,7 @@ async fn main() -> ExitCode {
                 "chain-status" => cmd_chain_status(&svc, &args).await,
                 "config-audit" => cmd_config_audit(&args),
                 "selftest" => cmd_selftest(&svc, &args).await,
+                "napcat-doctor" => cmd_napcat_doctor(&args),
                 "ai-config" => cmd_ai_config(&svc, &args),
                 "ai-set" => cmd_ai_set(&svc, &args),
                 "ai-test" => cmd_ai_test(&svc, &args).await,

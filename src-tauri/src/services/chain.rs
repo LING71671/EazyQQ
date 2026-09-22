@@ -286,7 +286,24 @@ pub fn spawn_monitor(db: std::sync::Arc<crate::services::db::Database>,
                     }
                 }
                 Err(e) => {
-                    record_error(Link::NapcatWebUi, e);
+                    // Report the step that is actually blocking, not just the symptom.
+                    //
+                    // "WebUI 认证网络错误" is what a dozen different failures look like from
+                    // here: a launcher called with the wrong arguments, a QQ path that does
+                    // not resolve, QQ already running so the instance NapCat starts exits a
+                    // few seconds later, a NapCat whose JavaScript never runs. Each needs a
+                    // different action from the user, so name the one that applies.
+                    let blocker = napcat_boot::first_blocker(
+                        &napcat_dir,
+                        crate::services::accounts::active().as_deref(),
+                    );
+                    match &blocker {
+                        Some(b) => record_error(
+                            Link::NapcatWebUi,
+                            format!("{}；首先卡在「{}」：{}", e, b.name, b.detail),
+                        ),
+                        None => record_error(Link::NapcatWebUi, e),
+                    }
 
                     // The protocol side is the one link we can actually repair, so do it
                     // when the user has asked for it. Without this the app could only ever

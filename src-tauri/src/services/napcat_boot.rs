@@ -150,6 +150,215 @@ fn note_result(ok: bool) {
     }
 }
 
+/// One step of the path from "the app wants to talk to QQ" to "NapCat answers on its WebUI".
+#[derive(Debug, Clone, Serialize)]
+pub struct Step {
+    pub name: &'static str,
+    pub ok: bool,
+    pub detail: String,
+}
+
+impl Step {
+    fn ok(name: &'static str, detail: impl Into<String>) -> Self {
+        Self { name, ok: true, detail: detail.into() }
+    }
+
+    fn fail(name: &'static str, detail: impl Into<String>) -> Self {
+        Self { name, ok: false, detail: detail.into() }
+    }
+}
+
+/// Walk the whole protocol-side start-up path, reporting every step.
+///
+/// One opaque "NapCat WebUI is DOWN" was hiding a chain of unrelated failures that each need
+/// a different fix: a launcher invoked with the wrong arguments, a QQ path that did not
+/// resolve, a QQ already running so the instance NapCat started exited immediately, and a
+/// NapCat that loaded but never executed its own JavaScript. The monitor can now name the
+/// step that is actually blocking instead of reporting the symptom.
+pub fn diagnose(napcat_dir: &Path, uin: Option<&str>) -> Vec<Step> {
+    let mut steps = Vec::new();
+
+    // 1. The directory itself.
+    steps.push(if napcat_dir.is_dir() {
+        Step::ok("NapCat 目录", napcat_dir.display().to_string())
+    } else {
+        Step::fail("NapCat 目录", format!("不存在: {}", napcat_dir.display()))
+    });
+
+    // 2. The three files the launcher needs.
+    let required = [
+        ("NapCatWinBootMain.exe", "启动引导器"),
+        ("NapCatWinBootHook.dll", "注入钩子"),
+        ("napcat.mjs", "NapCat 主体"),
+    ];
+    let missing: Vec<String> = required
+        .iter()
+        .filter(|(f, _)| !napcat_dir.join(f).is_file())
+        .map(|(f, what)| format!("{}（{}）", f, what))
+        .collect();
+    steps.push(if missing.is_empty() {
+        Step::ok("必需文件", format!("{} 项齐全", required.len()))
+    } else {
+        Step::fail("必需文件", format!("缺少 {}", missing.join("、")))
+    });
+
+    // 3. Which QQ the launcher will start.
+    let qq_path = configured_qq_path(napcat_dir);
+    match &qq_path {
+        Ok(p) => steps.push(Step::ok("QQ 路径配置", p.display().to_string())),
+        Err(e) => steps.push(Step::fail("QQ 路径配置", e.clone())),
+    }
+
+    // 4. Which QQ build that installation actually is.
+    if let Ok(p) = &qq_path {
+        let mut versions: Vec<String> = p
+            .parent()
+            .map(|d| d.join("versions"))
+            .and_then(|d| std::fs::read_dir(d).ok())
+            .map(|rd| {
+                rd.filter_map(|e| e.ok())
+                    .filter(|e| e.path().is_dir())
+                    .filter_map(|e| e.file_name().into_string().ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        versions.sort();
+        steps.push(if versions.is_empty() {
+            Step::fail("QQ 版本", "versions/ 下没有版本目录，QQ 安装可能不完整")
+        } else {
+            Step::ok("QQ 版本", versions.join("、"))
+        });
+    }
+
+    // 5. Is QQ already running?
+    //
+    // This is the step that took the longest to find by hand. NapCat starts its own QQ with
+    // the hook attached, but QQ refuses a second instance, so the one NapCat launches exits
+    // as soon as it has loaded QQNT.dll - and NapCat's JavaScript never runs at all. The
+    // evidence is indirect but unambiguous: `fileLog` is on in napcat.json and no log file
+    // is ever produced.
+    let running = running_qq_processes();
+    steps.push(if running.is_empty() {
+        Step::ok("QQ 进程", "未在运行，NapCat 可以独占启动")
+    } else {
+        Step::fail(
+            "QQ 进程",
+            format!(
+                "已有 {} 个 QQ 实例在运行。NapCat 需要自己拉起一个带钩子的 QQ，而 QQ 的\
+                 单实例机制会让新实例加载完 QQNT.dll 就退出，NapCat 的 JavaScript 因此从未\
+                 执行（配置里 fileLog 已开启，却始终没有任何日志）。请先完全退出 QQ 再重试。",
+                running.len()
+            ),
+        )
+    });
+
+    // 6. Account-scoped configuration.
+    if let Some(uin) = uin.filter(|u| !u.is_empty()) {
+        let napcat_cfg = napcat_dir.join("config").join(format!("napcat_{}.json", uin));
+        let onebot_cfg = napcat_dir.join("config").join(format!("onebot11_{}.json", uin));
+        let absent: Vec<&str> = [
+            (&napcat_cfg, "napcat_<uin>.json"),
+            (&onebot_cfg, "onebot11_<uin>.json"),
+        ]
+        .iter()
+        .filter(|(p, _)| !p.is_file())
+        .map(|(_, what)| *what)
+        .collect();
+        steps.push(if absent.is_empty() {
+            Step::ok("账号配置", format!("{} 的配置已就绪", uin))
+        } else {
+            Step::fail("账号配置", format!("缺少 {}", absent.join("、")))
+        });
+    }
+
+    // 7. WebUI endpoint, which is what everything else dials.
+    let webui_cfg = napcat_dir.join("config").join("webui.json");
+    match std::fs::read_to_string(&webui_cfg)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+    {
+        Some(v) => {
+            let host = v.get("host").and_then(|h| h.as_str()).unwrap_or("?");
+            let port = v.get("port").and_then(|p| p.as_u64()).unwrap_or(0);
+            let has_token = v
+                .get("token")
+                .and_then(|t| t.as_str())
+                .map(|t| !t.is_empty())
+                .unwrap_or(false);
+            steps.push(Step::ok(
+                "WebUI 配置",
+                format!("{}:{}{}", host, port, if has_token { "（含 token）" } else { "（无 token）" }),
+            ));
+        }
+        None => steps.push(Step::fail(
+            "WebUI 配置",
+            format!("无法读取 {}", webui_cfg.display()),
+        )),
+    }
+
+    // 8. Did NapCat's own logging ever run?
+    //
+    // Deliberately reports only what can be observed. An earlier version of this text
+    // concluded "NapCat's JavaScript never executed" from the empty directory, and that was
+    // wrong: NapCat creates `logs/` and `cache/` itself, and it writes `cache/qrcode.png`,
+    // so its JavaScript demonstrably does run. What the missing log actually tells us is
+    // narrower - it exits before writing its first log line.
+    let log_dir = napcat_dir.join("logs");
+    let newest = std::fs::read_dir(&log_dir)
+        .ok()
+        .and_then(|rd| {
+            rd.filter_map(|e| e.ok())
+                .filter_map(|e| e.metadata().ok())
+                .filter_map(|m| m.modified().ok())
+                .max()
+        });
+    steps.push(match newest {
+        Some(t) => {
+            let age = t.elapsed().map(|d| d.as_secs()).unwrap_or(u64::MAX);
+            Step::ok("NapCat 自身日志", format!("最近写入于 {} 秒前", age))
+        }
+        None => Step::fail(
+            "NapCat 自身日志",
+            format!(
+                "{} 下没有任何日志，而配置里 fileLog 是开启的。注意这只说明它没来得及写下\
+                 第一条日志——NapCat 会自行创建该目录并生成 cache/qrcode.png，所以它的\
+                 JavaScript 确实运行过，只是很快就退出了。",
+                log_dir.display()
+            ),
+        ),
+    });
+
+    steps
+}
+
+/// The first step that failed, which is the one worth acting on.
+pub fn first_blocker(napcat_dir: &Path, uin: Option<&str>) -> Option<Step> {
+    diagnose(napcat_dir, uin).into_iter().find(|s| !s.ok)
+}
+
+/// Running `QQ.exe` processes, as raw `tasklist` lines.
+///
+/// Shelling out keeps this dependency-free; the alternative is a process-enumeration crate
+/// for one diagnostic.
+fn running_qq_processes() -> Vec<String> {
+    let mut cmd = Command::new("tasklist");
+    cmd.args(["/FI", "IMAGENAME eq QQ.exe", "/FO", "CSV", "/NH"]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    match cmd.output() {
+        Ok(o) => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .filter(|l| l.contains("QQ.exe"))
+            .map(|l| l.trim().to_string())
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
 /// Reset the failure counter (called when the backend is observed healthy again).
 pub fn note_healthy() {
     if let Ok(mut st) = state().lock() {

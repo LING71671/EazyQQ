@@ -174,7 +174,8 @@ eazyqq_cli files --target <群号>
 eazyqq_cli file-summarize --path <本地文件路径>            # 支持 txt/md/docx/xlsx/pptx
 
 # 诊断与自检
-eazyqq_cli selftest                                      # ★ 关键不变量自检（15 项：安全边界/触发/冷却/脱敏/容器）
+eazyqq_cli napcat-doctor                                 # ★ 协议端启动路径诊断：逐步骤走查，指出第一个卡住的地方
+eazyqq_cli selftest                                      # ★ 关键不变量自检（17 项：安全边界/触发/冷却/脱敏/容器）
 eazyqq_cli config-audit                                  # ★ 找出「界面上能改但后端不读」的设置
 eazyqq_cli chain-status                                  # ★ 全链路状态：逐环节体检并定位第一个断点
 eazyqq_cli health --deep                                 # 依赖与链路自检（含真实模型调用）
@@ -270,6 +271,7 @@ NapCat WebUI → QQ 登录 → OneBot HTTP → OneBot WebSocket
 | `selftest` | 安全边界还成立吗？（默认拒绝、触发条件、冷却、路径包容性、脱敏、ZIP 结构） |
 | `config-audit` | 有没有「界面上能改、后端不读」的设置？ |
 | `chain-status` | 链路上哪个环节断了？ |
+| `napcat-doctor` | 协议端起不来时，卡在哪一步？ |
 
 `selftest` 与单元测试调用**同一批产品函数**（不复制逻辑）。它存在的理由是：一套跑不起来的测试
 保护不了任何人——本机的测试二进制因加载器问题无法启动（ISSUE-020），所以关键不变量必须另有入口。
