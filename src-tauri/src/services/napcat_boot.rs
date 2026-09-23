@@ -172,6 +172,53 @@ fn resolve(napcat_dir: &Path) -> Result<BootFiles, String> {
     })
 }
 
+fn sync_qqnt_patch(qq_path: &Path, patch_pkg: &Path) {
+    let qq_dir = match qq_path.parent() {
+        Some(d) => d,
+        None => return,
+    };
+
+    let mut candidate = qq_dir.join("resources").join("app").join("package.json");
+    if !candidate.exists() {
+        let versions_dir = qq_dir.join("versions");
+        if let Ok(entries) = std::fs::read_dir(versions_dir) {
+            for entry in entries.flatten() {
+                let p = entry.path().join("resources").join("app").join("package.json");
+                if p.exists() {
+                    candidate = p;
+                    break;
+                }
+            }
+        }
+    }
+
+    if let Ok(content) = std::fs::read_to_string(&candidate) {
+        if let Ok(source) = serde_json::from_str::<serde_json::Value>(&content) {
+            let mut patch = serde_json::Map::new();
+            for key in [
+                "name", "verHash", "version", "linuxVersion", "linuxVerHash",
+                "private", "description", "productName", "author", "homepage",
+                "sideEffects", "bin", "buildVersion",
+            ] {
+                if let Some(v) = source.get(key) {
+                    patch.insert(key.to_string(), v.clone());
+                }
+            }
+            patch.insert("main".to_string(), serde_json::json!("./loadNapCat.js"));
+            patch.insert("isPureShell".to_string(), serde_json::json!(true));
+            patch.insert("isByteCodeShell".to_string(), serde_json::json!(true));
+            patch.insert("platform".to_string(), serde_json::json!("win32"));
+            patch.insert("eleArch".to_string(), serde_json::json!("x64"));
+
+            let patched_json = serde_json::Value::Object(patch);
+            if let Ok(serialized) = serde_json::to_string_pretty(&patched_json) {
+                let _ = std::fs::write(patch_pkg, serialized);
+                tracing::info!("synced qqnt.json with installed QQNT metadata at {}", candidate.display());
+            }
+        }
+    }
+}
+
 /// Should an automatic start be attempted right now?
 ///
 /// Returns `Err(reason)` when it should not, so the caller can log a useful reason rather
@@ -477,6 +524,12 @@ pub fn restart(napcat_dir: &Path) -> BootOutcome {
         st.last_attempt = None;
         st.awaiting_readiness = false;
     }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/IM", "QQ.exe"])
+            .output();
+    }
     start(napcat_dir)
 }
 
@@ -490,25 +543,6 @@ pub fn start(napcat_dir: &Path) -> BootOutcome {
         };
     }
 
-    // Note whether QQ is already running, but do not refuse to start because of it.
-    //
-    // NapCat boots its own QQ ("NapCat 可以完全自身引导 QQ 程序的启动" - official docs), so a
-    // running QQ client is a plausible reason for that instance to exit: measured, four new
-    // QQ processes appear, port 6099 is bound for about three seconds, then all four exit and
-    // the WebUI goes with them. NapCat also ships `KillQQ.bat` (`taskkill /f /im QQ.exe`).
-    //
-    // But "plausible" is not "proven", and refusing outright would break a setup that works.
-    // So this only records the hint; the retry budget below is what stops the churn, and it
-    // does so for any cause.
-    let qq_running = running_qq_processes().len();
-    if qq_running > 0 {
-        tracing::warn!(
-            "napcat boot: {} QQ process(es) already running; NapCat boots its own QQ, so if \
-             this start fails, quitting QQ is the first thing to try",
-            qq_running
-        );
-    }
-
     let files = match resolve(napcat_dir) {
         Ok(f) => f,
         Err(e) => {
@@ -520,6 +554,9 @@ pub fn start(napcat_dir: &Path) -> BootOutcome {
             };
         }
     };
+
+    // Step 0: synchronize qqnt.json with local installed QQNT version
+    sync_qqnt_patch(&files.qq_path, &files.patch_pkg);
 
     note_attempt();
 

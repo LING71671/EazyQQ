@@ -11,8 +11,43 @@ use services::db::Database;
 use services::napcat::NapCatService;
 use services::onebot::OneBotClient;
 
+#[cfg(target_os = "windows")]
+mod single_instance {
+    use std::ffi::c_void;
+
+    extern "system" {
+        fn CreateMutexW(lpMutexAttributes: *mut c_void, bInitialOwner: i32, lpName: *const u16) -> *mut c_void;
+        fn GetLastError() -> u32;
+        fn FindWindowW(lpClassName: *const u16, lpWindowName: *const u16) -> *mut c_void;
+        fn ShowWindow(hWnd: *mut c_void, nCmdShow: i32) -> i32;
+        fn SetForegroundWindow(hWnd: *mut c_void) -> i32;
+    }
+
+    const ERROR_ALREADY_EXISTS: u32 = 183;
+    const SW_RESTORE: i32 = 9;
+
+    pub fn check_or_exit() {
+        unsafe {
+            let mutex_name: Vec<u16> = "Global\\EazyQQ_App_SingleInstance_Mutex\0".encode_utf16().collect();
+            let handle = CreateMutexW(std::ptr::null_mut(), 0, mutex_name.as_ptr());
+            if !handle.is_null() && GetLastError() == ERROR_ALREADY_EXISTS {
+                let win_title: Vec<u16> = "EazyQQ - 个人专属智能助手\0".encode_utf16().collect();
+                let hwnd = FindWindowW(std::ptr::null(), win_title.as_ptr());
+                if !hwnd.is_null() {
+                    ShowWindow(hwnd, SW_RESTORE);
+                    SetForegroundWindow(hwnd);
+                }
+                std::process::exit(0);
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "windows")]
+    single_instance::check_or_exit();
+
     // Resolve which account's data this process serves BEFORE anything touches the disk.
     //
     // Every private artefact is derived from that choice - the SQLite database, the log
@@ -211,10 +246,10 @@ pub fn run() {
             // the frontend calls `frontend_ready` once React has mounted, and only then
             // does the window appear - already painted.
             if let Some(window) = app.get_webview_window("main") {
-                tracing::info!(
-                    "main window created hidden; waiting for the frontend to report ready"
-                );
-                let _ = window;
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+                tracing::info!("main window shown and focused during setup");
             } else {
                 tracing::error!("main window handle not found during setup");
             }
