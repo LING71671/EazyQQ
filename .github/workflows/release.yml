@@ -58,23 +58,6 @@ jobs:
           Expand-Archive -Path $shellZip -DestinationPath $resourceDir -Force
           Remove-Item $shellZip
 
-          # Download OneKey package to get NapCatWinBootMain.exe and NapCatWinBootHook.dll
-          if ($onekeyAsset) {
-            $onekeyZip = "$env:TEMP/NapCat.OneKey.zip"
-            Write-Host "Downloading $($onekeyAsset.name) for boot binaries..."
-            Invoke-WebRequest -Uri $onekeyAsset.browser_download_url -OutFile $onekeyZip
-            $onekeyDir = "$env:TEMP/napcat-onekey"
-            Expand-Archive -Path $onekeyZip -DestinationPath $onekeyDir -Force
-
-            # Find and copy boot binaries
-            $bootFiles = Get-ChildItem -Path $onekeyDir -Recurse -Include 'NapCatWinBootMain.exe','NapCatWinBootHook.dll'
-            foreach ($f in $bootFiles) {
-              Copy-Item $f.FullName -Destination $resourceDir -Force
-              Write-Host "Copied $($f.Name)"
-            }
-            Remove-Item $onekeyZip
-            Remove-Item $onekeyDir -Recurse -Force
-          }
 
           Write-Host "NapCat bundled into $resourceDir"
           Get-ChildItem $resourceDir | Select-Object Name, Length

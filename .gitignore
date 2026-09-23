@@ -23,7 +23,7 @@ EazyQQ_Data/
 *.sqlite3
 
 # Protocol Submodules & Third-party References
-napcat/
+/napcat/
 refer/
 
 # Environment Variables & Secrets (CRITICAL: Never commit keys!)

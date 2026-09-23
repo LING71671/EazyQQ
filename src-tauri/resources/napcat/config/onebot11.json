@@ -1,0 +1,38 @@
+{
+  "network": {
+    "httpServers": [
+      {
+        "name": "http-server",
+        "enable": true,
+        "port": 3000,
+        "host": "127.0.0.1",
+        "enableCors": true,
+        "enableWebsocket": false,
+        "messagePostFormat": "array",
+        "token": "",
+        "debug": false
+      }
+    ],
+    "httpSseServers": [],
+    "httpClients": [],
+    "websocketServers": [
+      {
+        "name": "websocket-server",
+        "enable": true,
+        "host": "127.0.0.1",
+        "port": 3001,
+        "messagePostFormat": "array",
+        "reportSelfMessage": false,
+        "token": "",
+        "enableForcePushEvent": true,
+        "debug": false,
+        "heartInterval": 30000
+      }
+    ],
+    "websocketClients": [],
+    "plugins": []
+  },
+  "musicSignUrl": "",
+  "enableLocalFile2Url": false,
+  "parseMultMsg": false
+}
