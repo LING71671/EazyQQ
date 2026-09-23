@@ -88,4 +88,4 @@ jobs:
           releaseName: 'EazyQQ ${{ github.ref_name }}'
           releaseBody: '自动化构建发布的 EazyQQ 桌面客户端（内置 NapCat 协议，开箱即用）。'
           releaseDraft: false
-          prerelease: true
+          prerelease: false
