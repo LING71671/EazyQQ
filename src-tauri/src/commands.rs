@@ -1311,7 +1311,9 @@ pub async fn check_app_update() -> Result<ApiResponse<AppUpdateInfo>, String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    let url = "https://api.github.com/repos/LING71671/EazyQQ/releases/latest";
+    // Use /releases (not /releases/latest) because all releases are currently marked as
+    // prerelease, and GitHub's /releases/latest endpoint silently skips prereleases.
+    let url = "https://api.github.com/repos/LING71671/EazyQQ/releases?per_page=5";
     let resp = client.get(url).send().await
         .map_err(|e| format!("检查更新网络请求失败: {}", e))?;
 
@@ -1328,14 +1330,42 @@ pub async fn check_app_update() -> Result<ApiResponse<AppUpdateInfo>, String> {
         }));
     }
 
-    let json: serde_json::Value = resp.json().await
+    let releases: serde_json::Value = resp.json().await
         .map_err(|e| format!("解析发布数据失败: {}", e))?;
+
+    // Pick the first non-draft release (prereleases are included).
+    let json = releases
+        .as_array()
+        .and_then(|arr| {
+            arr.iter().find(|r| {
+                r.get("draft").and_then(|d| d.as_bool()).unwrap_or(false) == false
+            })
+        });
+
+    let json = match json {
+        Some(j) => j,
+        None => {
+            return Ok(ApiResponse::ok(AppUpdateInfo {
+                current_version: current_version.clone(),
+                latest_version: current_version,
+                has_update: false,
+                release_name: "暂无线上发布版本".to_string(),
+                release_notes: String::new(),
+                html_url: "https://github.com/LING71671/EazyQQ/releases".to_string(),
+                download_url: None,
+                published_at: String::new(),
+            }));
+        }
+    };
 
     let tag_name = json.get("tag_name")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .trim_start_matches('v')
         .to_string();
+
+    // Strip prerelease suffixes (e.g. "0.1.1-beta" -> "0.1.1") for semver comparison.
+    let tag_base = tag_name.split('-').next().unwrap_or(&tag_name).to_string();
 
     let release_name = json.get("name")
         .and_then(|v| v.as_str())
@@ -1370,7 +1400,7 @@ pub async fn check_app_update() -> Result<ApiResponse<AppUpdateInfo>, String> {
             })
         });
 
-    let has_update = !tag_name.is_empty() && tag_name != current_version;
+    let has_update = !tag_base.is_empty() && tag_base != current_version;
 
     Ok(ApiResponse::ok(AppUpdateInfo {
         current_version,
@@ -1383,4 +1413,5 @@ pub async fn check_app_update() -> Result<ApiResponse<AppUpdateInfo>, String> {
         published_at,
     }))
 }
+
 
