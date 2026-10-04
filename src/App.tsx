@@ -102,11 +102,11 @@ export const App: React.FC = () => {
   });
 
   const [health, setHealth] = useState<DependencyHealthReport>({
-    isAllReady: true,
-    qqNt: { ready: true, path: 'C:\\Program Files\\Tencent\\QQNT\\QQ.exe' },
-    openCode: { ready: true, version: '1.0.4', activeModel: 'local' },
+    isAllReady: false,
+    qqNt: { ready: false, path: '' },
+    openCode: { ready: false, version: '', activeModel: '' },
     ports: { napcatPort: 3001, opencodePort: 4096, isConflict: false },
-    storage: { workspacePath: 'B:\\EazyQQ_Data', isWritable: true, freeSpaceMb: 102400 },
+    storage: { workspacePath: '', isWritable: true, freeSpaceMb: 0 },
   });
 
   const [isRefreshingQr, setIsRefreshingQr] = useState(false);
@@ -170,11 +170,12 @@ export const App: React.FC = () => {
       setBootStage('正在同步本地配置与联系人');
 
       try {
-        const [contactsRes, summariesRes, configRes, draftsRes] = await Promise.allSettled([
+        const [contactsRes, summariesRes, configRes, draftsRes, healthRes] = await Promise.allSettled([
           api.getContacts(),
           api.getSummaryHistory(),
           api.getConfig(),
           api.getPendingDrafts(),
+          api.checkDependencies(),
         ]);
 
         if (contactsRes.status === 'fulfilled' && contactsRes.value.success && contactsRes.value.data) {
@@ -202,6 +203,9 @@ export const App: React.FC = () => {
         }
         if (draftsRes.status === 'fulfilled' && draftsRes.value.success && draftsRes.value.data) {
           setDrafts(draftsRes.value.data);
+        }
+        if (healthRes.status === 'fulfilled' && healthRes.value.success && healthRes.value.data) {
+          setHealth(healthRes.value.data);
         }
       } catch (e) {
         console.error('Failed to load initial data from SQLite', e);
