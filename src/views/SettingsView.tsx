@@ -31,6 +31,13 @@ const AI_PRESETS: Record<
   AiProviderId,
   { baseUrl: string; model: string; label: string; sub: string; local: boolean }
 > = {
+  opencode: {
+    baseUrl: 'https://opencode.ai/zen/v1',
+    model: 'qwen3.8-flash',
+    label: 'OpenCode 官方免费/Zen',
+    sub: '开源官方免费通道 · 免填 Key',
+    local: false,
+  },
   ollama: {
     baseUrl: 'http://127.0.0.1:11434/v1',
     model: 'qwen2.5:7b',
@@ -59,32 +66,11 @@ const AI_PRESETS: Record<
     sub: '高吞吐本地推理',
     local: true,
   },
-  deepseek: {
-    baseUrl: 'https://api.deepseek.com/v1',
-    model: 'deepseek-chat',
-    label: 'DeepSeek 官方 API',
-    sub: '性价比极高',
-    local: false,
-  },
   openai: {
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini',
-    label: 'OpenAI 兼容',
-    sub: '通用 API / OneAPI',
-    local: false,
-  },
-  tokenrhythm: {
-    baseUrl: 'https://tokenrhythm.studio/v1',
-    model: 'qwen3.8-flash',
-    label: 'TokenRhythm',
-    sub: '默认云端服务',
-    local: false,
-  },
-  opencode: {
-    baseUrl: 'https://opencode.ai/zen/v1',
-    model: 'qwen3.8-flash',
-    label: 'OpenCode 官方免费/Zen',
-    sub: '官方免费通道 · 动态模型',
+    label: 'OpenAI 兼容端点',
+    sub: '通用 API / 任意第三方模型通道',
     local: false,
   },
 };
@@ -95,9 +81,7 @@ const AI_PROVIDER_ORDER: AiProviderId[] = [
   'lmstudio',
   'llamacpp',
   'vllm',
-  'deepseek',
   'openai',
-  'tokenrhythm',
 ];
 
 function isLocalEndpoint(url: string): boolean {

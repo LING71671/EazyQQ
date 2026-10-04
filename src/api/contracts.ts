@@ -139,14 +139,12 @@ export interface DependencyHealthReport {
  * its HTML web UI, so it is not an OpenAI-compatible endpoint.
  */
 export type AiProviderId =
+  | 'opencode'
   | 'ollama'
   | 'lmstudio'
   | 'llamacpp'
   | 'vllm'
-  | 'deepseek'
-  | 'openai'
-  | 'tokenrhythm'
-  | 'opencode';
+  | 'openai';
 
 export interface AppConfig {
   ai: {
