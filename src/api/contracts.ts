@@ -148,6 +148,8 @@ export type AiProviderId =
   | 'vllm'
   | 'openai';
 
+export type SummaryIntervalType = '1h' | '2h' | '4h' | '6h' | '12h' | '24h' | 'custom';
+
 export interface AppConfig {
   ai: {
     activeProvider: AiProviderId;
@@ -169,7 +171,7 @@ export interface AppConfig {
   };
   summary: {
     enabled: boolean;
-    intervalType: '1h' | '2h' | '4h' | '6h' | '12h' | '24h' | 'custom';
+    intervalType: SummaryIntervalType;
     customIntervalMinutes: number;
     slidingWindowHours: number;
     autoForwardToPhone: boolean;

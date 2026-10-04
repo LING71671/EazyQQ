@@ -1,98 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Settings,
-  Cpu,
-  HardDrive,
-  Network,
-  FileDown,
-  CheckCircle2,
-  AlertCircle,
-  HelpCircle,
-  RefreshCw,
-  Clock,
-  Sparkles,
-  ShieldAlert,
-  Send,
-  Sliders,
-  ExternalLink,
-  Zap,
-} from 'lucide-react';
-import type { AiProviderId, AppConfig, DependencyHealthReport, AppUpdateInfo } from '@/api/contracts';
+import { CheckCircle2 } from 'lucide-react';
+import type { 
+  AiProviderId, 
+  AppConfig, 
+  DependencyHealthReport, 
+  SummaryIntervalType 
+} from '@/api/contracts';
 import { api } from '@/api/client';
-
-/**
- * Provider presets, mirroring `services/ai.rs`.
- *
- * Switching provider must also refresh the endpoint and model: the backend treats an
- * explicitly stored `baseUrl` as authoritative, so without this the user would pick
- * "local Ollama" and keep sending requests to the cloud.
- */
-const AI_PRESETS: Record<
-  AiProviderId,
-  { baseUrl: string; model: string; label: string; sub: string; local: boolean }
-> = {
-  opencode: {
-    baseUrl: 'https://opencode.ai/zen/v1',
-    model: 'qwen3.8-flash',
-    label: 'OpenCode 官方免费/Zen',
-    sub: '开源官方免费通道 · 免填 Key',
-    local: false,
-  },
-  ollama: {
-    baseUrl: 'http://127.0.0.1:11434/v1',
-    model: 'qwen2.5:7b',
-    label: '本地 Ollama',
-    sub: '完全离线、最省 token',
-    local: true,
-  },
-  lmstudio: {
-    baseUrl: 'http://127.0.0.1:1234/v1',
-    model: 'local-model',
-    label: 'LM Studio',
-    sub: '本地 GUI 推理',
-    local: true,
-  },
-  llamacpp: {
-    baseUrl: 'http://127.0.0.1:8080/v1',
-    model: 'local-model',
-    label: 'llama.cpp',
-    sub: '轻量本地服务',
-    local: true,
-  },
-  vllm: {
-    baseUrl: 'http://127.0.0.1:8000/v1',
-    model: 'local-model',
-    label: 'vLLM',
-    sub: '高吞吐本地推理',
-    local: true,
-  },
-  openai: {
-    baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-4o-mini',
-    label: 'OpenAI 兼容端点',
-    sub: '通用 API / 任意第三方模型通道',
-    local: false,
-  },
-};
-
-const AI_PROVIDER_ORDER: AiProviderId[] = [
-  'opencode',
-  'ollama',
-  'lmstudio',
-  'llamacpp',
-  'vllm',
-  'openai',
-];
-
-function isLocalEndpoint(url: string): boolean {
-  const u = url.toLowerCase();
-  return (
-    u.includes('127.0.0.1') ||
-    u.includes('localhost') ||
-    u.includes('0.0.0.0') ||
-    u.includes('[::1]')
-  );
-}
+import { WindowBehaviorCard } from '@/views/settings/WindowBehaviorCard';
+import { SummaryConfigCard } from '@/views/settings/SummaryConfigCard';
+import { AiProviderCard, AI_PRESETS } from '@/views/settings/AiProviderCard';
+import { DiagnosticsCard } from '@/views/settings/DiagnosticsCard';
+import { AppUpdateCard } from '@/views/settings/AppUpdateCard';
 
 interface SettingsViewProps {
   config: AppConfig;
@@ -100,7 +19,6 @@ interface SettingsViewProps {
   onUpdateConfig: (cfg: Partial<AppConfig>) => void;
   onCheckHealth: () => void;
   onExportDiagnostics: () => void;
-  /** Set once a diagnostics bundle has been produced, so the path can be shown. */
   diagnosticsPath?: string;
 }
 
@@ -119,51 +37,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [model, setModel] = useState(config.ai?.model || '');
   const [apiKey, setApiKey] = useState(config.ai?.apiKey || '');
   const [baseUrl, setBaseUrl] = useState(config.ai?.baseUrl || '');
-
-  // Isolated per-provider settings memory (prevents switching from wiping custom configs)
   const [providersMap, setProvidersMap] = useState<
     Record<string, { model: string; baseUrl?: string; apiKey?: string }>
   >(config.ai?.providers || {});
 
-  // 1-Click Action states
-  const [isRestartingNapcat, setIsRestartingNapcat] = useState(false);
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
-
-  const handleRestartProtocol = async () => {
-    setIsRestartingNapcat(true);
-    setActionNotice('正在唤醒/重启 NapCat 协议端...');
-    try {
-      const res = await api.restartNapCat();
-      if (res.success) {
-        setActionNotice(`NapCat 唤醒指令已发送: ${res.data?.detail || '已尝试引导启动'}`);
-        setTimeout(() => {
-          loadChain();
-          onCheckHealth();
-        }, 2000);
-      } else {
-        setActionNotice(`唤醒失败: ${res.error?.message || '未知错误'}`);
-      }
-    } catch (e: any) {
-      setActionNotice(`唤醒异常: ${e?.message || e}`);
-    } finally {
-      setIsRestartingNapcat(false);
-    }
-  };
-
-  const handleOpenQqDownload = () => {
-    window.open('https://im.qq.com/pcqq/index.shtml', '_blank');
-  };
-
-  const handleQuickSwitchOpenCode = () => {
-    handleSelectProvider('opencode');
-  };
-
-  // Dynamic model fetching state
+  // Dynamic model fetching
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelError, setFetchModelError] = useState<string | null>(null);
 
-  const fetchModelsForEndpoint = async (targetProvider: string, targetUrl?: string, targetKey?: string) => {
+  const fetchModelsForEndpoint = async (
+    targetProvider: string,
+    targetUrl?: string,
+    targetKey?: string
+  ) => {
     setFetchingModels(true);
     setFetchModelError(null);
     try {
@@ -180,9 +67,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  // Switching provider stores current inputs into providersMap, then loads target's saved values or presets
   const handleSelectProvider = (id: AiProviderId) => {
-    // 1. Snapshot current provider's inputs into map
     const updatedMap = {
       ...providersMap,
       [provider]: {
@@ -193,13 +78,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     };
     setProvidersMap(updatedMap);
 
-    // 2. Load newly selected provider's settings or fallback to preset
     setProvider(id);
     const existing = updatedMap[id];
     const preset = AI_PRESETS[id] || AI_PRESETS.opencode;
     const nextBaseUrl = existing?.baseUrl || preset.baseUrl;
     const nextModel = existing?.model || preset.model;
-    const nextKey = existing?.apiKey !== undefined ? existing.apiKey : (id === 'opencode' ? apiKey : '');
+    const nextKey =
+      existing?.apiKey !== undefined ? existing.apiKey : id === 'opencode' ? apiKey : '';
 
     setBaseUrl(nextBaseUrl);
     setModel(nextModel);
@@ -207,9 +92,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     fetchModelsForEndpoint(id, nextBaseUrl, nextKey);
   };
 
-  // Summary Settings (Zero hardcoding, completely dynamic)
+  // Summary Settings
   const [summaryEnabled, setSummaryEnabled] = useState(config.summary?.enabled ?? true);
-  const [intervalType, setIntervalType] = useState(config.summary?.intervalType || '6h');
+  const [intervalType, setIntervalType] = useState<SummaryIntervalType>(
+    config.summary?.intervalType || '6h'
+  );
   const [customIntervalMinutes, setCustomIntervalMinutes] = useState(
     config.summary?.customIntervalMinutes || 360
   );
@@ -224,69 +111,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       '请提取群聊中的核心讨论议题、达成的共识决议、待办行动项及关联责任人，输出清晰简洁的结构化简报。'
   );
 
+  // Window Behavior
+  const [minimizeToTray, setMinimizeToTray] = useState(
+    config.window?.minimizeToTray ?? true
+  );
+  const [closeToTray, setCloseToTray] = useState(config.window?.closeToTray ?? true);
+
+  const applyWindowBehavior = (next: { minimizeToTray?: boolean; closeToTray?: boolean }) => {
+    const merged = {
+      minimizeToTray: next.minimizeToTray ?? minimizeToTray,
+      closeToTray: next.closeToTray ?? closeToTray,
+    };
+    setMinimizeToTray(merged.minimizeToTray);
+    setCloseToTray(merged.closeToTray);
+    onUpdateConfig({ window: merged });
+  };
+
   const [isSaved, setIsSaved] = useState(false);
 
-  // End-to-end chain status. Kept local to this view because it is diagnostic detail,
-  // not something the rest of the app needs to react to.
-  type ChainLink = {
-    link: string;
-    label: string;
-    impact: string;
-    health: 'ok' | 'unknown' | 'failed';
-    detail: string;
-  };
-  const [chainLinks, setChainLinks] = useState<ChainLink[]>([]);
-  const [chainFirstBreak, setChainFirstBreak] = useState<{
-    label: string;
-    detail: string;
-    impact: string;
-  } | null>(null);
-  const [chainLoading, setChainLoading] = useState(false);
-
-  const loadChain = async () => {
-    setChainLoading(true);
-    try {
-      const res = await api.getChainStatus();
-      if (res.success && res.data) {
-        setChainLinks(res.data.links as ChainLink[]);
-        setChainFirstBreak(res.data.firstBreak ?? null);
-      }
-    } catch (e) {
-      console.error('Failed to load chain status', e);
-    } finally {
-      setChainLoading(false);
-    }
-  };
-
-  // Remote Updater State
-  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
-  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
-  const [updateError, setUpdateError] = useState<string | null>(null);
-
-  const handleCheckUpdate = async () => {
-    setIsCheckingUpdate(true);
-    setUpdateError(null);
-    try {
-      const res = await api.checkAppUpdate();
-      if (res.success && res.data) {
-        setUpdateInfo(res.data);
-      } else {
-        setUpdateError(res.error?.message || '检查更新失败');
-      }
-    } catch (e: any) {
-      setUpdateError(e?.message || String(e));
-    } finally {
-      setIsCheckingUpdate(false);
-    }
-  };
-
-  useEffect(() => {
-    loadChain();
-  }, []);
-
-  // The config arrives asynchronously from SQLite, so the useState initialisers above
-  // only ever see the placeholder defaults. Re-seed whenever the real config lands,
-  // otherwise the page silently shows (and would then save) wrong values.
+  // Sync state whenever async config from SQLite changes
   useEffect(() => {
     const curProvider = (config.ai?.activeProvider as AiProviderId) || 'opencode';
     const savedMap = config.ai?.providers || {};
@@ -297,7 +140,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
     const curBaseUrl = saved?.baseUrl || config.ai?.baseUrl || preset.baseUrl;
     const curModel = saved?.model || config.ai?.model || preset.model;
-    const curKey = saved?.apiKey !== undefined ? saved.apiKey : (config.ai?.apiKey || '');
+    const curKey = saved?.apiKey !== undefined ? saved.apiKey : config.ai?.apiKey || '';
 
     setProvider(curProvider);
     setModel(curModel);
@@ -320,24 +163,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setCloseToTray(config.window?.closeToTray ?? true);
   }, [config]);
 
-  // Window & Tray Behavior (default: collapse into tray on minimize / close)
-  const [minimizeToTray, setMinimizeToTray] = useState(
-    config.window?.minimizeToTray ?? true
-  );
-  const [closeToTray, setCloseToTray] = useState(config.window?.closeToTray ?? true);
-
-  // Tray behavior must take effect immediately, so persist on every toggle
-  // instead of waiting for the global "save all" button.
-  const applyWindowBehavior = (next: { minimizeToTray?: boolean; closeToTray?: boolean }) => {
-    const merged = {
-      minimizeToTray: next.minimizeToTray ?? minimizeToTray,
-      closeToTray: next.closeToTray ?? closeToTray,
-    };
-    setMinimizeToTray(merged.minimizeToTray);
-    setCloseToTray(merged.closeToTray);
-    onUpdateConfig({ window: merged });
-  };
-
   const handleSaveAll = () => {
     const updatedMap = {
       ...providersMap,
@@ -354,16 +179,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         ...config.ai,
         activeProvider: provider,
         model: model.trim(),
-        apiKey: apiKey.trim(),
         baseUrl: baseUrl.trim(),
+        apiKey: apiKey.trim(),
         providers: updatedMap,
       },
       summary: {
-        ...config.summary,
         enabled: summaryEnabled,
         intervalType,
-        customIntervalMinutes: Number(customIntervalMinutes) || 360,
-        slidingWindowHours: Number(slidingWindowHours) || 6,
+        customIntervalMinutes,
+        slidingWindowHours,
         autoForwardToPhone,
         customPrompt: customPrompt.trim(),
       },
@@ -387,743 +211,63 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
           <button
             onClick={handleSaveAll}
-            className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white text-xs font-semibold shadow-xs transition-all flex items-center gap-1.5"
+            className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white text-xs font-semibold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>{isSaved ? '已保存！' : '保存所有设置'}</span>
           </button>
         </div>
 
-        {/* 1. Window & System Tray Behavior */}
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-4">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <span className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-              <Settings className="w-4 h-4 text-sky-600" />
-              <span>窗口与系统托盘行为</span>
-            </span>
-            <span className="text-[11px] text-slate-400">即改即生效，无需重启</span>
-          </div>
+        {/* 1. Window & System Tray Behavior Card */}
+        <WindowBehaviorCard
+          minimizeToTray={minimizeToTray}
+          closeToTray={closeToTray}
+          onChangeBehavior={applyWindowBehavior}
+        />
 
-          <div className="space-y-3 text-xs">
-            <div className="p-3 rounded-xl bg-sky-50/70 border border-sky-100 flex items-start gap-2.5">
-              <ShieldAlert className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
-              <div className="text-sky-900 leading-relaxed text-[11px]">
-                <strong className="font-semibold block">托盘常驻保护：</strong>
-                窗口缩入托盘后，QQ 协议监听、消息接管与定时群总结仍在后台持续运行，不会被中断。
-              </div>
-            </div>
+        {/* 2. Group Summarization Settings Card */}
+        <SummaryConfigCard
+          summaryEnabled={summaryEnabled}
+          onToggleSummaryEnabled={setSummaryEnabled}
+          intervalType={intervalType}
+          onChangeIntervalType={setIntervalType}
+          customIntervalMinutes={customIntervalMinutes}
+          onChangeCustomIntervalMinutes={setCustomIntervalMinutes}
+          slidingWindowHours={slidingWindowHours}
+          onChangeSlidingWindowHours={setSlidingWindowHours}
+          autoForwardToPhone={autoForwardToPhone}
+          onToggleAutoForwardToPhone={setAutoForwardToPhone}
+          customPrompt={customPrompt}
+          onChangeCustomPrompt={setCustomPrompt}
+        />
 
-            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
-              <div className="pr-4">
-                <span className="font-semibold block text-slate-800">最小化时缩至系统托盘</span>
-                <span className="text-slate-400 text-[11px]">
-                  点击最小化按钮时隐藏窗口至右下角托盘，而非保留在任务栏
-                </span>
-              </div>
-              <input
-                type="checkbox"
-                checked={minimizeToTray}
-                onChange={(e) => applyWindowBehavior({ minimizeToTray: e.target.checked })}
-                className="w-4 h-4 shrink-0 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer accent-sky-600"
-              />
-            </div>
+        {/* 3. AI Model Provider Selector Card */}
+        <AiProviderCard
+          provider={provider}
+          onSelectProvider={handleSelectProvider}
+          baseUrl={baseUrl}
+          onChangeBaseUrl={setBaseUrl}
+          model={model}
+          onChangeModel={setModel}
+          apiKey={apiKey}
+          onChangeApiKey={setApiKey}
+          fetchedModels={fetchedModels}
+          fetchingModels={fetchingModels}
+          fetchModelError={fetchModelError}
+          onRefreshModels={() => fetchModelsForEndpoint(provider, baseUrl, apiKey)}
+        />
 
-            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
-              <div className="pr-4">
-                <span className="font-semibold block text-slate-800">关闭时缩至系统托盘</span>
-                <span className="text-slate-400 text-[11px]">
-                  点击关闭按钮仅隐藏窗口，不退出进程；彻底退出请右键托盘图标选择「退出 EazyQQ」
-                </span>
-              </div>
-              <input
-                type="checkbox"
-                checked={closeToTray}
-                onChange={(e) => applyWindowBehavior({ closeToTray: e.target.checked })}
-                className="w-4 h-4 shrink-0 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer accent-sky-600"
-              />
-            </div>
+        {/* 4. Pre-flight Health & End-to-end Chain Diagnostics Card */}
+        <DiagnosticsCard
+          health={health}
+          onCheckHealth={onCheckHealth}
+          onQuickSwitchOpenCode={() => handleSelectProvider('opencode')}
+          onExportDiagnostics={onExportDiagnostics}
+          diagnosticsPath={diagnosticsPath}
+        />
 
-            <div className="pt-1 text-[11px] text-slate-400 leading-relaxed">
-              标题栏空白处可按住拖动窗口，双击标题栏可最大化 / 还原；单击托盘图标即可重新呼出主窗口。
-            </div>
-          </div>
-        </div>
-
-        {/* 2. Dynamic Group Summarization Settings Card */}
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-4">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <span className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-sky-600" />
-              <span>群聊自动定时总结与滑动窗口</span>
-            </span>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <span className="text-xs text-slate-500">
-                {summaryEnabled ? '定时总结已启用' : '定时总结已暂停'}
-              </span>
-              <input
-                type="checkbox"
-                checked={summaryEnabled}
-                onChange={(e) => setSummaryEnabled(e.target.checked)}
-                className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer accent-sky-600"
-              />
-            </label>
-          </div>
-
-          <div className="space-y-4 text-xs">
-            {/* Whitelist Scope Notice */}
-            <div className="p-3 rounded-xl bg-sky-50/70 border border-sky-100 flex items-start gap-2.5">
-              <ShieldAlert className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
-              <div className="text-sky-900 leading-relaxed text-[11px]">
-                <strong className="font-semibold block">双白名单保护机制：</strong>
-                定时总结与即时提炼严格遵循白名单原则，仅处理在「联系人」中已打上【简报白名单】的群聊。其余任何群聊默认拒绝处理，杜绝数据泄露。
-              </div>
-            </div>
-
-            {/* Interval Selector */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1.5 flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  <span>自动总结执行周期：</span>
-                </label>
-                <div className="grid grid-cols-4 gap-1.5 mb-2">
-                  {[
-                    { id: '1h', label: '1 小时' },
-                    { id: '2h', label: '2 小时' },
-                    { id: '4h', label: '4 小时' },
-                    { id: '6h', label: '6 小时' },
-                    { id: '12h', label: '12 小时' },
-                    { id: '24h', label: '24 小时' },
-                    { id: 'custom', label: '自定义' },
-                  ].map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setIntervalType(t.id as any)}
-                      className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition-colors ${
-                        intervalType === t.id
-                          ? 'border-sky-500 bg-sky-50 text-sky-700 font-semibold shadow-2xs'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-
-                {intervalType === 'custom' && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-[11px] text-slate-500">自定义执行间隔:</span>
-                    <input
-                      type="number"
-                      min={10}
-                      max={1440}
-                      value={customIntervalMinutes}
-                      onChange={(e) => setCustomIntervalMinutes(Number(e.target.value))}
-                      className="w-24 p-1.5 rounded-lg border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
-                    />
-                    <span className="text-[11px] text-slate-500">分钟</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Sliding Window */}
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1.5 flex items-center gap-1">
-                  <Sliders className="w-3.5 h-3.5 text-slate-400" />
-                  <span>滑动提取时间窗口：</span>
-                </label>
-                <div className="grid grid-cols-3 gap-1.5 mb-2">
-                  {[
-                    { hours: 2, label: '过去 2 小时' },
-                    { hours: 4, label: '过去 4 小时' },
-                    { hours: 6, label: '过去 6 小时' },
-                    { hours: 12, label: '过去 12 小时' },
-                    { hours: 24, label: '过去 24 小时' },
-                    { hours: 48, label: '过去 48 小时' },
-                  ].map((w) => (
-                    <button
-                      key={w.hours}
-                      type="button"
-                      onClick={() => setSlidingWindowHours(w.hours)}
-                      className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition-colors ${
-                        slidingWindowHours === w.hours
-                          ? 'border-sky-500 bg-sky-50 text-sky-700 font-semibold shadow-2xs'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                      }`}
-                    >
-                      {w.label}
-                    </button>
-                  ))}
-                </div>
-                <span className="text-[11px] text-slate-400 block">
-                  每次生成简报时回溯分析的消息范围，不留硬编码死角。
-                </span>
-              </div>
-            </div>
-
-            {/* Auto Push to Mobile QQ */}
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Send className="w-4 h-4 text-sky-600" />
-                <div>
-                  <span className="font-semibold block text-slate-800">自动同步推送到手机</span>
-                  <span className="text-slate-400 text-[11px]">
-                    生成简报后自动静默发送至自己的「我的电脑」或专属接收群
-                  </span>
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={autoForwardToPhone}
-                onChange={(e) => setAutoForwardToPhone(e.target.checked)}
-                className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer accent-sky-600"
-              />
-            </div>
-
-            {/* Custom AI Prompt */}
-            <div className="pt-2 border-t border-slate-100">
-              <label className="font-semibold text-slate-700 block mb-1">
-                AI 简报提取提示词 (Prompt Template)：
-              </label>
-              <textarea
-                rows={2}
-                value={customPrompt}
-                onChange={(e) => setCustomPrompt(e.target.value)}
-                placeholder="输入您希望 AI 侧重提取的简报要求..."
-                className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs text-slate-800 focus:outline-none focus:border-sky-500 leading-relaxed"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* 3. AI Model Provider Selector */}
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-4">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <h3 className="text-sm font-semibold text-slate-900">大模型推理供应源</h3>
-            <span
-              className={`text-[10px] px-2 py-0.5 rounded-full border ${
-                isLocalEndpoint(baseUrl)
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-amber-50 text-amber-700 border-amber-200'
-              }`}
-            >
-              {isLocalEndpoint(baseUrl) ? '本地端点 · 不消耗云端 token' : '云端端点 · 消耗 token'}
-            </span>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-2">
-                选择大脑类型：
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {AI_PROVIDER_ORDER.map((id) => {
-                  const preset = AI_PRESETS[id];
-                  const active = provider === id;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => handleSelectProvider(id)}
-                      className={`p-2.5 rounded-xl text-left border transition-all ${
-                        active
-                          ? 'border-sky-500 bg-sky-50/60 text-sky-900 ring-1 ring-sky-500 shadow-2xs'
-                          : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
-                      }`}
-                    >
-                      <span className="text-xs font-semibold flex items-center gap-1.5 flex-wrap">
-                        {preset.label}
-                        {id === 'opencode' && (
-                          <span className="text-[9px] px-1 py-px rounded bg-sky-100 text-sky-700 font-medium">
-                            官方推荐
-                          </span>
-                        )}
-                        {preset.local && (
-                          <span className="text-[9px] px-1 py-px rounded bg-emerald-100 text-emerald-700 font-medium">
-                            本地
-                          </span>
-                        )}
-                      </span>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">{preset.sub}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="space-y-3 pt-1">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    接口地址 (Base URL)：
-                  </label>
-                  <input
-                    type="text"
-                    value={baseUrl}
-                    onChange={(e) => setBaseUrl(e.target.value)}
-                    placeholder="http://127.0.0.1:11434/v1"
-                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
-                  />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-semibold text-slate-700">
-                      模型名称 (Model)：
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => fetchModelsForEndpoint(provider, baseUrl, apiKey)}
-                      disabled={fetchingModels}
-                      className="flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-700 transition-colors cursor-pointer disabled:opacity-50"
-                    >
-                      <RefreshCw className={`w-3 h-3 ${fetchingModels ? 'animate-spin' : ''}`} />
-                      <span>{fetchingModels ? '拉取中...' : '从接口动态获取可用模型'}</span>
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    list="dynamic-models-list"
-                    placeholder="可输入或直接点击下方模型..."
-                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
-                  />
-                  <datalist id="dynamic-models-list">
-                    {fetchedModels.map((m) => (
-                      <option key={m} value={m} />
-                    ))}
-                  </datalist>
-                </div>
-              </div>
-
-              {/* Dynamic live models chips */}
-              {fetchedModels.length > 0 && (
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-semibold text-slate-700 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                      <span>接口实时可用模型 (共 {fetchedModels.length} 个 · 点击选用)：</span>
-                    </span>
-                    {provider === 'opencode' && (
-                      <span className="text-[10px] text-emerald-700 bg-emerald-100/70 font-medium px-1.5 py-0.5 rounded">
-                        已高亮 OpenCode 官方免费模型
-                      </span>
-                    )}
-                  </div>
-                  <div className="max-h-32 overflow-y-auto pr-1 flex flex-wrap gap-1.5">
-                    {fetchedModels.map((m, idx) => {
-                      const isFree =
-                        m.toLowerCase().includes('free') ||
-                        m.toLowerCase().includes('flash') ||
-                        m.toLowerCase().includes('zen');
-                      const isSelected = model === m;
-                      return (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => setModel(m)}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-mono transition-all flex items-center gap-1.5 cursor-pointer ${
-                            isSelected
-                              ? 'bg-sky-600 text-white font-semibold shadow-xs ring-1 ring-sky-600'
-                              : isFree
-                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 font-medium'
-                              : 'bg-white text-slate-700 border border-slate-200 hover:border-slate-300'
-                          }`}
-                        >
-                          {isFree && (
-                            <span className="text-[9px] bg-emerald-600 text-white px-1 py-px rounded font-semibold">
-                              免费
-                            </span>
-                          )}
-                          {!isFree && idx === 0 && (
-                            <span className="text-[9px] bg-sky-600 text-white px-1 py-px rounded font-semibold">
-                              推荐
-                            </span>
-                          )}
-                          <span>{m}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {fetchModelError && (
-                <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>动态拉取模型提示: {fetchModelError} (您仍可手动在输入框填写任意模型)</span>
-                </div>
-              )}
-
-              {/* API Key */}
-              {isLocalEndpoint(baseUrl) ? (
-                <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-100 text-[11px] text-emerald-900 leading-relaxed">
-                  本地端点无需 API Key，请求不会离开本机，适合用来节省 token 费用。
-                </div>
-              ) : provider === 'opencode' ? (
-                <div className="p-3 rounded-xl bg-sky-50/50 border border-sky-100 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-slate-800">
-                      OpenCode 官方凭证 (API Key)：
-                    </label>
-                    <span className="text-[10px] text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                      <span>已自动识别本机 OpenCode Key</span>
-                    </span>
-                  </div>
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="留空自动读取本机 auth.json 密钥 (推荐)"
-                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
-                  />
-                  <div className="text-[11px] text-slate-500 leading-relaxed">
-                    应用已自动载入 OpenCode 官方凭证，无需手动填 Key。官方模型随服务端动态更新，点选上方标签即可无缝切换。
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    API Key：
-                  </label>
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="sk-..."
-                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
-                  />
-                </div>
-              )}
-
-              <div className="text-[11px] text-slate-400 leading-relaxed">
-                模型不硬编码，实时从供应商端点拉取。使用自建网关或官方渠道均可即时更新；保存后立即生效，无需重启。
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 4. Pre-flight Dependency Health Card */}
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-4">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <span className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-sky-600" />
-              <span>前置运行环境状态</span>
-            </span>
-            <button
-              onClick={onCheckHealth}
-              className="flex items-center gap-1 text-xs text-sky-600 hover:text-sky-700 transition-colors"
-            >
-              <RefreshCw className="w-3 h-3" />
-              <span>重新自检</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            {/* NTQQ */}
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-              <div>
-                <span className="font-semibold block text-slate-800">NTQQ 客户端</span>
-                <span className="text-slate-400 text-[11px] truncate max-w-[180px] block">
-                  {health.qqNt?.path || '默认路径已捕获'}
-                </span>
-                {!health.qqNt?.ready && (
-                  <button
-                    onClick={handleOpenQqDownload}
-                    className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-700 font-medium hover:underline"
-                  >
-                    <span>前往官网下载安装</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-              {health.qqNt?.ready ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
-              )}
-            </div>
-
-            {/* OpenCode */}
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-              <div>
-                <span className="font-semibold block text-slate-800">本地 OpenCode</span>
-                <span className="text-slate-400 text-[11px] block">
-                  {health.openCode?.ready ? '已就绪 (免 API 模式)' : '未运行本地服务'}
-                </span>
-                {!health.openCode?.ready && (
-                  <button
-                    onClick={handleQuickSwitchOpenCode}
-                    className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-700 font-medium hover:underline"
-                  >
-                    <span>一键切换 Zen 云端免费通道</span>
-                    <Zap className="w-3 h-3 text-amber-500" />
-                  </button>
-                )}
-              </div>
-              {health.openCode?.ready ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
-              )}
-            </div>
-
-            {/* Storage */}
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-              <div>
-                <span className="font-semibold block text-slate-800">本地存储空间</span>
-                <span className="text-slate-400 text-[11px]">
-                  {health.storage?.isWritable ? '可正常读写 (WAL已启用)' : '只读不可写'}
-                  {typeof health.storage?.freeSpaceMb === 'number' && health.storage.freeSpaceMb > 0
-                    ? ` · 剩余 ${(health.storage.freeSpaceMb / 1024).toFixed(1)} GB`
-                    : ''}
-                </span>
-              </div>
-              {health.storage?.isWritable ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-              )}
-            </div>
-
-            {/* Overall verdict */}
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-              <div>
-                <span className="font-semibold block text-slate-800">整体就绪状态</span>
-                <span className="text-slate-400 text-[11px]">
-                  {health.isAllReady ? '全部前置条件已满足' : '存在未就绪项，点击各条目一键修复'}
-                </span>
-              </div>
-              {health.isAllReady ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* 5. End-to-end chain status */}
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <div>
-              <h4 className="text-xs font-semibold text-slate-900">全链路状态检测与一键修复</h4>
-              <p className="text-[11px] text-slate-400">
-                从协议端到界面的 8 个环节逐个体检。若链路断裂，可直接点击一键唤醒或切换，杜绝未知故障。
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleRestartProtocol}
-                disabled={isRestartingNapcat}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 text-xs font-medium disabled:opacity-50 transition-colors shrink-0"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isRestartingNapcat ? 'animate-spin' : ''}`} />
-                <span>{isRestartingNapcat ? '唤醒中…' : '一键唤醒协议端'}</span>
-              </button>
-              <button
-                onClick={loadChain}
-                disabled={chainLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-50 transition-colors shrink-0"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${chainLoading ? 'animate-spin' : ''}`} />
-                <span>{chainLoading ? '检测中…' : '重新检测'}</span>
-              </button>
-            </div>
-          </div>
-
-          {actionNotice && (
-            <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 text-xs text-sky-800 flex items-center justify-between animate-in fade-in">
-              <span>{actionNotice}</span>
-              <button onClick={() => setActionNotice(null)} className="text-sky-500 hover:text-sky-700 font-bold ml-2">✕</button>
-            </div>
-          )}
-
-          {chainFirstBreak ? (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-[11px] leading-relaxed flex items-center justify-between gap-3">
-              <div>
-                <span className="font-semibold text-red-900 block">
-                  首要阻断链路：{chainFirstBreak.label}
-                </span>
-                <span className="text-red-800 block mt-0.5">{chainFirstBreak.detail}</span>
-                <span className="text-red-700 block mt-1">影响：{chainFirstBreak.impact}</span>
-              </div>
-              {chainFirstBreak.label.includes('NapCat') || chainFirstBreak.label.includes('OneBot') ? (
-                <button
-                  onClick={handleRestartProtocol}
-                  disabled={isRestartingNapcat}
-                  className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium text-xs shrink-0 shadow-xs transition-colors"
-                >
-                  一键启动/重启
-                </button>
-              ) : chainFirstBreak.label.includes('大模型') ? (
-                <button
-                  onClick={handleQuickSwitchOpenCode}
-                  className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-medium text-xs shrink-0 shadow-xs transition-colors"
-                >
-                  切至官方免费通道
-                </button>
-              ) : null}
-            </div>
-          ) : chainLinks.length > 0 ? (
-            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-[11px] text-emerald-900">
-              全链路通畅，未发现断点。
-              {chainLinks.some((l) => l.health === 'unknown') &&
-                ' 其中部分环节尚未被验证（需要对应组件运行才能确认）。'}
-            </div>
-          ) : null}
-
-          <div className="space-y-1.5">
-            {chainLinks.map((link) => (
-              <div
-                key={link.link}
-                className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0 gap-3"
-              >
-                <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                  {link.health === 'ok' ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
-                  ) : link.health === 'failed' ? (
-                    <AlertCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 shrink-0" />
-                  ) : (
-                    <HelpCircle className="w-3.5 h-3.5 text-slate-300 mt-0.5 shrink-0" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-xs font-medium text-slate-800 shrink-0">{link.label}</span>
-                      <span className="text-[11px] text-slate-500 truncate">{link.detail}</span>
-                    </div>
-                    {link.health === 'failed' && (
-                      <span className="text-[10px] text-red-600 block mt-0.5">
-                        影响：{link.impact}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* 1-Click Action Buttons for Links */}
-                {link.health !== 'ok' && (
-                  <div className="shrink-0">
-                    {(link.link.includes('napcat') || link.link.includes('one_bot')) && (
-                      <button
-                        onClick={handleRestartProtocol}
-                        disabled={isRestartingNapcat}
-                        className="px-2.5 py-1 text-[11px] rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 font-medium transition-colors"
-                      >
-                        一键拉起
-                      </button>
-                    )}
-                    {link.link.includes('ai_provider') && (
-                      <button
-                        onClick={handleQuickSwitchOpenCode}
-                        className="px-2.5 py-1 text-[11px] rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 font-medium transition-colors"
-                      >
-                        切免费通道
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* 6. Diagnostics Export */}
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="text-xs font-semibold text-slate-900">一键导出诊断日志包</h4>
-              <p className="text-[11px] text-slate-400">
-                打包经过安全脱敏的本地运行日志、配置快照与崩溃报告为 ZIP，用于提交开发者查阅定位
-              </p>
-            </div>
-            <button
-              onClick={onExportDiagnostics}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
-            >
-              <FileDown className="w-3.5 h-3.5" />
-              <span>导出诊断包</span>
-            </button>
-          </div>
-          {diagnosticsPath && (
-            <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-100 text-[11px] text-emerald-900 font-mono break-all">
-              已生成: {diagnosticsPath}
-            </div>
-          )}
-        </div>
-
-        {/* 7. About & Remote Update */}
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <h4 className="text-xs font-semibold text-slate-900">关于与版本更新</h4>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-sky-50 text-sky-700 border border-sky-200/60">
-                  v0.1.0-beta
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                支持连接 GitHub Releases 官方通道自动检索版本更新
-              </p>
-            </div>
-            <button
-              onClick={handleCheckUpdate}
-              disabled={isCheckingUpdate}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium transition-colors shrink-0 disabled:opacity-50 shadow-xs"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
-              <span>{isCheckingUpdate ? '检查中...' : '检查更新'}</span>
-            </button>
-          </div>
-
-          {updateError && (
-            <div className="p-2.5 rounded-xl bg-red-50 border border-red-100 text-[11px] text-red-600 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{updateError}</span>
-            </div>
-          )}
-
-          {updateInfo && (
-            <div className={`p-3 rounded-xl border text-xs space-y-2 ${
-              updateInfo.hasUpdate 
-                ? 'bg-amber-50/60 border-amber-200/80 text-amber-900' 
-                : 'bg-slate-50 border-slate-200 text-slate-600'
-            }`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 font-semibold">
-                  {updateInfo.hasUpdate ? (
-                    <>
-                      <Sparkles className="w-4 h-4 text-amber-500" />
-                      <span>发现新版本：{updateInfo.latestVersion}</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                      <span>当前已是最新版本 (v{updateInfo.currentVersion})</span>
-                    </>
-                  )}
-                </div>
-                {updateInfo.hasUpdate && (
-                  <a
-                    href={updateInfo.downloadUrl || updateInfo.htmlUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-medium transition-colors shadow-2xs"
-                  >
-                    <span>下载最新 Release</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                )}
-              </div>
-              {updateInfo.releaseNotes && (
-                <div className="text-[11px] opacity-80 whitespace-pre-wrap font-sans bg-white/60 p-2 rounded-lg border border-amber-100/50">
-                  {updateInfo.releaseNotes}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        {/* 5. Version Update Card */}
+        <AppUpdateCard />
       </div>
     </div>
   );
