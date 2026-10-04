@@ -78,7 +78,13 @@ const SOURCES: &[(&str, &str)] = &[
     ("workflows/summarizer.rs", include_str!("../workflows/summarizer.rs")),
     ("protocol/listener.rs", include_str!("../protocol/listener.rs")),
     ("protocol/events.rs", include_str!("../protocol/events.rs")),
-    ("commands.rs", include_str!("../../commands.rs")),
+    ("commands/auth.rs", include_str!("../../commands/auth.rs")),
+    ("commands/contacts.rs", include_str!("../../commands/contacts.rs")),
+    ("commands/chat.rs", include_str!("../../commands/chat.rs")),
+    ("commands/files.rs", include_str!("../../commands/files.rs")),
+    ("commands/summary.rs", include_str!("../../commands/summary.rs")),
+    ("commands/system.rs", include_str!("../../commands/system.rs")),
+    ("commands/window.rs", include_str!("../../commands/window.rs")),
     ("lib.rs", include_str!("../../lib.rs")),
 ];
 
