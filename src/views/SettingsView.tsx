@@ -712,8 +712,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     )}
                   </div>
                   <div className="max-h-32 overflow-y-auto pr-1 flex flex-wrap gap-1.5">
-                    {fetchedModels.map((m) => {
-                      const isFree = m.toLowerCase().includes('free');
+                    {fetchedModels.map((m, idx) => {
+                      const isFree =
+                        m.toLowerCase().includes('free') ||
+                        m.toLowerCase().includes('flash') ||
+                        m.toLowerCase().includes('zen');
                       const isSelected = model === m;
                       return (
                         <button
@@ -731,6 +734,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           {isFree && (
                             <span className="text-[9px] bg-emerald-600 text-white px-1 py-px rounded font-semibold">
                               免费
+                            </span>
+                          )}
+                          {!isFree && idx === 0 && (
+                            <span className="text-[9px] bg-sky-600 text-white px-1 py-px rounded font-semibold">
+                              推荐
                             </span>
                           )}
                           <span>{m}</span>

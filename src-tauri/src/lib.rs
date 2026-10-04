@@ -72,6 +72,13 @@ pub fn run() {
         root_dir.join("resources").join("napcat"),
     ];
 
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            napcat_candidates.push(exe_dir.join("resources").join("napcat"));
+            napcat_candidates.push(exe_dir.join("napcat"));
+        }
+    }
+
     if let Some(parent) = root_dir.parent() {
         if let Ok(entries) = std::fs::read_dir(parent) {
             for entry in entries.flatten() {

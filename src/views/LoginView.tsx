@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { QrCode, RefreshCw, Smartphone, CheckCircle, ShieldCheck, Loader2, Sparkles, UserCheck } from 'lucide-react';
+import { QrCode, RefreshCw, Smartphone, CheckCircle, ShieldCheck, Loader2, Sparkles, UserCheck, Activity } from 'lucide-react';
 import QRCode from 'qrcode';
 import type { ProtocolStatusDto, QuickLoginAccountDto } from '@/api/contracts';
 
@@ -11,6 +11,7 @@ interface LoginViewProps {
   error?: string | null;
   onQuickLogin?: (uin: string) => void;
   isQuickLoggingIn?: string | null;
+  onOpenHealth?: () => void;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({
@@ -20,6 +21,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
   error,
   onQuickLogin,
   isQuickLoggingIn,
+  onOpenHealth,
 }) => {
   const isLoggedIn = status.loginStatus === 'logged_in';
   const [generatedQr, setGeneratedQr] = useState<string | null>(null);
@@ -224,15 +226,28 @@ export const LoginView: React.FC<LoginViewProps> = ({
               </div>
             </div>
 
-            {/* Action Button */}
-            <button
-              onClick={onRefreshQr}
-              disabled={isLoading}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>{isLoading ? '正在获取全新二维码...' : '刷新二维码'}</span>
-            </button>
+            {/* Action Buttons */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={onRefreshQr}
+                disabled={isLoading}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                <span>{isLoading ? '正在获取全新二维码...' : '刷新二维码'}</span>
+              </button>
+
+              {onOpenHealth && (
+                <button
+                  type="button"
+                  onClick={onOpenHealth}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition-all cursor-pointer"
+                >
+                  <Activity className="w-3.5 h-3.5 text-slate-500" />
+                  <span>链路体检与自愈</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
 

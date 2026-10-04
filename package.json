@@ -4,12 +4,12 @@
   "description": "Zero-CLI out-of-the-box personal QQ AI assistant client",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "prepare:resources": "node scripts/sync-napcat-resources.mjs",
+    "build": "node scripts/sync-napcat-resources.mjs && tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "tauri:build": "node scripts/sync-napcat-resources.mjs && tauri build",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

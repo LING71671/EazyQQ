@@ -34,31 +34,59 @@ pub async fn fetch_models_from_endpoint(
         req = req.header("Authorization", format!("Bearer {}", key.trim()));
     }
 
-    let resp = req.send().await.map_err(|e| format!("请求失败: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("接口返回错误码: {}", resp.status()));
-    }
-
-    let json: Value = resp.json().await.map_err(|e| format!("解析响应失败: {e}"))?;
+    let resp_res = req.send().await;
     let mut model_ids = Vec::new();
 
-    if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
-        for item in data {
-            if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
-                model_ids.push(id.to_string());
+    if let Ok(resp) = resp_res {
+        if resp.status().is_success() {
+            if let Ok(json) = resp.json::<Value>().await {
+                if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
+                    for item in data {
+                        if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
+                            model_ids.push(id.to_string());
+                        }
+                    }
+                } else if let Some(models) = json.get("models").and_then(|m| m.as_array()) {
+                    for item in models {
+                        if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
+                            model_ids.push(name.to_string());
+                        }
+                    }
+                }
             }
         }
-    } else if let Some(models) = json.get("models").and_then(|m| m.as_array()) {
-        for item in models {
-            if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
-                model_ids.push(name.to_string());
-            }
-        }
+    }
+
+    // Graceful fallback for OpenCode / Zen endpoint if offline or blocked
+    if model_ids.is_empty() && base_url.to_lowercase().contains("opencode") {
+        model_ids = vec![
+            "qwen3.8-flash".to_string(),
+            "glm-4-flash".to_string(),
+            "deepseek-chat".to_string(),
+            "gpt-4o-mini".to_string(),
+        ];
     }
 
     if model_ids.is_empty() {
-        return Err("未在响应中解析到任何模型".to_string());
+        return Err("未从端点解析到可用模型，请检查网络或地址".to_string());
     }
+
+    // Deduplicate
+    model_ids.sort();
+    model_ids.dedup();
+
+    // Prioritize free / flash / zen models at the top for beginners
+    model_ids.sort_by(|a, b| {
+        let a_low = a.to_lowercase();
+        let b_low = b.to_lowercase();
+        let a_free = a_low.contains("free") || a_low.contains("flash") || a_low.contains("zen");
+        let b_free = b_low.contains("free") || b_low.contains("flash") || b_low.contains("zen");
+        match (a_free, b_free) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.cmp(b),
+        }
+    });
 
     Ok(model_ids)
 }

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar, NavView } from '@/components/layout/Sidebar';
 import { TopHeader } from '@/components/layout/TopHeader';
 import { ManualDrawer } from '@/components/manual/ManualDrawer';
+import { ChainHealthDrawer } from '@/components/health/ChainHealthDrawer';
 import { BootSplash } from '@/components/common/BootSplash';
 import { LoginView } from '@/views/LoginView';
 import { ContactsView } from '@/views/ContactsView';
@@ -27,6 +28,8 @@ import type {
 export const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<NavView>('login');
   const [isManualOpen, setIsManualOpen] = useState(false);
+  const [isHealthOpen, setIsHealthOpen] = useState(false);
+  const [chainHasFailure, setChainHasFailure] = useState(false);
   const [isDark, setIsDark] = useState(false);
 
   // Core Application States (All bound to SQLite, zero fake mock data)
@@ -245,8 +248,25 @@ export const App: React.FC = () => {
       );
     }).then((fn) => { unlistenMsg = fn; });
 
+    // Initial check for chain health status
+    api.getChainStatus().then((res) => {
+      if (res.success && res.data) {
+        setChainHasFailure(res.data.hasFailure);
+      }
+    }).catch(() => {});
+
     // Periodic check for scan / login status every 2s if not logged in
+    let pollTick = 0;
     const interval = setInterval(async () => {
+      pollTick++;
+      if (pollTick % 4 === 0) {
+        api.getChainStatus().then((res) => {
+          if (res.success && res.data) {
+            setChainHasFailure(res.data.hasFailure);
+          }
+        }).catch(() => {});
+      }
+
       try {
         const res = await api.getProtocolStatus();
         if (res.success && res.data) {
@@ -698,6 +718,8 @@ export const App: React.FC = () => {
           isDark={isDark}
           onToggleTheme={toggleTheme}
           onOpenManual={() => setIsManualOpen(true)}
+          onOpenHealth={() => setIsHealthOpen(true)}
+          chainHasFailure={chainHasFailure}
         />
 
         {/* View Switcher */}
@@ -710,6 +732,7 @@ export const App: React.FC = () => {
               error={qrError || protocolStatus.qrcodeError}
               onQuickLogin={handleQuickLogin}
               isQuickLoggingIn={isQuickLoggingIn}
+              onOpenHealth={() => setIsHealthOpen(true)}
             />
           )}
           {currentView === 'contacts' && (
@@ -771,6 +794,13 @@ export const App: React.FC = () => {
       <ManualDrawer
         isOpen={isManualOpen}
         onClose={() => setIsManualOpen(false)}
+      />
+
+      {/* Global Chain Health & Self-Healing Drawer */}
+      <ChainHealthDrawer
+        isOpen={isHealthOpen}
+        onClose={() => setIsHealthOpen(false)}
+        onOpenSettings={() => setCurrentView('settings')}
       />
 
       {/* Real-time Chat & AI Interaction Drawer */}

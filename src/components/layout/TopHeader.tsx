@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Sun, Moon, HelpCircle, Minus, Square, Copy, X } from 'lucide-react';
+import { Sun, Moon, HelpCircle, Minus, Square, Copy, X, Activity } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { api } from '@/api/client';
 import { useWindowDrag } from '@/hooks/useWindowDrag';
@@ -11,6 +11,8 @@ interface TopHeaderProps {
   isDark: boolean;
   onToggleTheme: () => void;
   onOpenManual: () => void;
+  onOpenHealth?: () => void;
+  chainHasFailure?: boolean;
 }
 
 export const TopHeader: React.FC<TopHeaderProps> = ({
@@ -19,6 +21,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   isDark,
   onToggleTheme,
   onOpenManual,
+  onOpenHealth,
+  chainHasFailure = false,
 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [minimizeToTray, setMinimizeToTray] = useState(true);
@@ -97,34 +101,63 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
     useWindowDrag(handleToggleMaximize);
 
   const getStatusBadge = () => {
+    if (chainHasFailure) {
+      return (
+        <button
+          onClick={onOpenHealth}
+          title="检测到链路存在异常，点击查看体检与一键自愈"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 text-xs font-medium border border-amber-300 hover:bg-amber-100 transition-all cursor-pointer shadow-2xs animate-pulse"
+        >
+          <span className="w-2 h-2 rounded-full bg-amber-500" />
+          <span>链路异常 · 点击修复</span>
+        </button>
+      );
+    }
+
     switch (protocolStatus.loginStatus) {
       case 'logged_in':
         return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200/60">
+          <button
+            onClick={onOpenHealth}
+            title="点击查看全链路体检"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200/60 hover:bg-emerald-100 transition-all cursor-pointer"
+          >
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>已登录 ({protocolStatus.nickname || protocolStatus.qqNumber || 'QQ 用户'})</span>
-          </div>
+          </button>
         );
       case 'scanned':
         return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200/60">
+          <button
+            onClick={onOpenHealth}
+            title="点击查看全链路体检"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200/60 hover:bg-amber-100 transition-all cursor-pointer"
+          >
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
             <span>已扫码，等待确认</span>
-          </div>
+          </button>
         );
       case 'waiting_scan':
         return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-50 text-sky-700 text-xs font-medium border border-sky-200/60">
+          <button
+            onClick={onOpenHealth}
+            title="点击查看全链路体检"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-50 text-sky-700 text-xs font-medium border border-sky-200/60 hover:bg-sky-100 transition-all cursor-pointer"
+          >
             <span className="w-2 h-2 rounded-full bg-sky-500" />
             <span>等待手机扫码</span>
-          </div>
+          </button>
         );
       default:
         return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-medium border border-slate-200">
+          <button
+            onClick={onOpenHealth}
+            title="点击排查连接状态"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-medium border border-slate-200 hover:bg-slate-200 transition-all cursor-pointer"
+          >
             <span className="w-2 h-2 rounded-full bg-slate-400" />
-            <span>未连接</span>
-          </div>
+            <span>未连接 · 点击排障</span>
+          </button>
         );
     }
   };
@@ -147,6 +180,15 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
       <div className="flex items-center gap-2" data-no-drag>
         {/* Status Pill */}
         {getStatusBadge()}
+
+        {/* Health Check Quick Access */}
+        <button
+          onClick={onOpenHealth}
+          title="链路健康体检 & 自愈中心"
+          className="p-1.5 rounded-lg text-slate-500 hover:text-sky-600 hover:bg-sky-50 transition-colors"
+        >
+          <Activity className="w-4 h-4" />
+        </button>
 
         {/* Theme Toggle */}
         <button
