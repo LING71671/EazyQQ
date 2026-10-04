@@ -47,10 +47,12 @@ export interface ContactItemDto {
   lastMessageTimestamp?: number;
 }
 
+export type RuleMode = 'auto_reply' | 'copilot' | 'summary_only' | 'ignore';
+
 export interface RoutingRuleDto {
   id: string;
   targetId: string;
-  mode: 'auto_reply' | 'copilot' | 'summary_only' | 'ignore';
+  mode: RuleMode;
   triggerCondition: 'all' | 'at_me' | 'keyword';
   keywords: string[];
   systemPrompt?: string;
