@@ -1582,8 +1582,8 @@ fn cmd_ai_config(svc: &Services, args: &Args) -> Result<(), String> {
     hr();
     println!("切换示例：");
     println!("  eazyqq_cli ai-set --provider opencode");
-    println!("  eazyqq_cli ai-set --provider ollama --model qwen2.5:7b");
-    println!("  eazyqq_cli ai-set --provider openai --base-url http://127.0.0.1:1234/v1 --model local-model");
+    println!("  eazyqq_cli ai-set --provider ollama --model <model-name>");
+    println!("  eazyqq_cli ai-set --provider openai --base-url http://127.0.0.1:1234/v1 --model <model-name>");
     hr();
     Ok(())
 }

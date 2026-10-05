@@ -49,14 +49,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const fetchModelsForEndpoint = async (
     targetProvider: string,
     targetUrl?: string,
-    targetKey?: string
+    targetKey?: string,
+    autoSelectFirstIfEmpty = false
   ) => {
     setFetchingModels(true);
     setFetchModelError(null);
     try {
       const res = await api.fetchProviderModels(targetProvider, targetUrl, targetKey);
       if (res.success && res.data && res.data.length > 0) {
-        setFetchedModels(res.data);
+        const modelList = res.data;
+        setFetchedModels(modelList);
+        if (autoSelectFirstIfEmpty) {
+          setModel((cur) => {
+            if (!cur.trim()) {
+              const preferred =
+                modelList.find(
+                  (m) =>
+                    m.toLowerCase().includes('free') ||
+                    m.toLowerCase().includes('flash') ||
+                    m.toLowerCase().includes('zen')
+                ) || modelList[0];
+              return preferred || '';
+            }
+            return cur;
+          });
+        }
       } else {
         setFetchModelError(res.error?.message || '未获取到模型列表');
       }
@@ -82,14 +99,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const existing = updatedMap[id];
     const preset = AI_PRESETS[id] || AI_PRESETS.opencode;
     const nextBaseUrl = existing?.baseUrl || preset.baseUrl;
-    const nextModel = existing?.model || preset.model;
+    const nextModel = existing?.model || '';
     const nextKey =
       existing?.apiKey !== undefined ? existing.apiKey : id === 'opencode' ? apiKey : '';
 
     setBaseUrl(nextBaseUrl);
     setModel(nextModel);
     setApiKey(nextKey);
-    fetchModelsForEndpoint(id, nextBaseUrl, nextKey);
+    fetchModelsForEndpoint(id, nextBaseUrl, nextKey, !nextModel);
   };
 
   // Summary Settings
@@ -139,7 +156,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const preset = AI_PRESETS[curProvider] || AI_PRESETS.opencode;
 
     const curBaseUrl = saved?.baseUrl || config.ai?.baseUrl || preset.baseUrl;
-    const curModel = saved?.model || config.ai?.model || preset.model;
+    const curModel = saved?.model || config.ai?.model || '';
     const curKey = saved?.apiKey !== undefined ? saved.apiKey : config.ai?.apiKey || '';
 
     setProvider(curProvider);
@@ -147,7 +164,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setApiKey(curKey);
     setBaseUrl(curBaseUrl);
 
-    fetchModelsForEndpoint(curProvider, curBaseUrl, curKey);
+    fetchModelsForEndpoint(curProvider, curBaseUrl, curKey, !curModel);
 
     setSummaryEnabled(config.summary?.enabled ?? true);
     setIntervalType(config.summary?.intervalType || '6h');
@@ -254,7 +271,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           fetchedModels={fetchedModels}
           fetchingModels={fetchingModels}
           fetchModelError={fetchModelError}
-          onRefreshModels={() => fetchModelsForEndpoint(provider, baseUrl, apiKey)}
+          onRefreshModels={() => fetchModelsForEndpoint(provider, baseUrl, apiKey, true)}
         />
 
         {/* 4. Pre-flight Health & End-to-end Chain Diagnostics Card */}

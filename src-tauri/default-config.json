@@ -1,10 +1,10 @@
 {
   "ai": {
-    "activeProvider": "tokenrhythm",
-    "model": "qwen3.8-flash",
+    "activeProvider": "opencode",
+    "model": "",
     "temperature": 0.7,
     "maxContextMessages": 10,
-    "baseUrl": "https://tokenrhythm.studio/v1",
+    "baseUrl": "https://opencode.ai/zen/v1",
     "apiKey": ""
   },
   "napcat": {

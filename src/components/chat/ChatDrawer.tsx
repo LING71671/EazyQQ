@@ -435,7 +435,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                     </span>
                     {isAiAuto && (
                       <span className="bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400 font-semibold px-1 py-0.2 rounded text-[9px] border border-sky-200/60 dark:border-sky-800 flex items-center gap-0.5">
-                        <Sparkles className="w-2.5 h-2.5" /> AI 秒回 (qwen3.8-flash)
+                        <Sparkles className="w-2.5 h-2.5" /> AI 秒回
                       </span>
                     )}
                     {isAiDraft && (
@@ -604,7 +604,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/50 hover:bg-sky-100 dark:hover:bg-sky-900/50 border border-sky-200/60 dark:border-sky-800 transition-colors disabled:opacity-50"
             >
               <Sparkles className={`w-3.5 h-3.5 ${isAiDrafting ? 'animate-spin' : ''}`} />
-              <span>{isAiDrafting ? 'Qwen 正在推演拟答...' : '✨ 让 AI 替我构思一条回复'}</span>
+              <span>{isAiDrafting ? 'AI 正在推演拟答...' : '✨ 让 AI 替我构思一条回复'}</span>
             </button>
 
             <span className="text-[10px] text-slate-400 font-mono">

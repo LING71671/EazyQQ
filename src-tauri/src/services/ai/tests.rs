@@ -114,7 +114,7 @@ fn reconfigure_swaps_the_active_configuration() {
 fn opencode_is_offered_with_zen_endpoint() {
     let (url, model) = provider_preset("opencode");
     assert_eq!(url.as_deref(), Some(PRESET_OPENCODE));
-    assert_eq!(model.as_deref(), Some(DEFAULT_MODEL_OPENCODE));
+    assert_eq!(model.as_deref(), None);
     let ids: Vec<String> = known_providers().into_iter().map(|(id, ..)| id).collect();
     assert!(ids.contains(&"opencode".to_string()));
 }

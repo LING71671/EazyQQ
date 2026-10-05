@@ -57,16 +57,6 @@ pub async fn fetch_models_from_endpoint(
         }
     }
 
-    // Graceful fallback for OpenCode / Zen endpoint if offline or blocked
-    if model_ids.is_empty() && base_url.to_lowercase().contains("opencode") {
-        model_ids = vec![
-            "qwen3.8-flash".to_string(),
-            "glm-4-flash".to_string(),
-            "deepseek-chat".to_string(),
-            "gpt-4o-mini".to_string(),
-        ];
-    }
-
     if model_ids.is_empty() {
         return Err("未从端点解析到可用模型，请检查网络或地址".to_string());
     }

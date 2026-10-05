@@ -4,48 +4,36 @@ import type { AiProviderId } from '@/api/contracts';
 
 export const AI_PRESETS: Record<
   AiProviderId,
-  { baseUrl: string; model: string; label: string; sub: string; local: boolean }
+  { baseUrl: string; label: string; local: boolean }
 > = {
   opencode: {
     baseUrl: 'https://opencode.ai/zen/v1',
-    model: 'qwen3.8-flash',
     label: 'OpenCode 官方免费/Zen',
-    sub: '开源官方免费通道 · 免填 Key',
     local: false,
   },
   ollama: {
     baseUrl: 'http://127.0.0.1:11434/v1',
-    model: 'qwen2.5:7b',
     label: '本地 Ollama',
-    sub: '完全离线、最省 token',
     local: true,
   },
   lmstudio: {
     baseUrl: 'http://127.0.0.1:1234/v1',
-    model: 'local-model',
     label: 'LM Studio',
-    sub: '本地 GUI 推理',
     local: true,
   },
   llamacpp: {
     baseUrl: 'http://127.0.0.1:8080/v1',
-    model: 'local-model',
     label: 'llama.cpp',
-    sub: '轻量本地服务',
     local: true,
   },
   vllm: {
     baseUrl: 'http://127.0.0.1:8000/v1',
-    model: 'local-model',
     label: 'vLLM',
-    sub: '高吞吐本地推理',
     local: true,
   },
   openai: {
     baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-4o-mini',
     label: 'OpenAI 兼容端点',
-    sub: '通用 API / 任意第三方模型通道',
     local: false,
   },
 };
@@ -118,7 +106,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
           <label className="text-xs font-semibold text-slate-700 block mb-2">
             选择大脑类型：
           </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {AI_PROVIDER_ORDER.map((id) => {
               const preset = AI_PRESETS[id];
               const active = provider === id;
@@ -127,26 +115,27 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
                   key={id}
                   type="button"
                   onClick={() => onSelectProvider(id)}
-                  className={`p-2.5 rounded-xl text-left border transition-all ${
+                  className={`p-3 rounded-xl text-left border transition-all flex items-center justify-between cursor-pointer ${
                     active
-                      ? 'border-sky-500 bg-sky-50/60 text-sky-900 ring-1 ring-sky-500 shadow-2xs'
+                      ? 'border-sky-500 bg-sky-50/60 text-sky-900 ring-1 ring-sky-500 shadow-2xs font-semibold'
                       : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
                   }`}
                 >
-                  <span className="text-xs font-semibold flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs flex items-center gap-1.5 flex-wrap">
                     {preset.label}
+                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
                     {id === 'opencode' && (
-                      <span className="text-[9px] px-1 py-px rounded bg-sky-100 text-sky-700 font-medium">
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 font-medium">
                         官方推荐
                       </span>
                     )}
                     {preset.local && (
-                      <span className="text-[9px] px-1 py-px rounded bg-emerald-100 text-emerald-700 font-medium">
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium">
                         本地
                       </span>
                     )}
-                  </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">{preset.sub}</span>
+                  </div>
                 </button>
               );
             })}
@@ -187,7 +176,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
                 value={model}
                 onChange={(e) => onChangeModel(e.target.value)}
                 list="dynamic-models-list"
-                placeholder="可输入或直接点击下方模型..."
+                placeholder="输入模型名称，或点击下方动态获取到的模型标签..."
                 className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
               />
               <datalist id="dynamic-models-list">

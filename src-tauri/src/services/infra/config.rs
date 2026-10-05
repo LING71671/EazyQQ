@@ -7,7 +7,7 @@ pub fn default_app_config() -> Value {
     json!({
         "ai": {
             "activeProvider": "opencode",
-            "model": "qwen3.8-flash",
+            "model": "",
             "temperature": 0.7,
             "maxContextMessages": 10,
             "baseUrl": "https://opencode.ai/zen/v1",
