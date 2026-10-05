@@ -70,11 +70,7 @@ impl Services {
             ),
         }
 
-        let napcat_dir = if root.join("napcat").exists() {
-            root.join("napcat")
-        } else {
-            std::path::PathBuf::from("B:\\EazyQQ\\napcat")
-        };
+        let napcat_dir = root.join("napcat");
 
         // No fallback token: it is read from `napcat/config/webui.json`. A token is
         // generated per installation, so a hardcoded one would fail on any other machine

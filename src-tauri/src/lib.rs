@@ -507,6 +507,11 @@ pub fn run() {
             app_show_window,
             app_get_window_behavior,
             check_app_update,
+            get_qq_path,
+            set_qq_path,
+            get_napcat_version,
+            check_napcat_update,
+            upgrade_napcat,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EazyQQ application");

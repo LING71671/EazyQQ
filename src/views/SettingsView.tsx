@@ -11,6 +11,7 @@ import { WindowBehaviorCard } from '@/views/settings/WindowBehaviorCard';
 import { SummaryConfigCard } from '@/views/settings/SummaryConfigCard';
 import { AiProviderCard, AI_PRESETS } from '@/views/settings/AiProviderCard';
 import { DiagnosticsCard } from '@/views/settings/DiagnosticsCard';
+import { QqPathConfigCard } from '@/views/settings/QqPathConfigCard';
 import { AppUpdateCard } from '@/views/settings/AppUpdateCard';
 
 interface SettingsViewProps {
@@ -283,7 +284,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           diagnosticsPath={diagnosticsPath}
         />
 
-        {/* 5. Version Update Card */}
+        {/* 5. QQNT Executable Path Card */}
+        <QqPathConfigCard />
+
+        {/* 6. Version Update Card */}
         <AppUpdateCard />
       </div>
     </div>

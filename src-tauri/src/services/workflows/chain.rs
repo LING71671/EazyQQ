@@ -287,6 +287,9 @@ pub fn spawn_monitor(db: std::sync::Arc<crate::services::db::Database>,
                 Err(e) => record_error(Link::OneBotHttp, e),
             }
 
+            // 周期性确认定时调度任务健康
+            record_ok(Link::Scheduler, "定时简报引擎运行中");
+
             if tick % 4 == 1 {
                 let cfg = ai.current();
                 if !cfg.api_key.trim().is_empty() || !cfg.requires_api_key() {

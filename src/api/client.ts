@@ -15,6 +15,7 @@ import type {
   WindowBehaviorDto,
   QuickLoginAccountDto,
   AppUpdateInfo,
+  NapCatUpdateInfo,
 } from './contracts';
 
 export const api = {
@@ -187,5 +188,20 @@ export const api = {
   // Remote Updater
   checkAppUpdate: async (): Promise<ApiResponse<AppUpdateInfo>> => {
     return invoke('check_app_update');
-  }
+  },
+  getQqPath: async (): Promise<ApiResponse<string>> => {
+    return invoke('get_qq_path');
+  },
+  setQqPath: async (path: string): Promise<ApiResponse<string>> => {
+    return invoke('set_qq_path', { path });
+  },
+  getNapCatVersion: async (): Promise<ApiResponse<string>> => {
+    return invoke('get_napcat_version');
+  },
+  checkNapCatUpdate: async (): Promise<ApiResponse<NapCatUpdateInfo>> => {
+    return invoke('check_napcat_update');
+  },
+  upgradeNapCat: async (downloadUrl?: string): Promise<ApiResponse<string>> => {
+    return invoke('upgrade_napcat', { downloadUrl });
+  },
 };

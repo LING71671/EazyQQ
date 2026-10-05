@@ -303,14 +303,20 @@ pub async fn refresh_qrcode(state: State<'_, AppState>) -> Result<ApiResponse<se
 
 #[command]
 pub async fn logout() -> Result<ApiResponse<()>, String> {
-    tracing::warn!("logout requested but NapCat provides no logout endpoint");
-    Ok(ApiResponse::err(
-        4050,
-        "当前协议端 (NapCat) 未提供登出接口，无法在应用内注销。\
-         如需切换账号，请在 NapCat WebUI (http://127.0.0.1:6099) 中退出登录，\
-         或停止协议端进程后使用「快速登录」切换到其它账号。",
-        None,
-    ))
+    tracing::info!("logout requested: terminating QQ and resetting active account session");
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/IM", "QQ.exe"])
+            .output();
+    }
+    let _ = crate::services::accounts::clear_active();
+    LAST_AUTO_QUICK_LOGIN_TIME.store(0, Ordering::Relaxed);
+    crate::services::chain::record_unknown(
+        crate::services::chain::Link::QqLogin,
+        "已主动退出登录，等待重新扫码或选择账号",
+    );
+    Ok(ApiResponse::ok(()))
 }
 
 #[command]

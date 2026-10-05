@@ -23,7 +23,6 @@ pub fn detect_api_key() -> Option<String> {
     }
 
     let mut candidates = Vec::new();
-    candidates.push(PathBuf::from(r"A:\DevEnv\nvim-home\data\opencode\auth.json"));
 
     if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
         let home_p = PathBuf::from(&home);

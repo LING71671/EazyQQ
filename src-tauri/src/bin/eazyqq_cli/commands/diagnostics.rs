@@ -499,7 +499,7 @@ pub async fn cmd_selftest(svc_ctx: &Services, args: &Args) -> Result<(), String>
         dir_text.contains("/accounts/") && !dir_text.contains(".."),
         dir_text);
 
-    let base = std::path::Path::new("B:/EazyQQ/EazyQQ_Data/group_files/123456");
+    let base = std::path::Path::new("safe_data/group_files/123456");
     let hostile_name = svc::group_files::sanitize_file_name("../../evil.exe");
     let resolved = base.join(&hostile_name);
     check!(

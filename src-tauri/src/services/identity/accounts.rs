@@ -64,3 +64,12 @@ pub fn adopt(uin: &str) -> Result<(), String> {
     set_active(Some(uin.to_string()));
     Ok(())
 }
+
+/// Clear the active account from bootstrap and in-memory state.
+pub fn clear_active() -> Result<(), String> {
+    let mut b = read_bootstrap();
+    b.last_account = None;
+    write_bootstrap(&b)?;
+    set_active(None);
+    Ok(())
+}

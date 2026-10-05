@@ -72,6 +72,17 @@ impl OneBotClient {
         Ok(json)
     }
 
+    pub async fn get_version_info(&self) -> Result<Value, String> {
+        let url = format!("{}/get_version_info", self.http_base_url);
+        let resp = self.client.post(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Network error querying version info: {}", e))?;
+        
+        let json: Value = resp.json().await.map_err(|e| format!("Parse error: {}", e))?;
+        Ok(json)
+    }
+
     pub async fn get_friend_list(&self) -> Result<Vec<ObFriendInfo>, String> {
         let url = format!("{}/get_friend_list", self.http_base_url);
         let resp = self.client.post(&url)

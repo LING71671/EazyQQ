@@ -200,3 +200,12 @@ export interface AppUpdateInfo {
   downloadUrl?: string;
   publishedAt: string;
 }
+
+export interface NapCatUpdateInfo {
+  currentVersion: string;
+  latestVersion: string;
+  hasUpdate: boolean;
+  releaseName: string;
+  releaseNotes: string;
+  downloadUrl?: string;
+}
