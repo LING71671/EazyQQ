@@ -9,7 +9,7 @@
 | 路径 | 类型 | 说明 |
 | :--- | :--- | :--- |
 | `src/` | 源码 | 前端（React + TypeScript）。`views/` 是页面，`components/` 是组件，`api/` 是后端契约与调用封装 |
-| `src-tauri/` | 源码 | 后端（Rust）。`src/services/` 是各功能模块，`src/bin/eazyqq_cli.rs` 是命令行入口 |
+| `src-tauri/` | 源码 | 后端（Rust）。`src/services/` 是各功能模块，`src/bin/eazyqq_cli/` 是模块化命令行入口 |
 | `src-tauri/target/` | 产物 | Rust 构建输出，**约 13 GB**。`cargo clean` 可回收，重新构建需数分钟 |
 | `node_modules/` | 产物 | 前端依赖，**约 164 MB**。`pnpm install` 可重建 |
 | `dist/` | 产物 | 前端打包结果。`pnpm build` 生成；**开发模式下不使用**（走 Vite 服务器） |

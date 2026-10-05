@@ -1,0 +1,9 @@
+pub mod ai;
+pub mod chat;
+pub mod config;
+pub mod contacts;
+pub mod diagnostics;
+pub mod files;
+pub mod help;
+pub mod protocol;
+pub mod summary;

@@ -143,7 +143,7 @@
 - `services/summarizer.rs`：真实简报生成（噪声过滤 + 结构化 JSON 约束）
 - `services/scheduler.rs`：配置驱动定时调度，无任何硬编码周期
 - `services/diagnostics.rs`：自实现最小 ZIP 容器 + 脱敏打包
-- `bin/eazyqq_cli.rs`：21 个子命令的无界面控制通道（debug 后门）
+- `bin/eazyqq_cli/`：模块化无界面控制通道（debug 后门，含协议/联系人/聊天/AI/简报/文件/诊断等子模块）
 
 ### 未完成 / 已知阻塞
 1. **【阻塞】Windhawk 注入导致 WebView2 崩溃**（ISSUE-013）：GUI 窗口黑屏→白屏→卡死。需管理员把 `msedgewebview2.exe` 加入 Windhawk 排除列表后重启服务。后端与 CLI 完全不受影响。
