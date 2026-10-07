@@ -1,49 +1,45 @@
-# EazyQQ Product Specification
+# EazyQQ 产品规格书 (PRODUCT.md)
 
 <!-- impeccable:product-schema 1 -->
 
-## Platform
-Windows Desktop (Tauri 2.0 + WebView2) & Headless Command-Line Interface (`eazyqq_cli`).
+## 1. 运行平台
+Windows 桌面客户端（Tauri 2.0 + WebView2）与无头命令行交互系统（`eazyqq_cli`）。
 
-## Tech Stack
-Tauri 2.0 (Rust) + Vite 6 + React 19 + TypeScript + TailwindCSS v4 + rusqlite (WAL mode) + OneBot 11 (NapCat NTQQ Core) + Model Context Protocol (JSON-RPC 2.0 stdio).
+## 2. 技术栈
+Tauri 2.0 (Rust) + Vite 6 + React 19 + TypeScript + TailwindCSS v4 + rusqlite (WAL 并发模式) + OneBot 11 (NapCat NTQQ 原生内核) + Model Context Protocol (标准 JSON-RPC 2.0 stdio 服务端)。
 
-## Target Users
-- **Everyday Users & Community Operators**: Need an automated, secure, local-first assistant for QQ groups and friends without dealing with command lines, Python environments, or sign servers.
-- **AI Developers & External Agents**: Need programmatic, standard MCP/CLI control over all internal QQ messaging, group history, summaries, file extraction, and diagnostics.
+## 3. 目标用户
+- **普通用户与社群运营者**：需要自主可控、零门槛、免配置复杂开发环境或签名服务器的个人 QQ 自动化助手。
+- **AI 开发者与外部智能体**：需要通过标准 MCP 或 CLI 无头通道完整调度底层 QQ 消息、历史记录、智能简报、群文件与系统诊断能力。
 
-## Product Purpose
-Deliver an out-of-the-box, zero-barrier, premium personal QQ intelligent assistant. EazyQQ seamlessly bridges personal QQ interactions with modern LLMs (DeepSeek, OpenAI, Claude, Ollama, LM Studio, vLLM) with granular rule controls, human-in-the-loop draft reviews, streaming summaries, and external agent orchestration.
+## 4. 产品定位与运行双模
+EazyQQ 具备完全同构的双模运行能力：
+1. **交互式桌面 GUI**：清爽通透的高级纯白/高对比度深色界面，用于扫码登录、路由规则配置、人机协同草稿审核、群文件知识库浏览与流式长文简报阅读。
+2. **无头智能体引擎（MCP 与 CLI）**：标准 JSON-RPC 2.0 stdio 服务端（`eazyqq_cli mcp`）与 CLI 自动化流水线（`eazyqq_cli`），对外部 AI（Cursor、Claude Desktop、Antigravity）开放完整的内部服务超集。
 
-## Positioning & Core Modes
-EazyQQ operates in dual mode:
-1. **Interactive Desktop GUI**: Modern, light/dark premium interface for scanning QR codes, managing routing rules, reviewing AI drafts, exploring group files, and reading streaming summaries.
-2. **Headless Agent Engine (MCP & CLI)**: Standard JSON-RPC 2.0 stdio server (`eazyqq_cli mcp`) and CLI pipeline (`eazyqq_cli`) exposing complete superset access to all backend operations for external agents (Cursor, Claude Desktop, Antigravity).
+## 5. 运行上下文与安全性
+- **运行环境**：Windows 10/11 x64，支持后台系统托盘静默常驻，支持多账号与多机器独立沙盒隔离。
+- **登录鉴权**：复用本地官方 NTQQ 环境原生扫码鉴权，会话凭证本地自动持久化，支持免扫码快速登录。
+- **隐私自治**：严格遵循「默认拒绝（Default-Deny）」白名单机制。所有聊天记录、路由规则、草稿与简报均保存在本地 SQLite 数据库中，杜绝数据外泄。
 
-## Operating Context
-- **Runtime**: Windows 10/11 x64, silent background tray capability, multi-account and per-machine data isolation.
-- **Authentication**: Native NTQQ QR code scanning with automated session persistence and quick-login renewal.
-- **Security & Privacy**: Strict default-deny whitelist. All message logs, routing rules, drafts, and summaries reside solely in local SQLite databases (`PRAGMA journal_mode = WAL`).
+## 6. 核心功能与能力边界
+- **零门槛扫码登录**：Base64 二维码实时流式拉取，支持超时自动刷新与持久化凭据快速恢复。
+- **四象限颗粒化消息路由矩阵**：
+  - `自动秒回（Auto-Reply）`：根据条件（@我、关键词、全部消息）由 AI 自主秒回。
+  - `人机协同草稿箱（Copilot / Draft）`：AI 生成附带置信度与思考过程的拟答草稿，用户二次审核编辑后一键放行。
+  - `纯消息总结模式（Summary-Only）`：后台静默收集白名单群聊流水，支持随时手动提炼或周期定时总结。
+  - `直通静默模式（Ignore）`：完全旁路，不记录流水，AI 不介入。
+- **流式简报与推理可观测性**：
+  - 基于滑动时间窗口的长文结构化提炼（议题、决议、待办）。
+  - 支持 SSE 逐 Token 实时流式打字机渲染。
+  - 首字耗时（TTFT 毫秒）与推理速率（tokens/s）实时指标监控。
+- **群文件知识中心**：群文件树状层级浏览、后台静默下载与本地文档解析（PDF、DOCX、TXT、Markdown、代码文件）。
+- **外部 AI 超集调度与自省**：
+  - 根目录规范化部署 `llms.txt` 与 `llms-full.txt`。
+  - `eazyqq_cli schema --json` 导出全部 CLI 子命令与 MCP 工具的 JSON Schema。
+  - `eazyqq_cli mcp` 标准 stdio 服务端，stdout 严格隔离，杜绝日志污染。
 
-## Capabilities & Constraints
-- **Zero-Barrier QR Authentication**: Real-time Base64 QR code streaming, auto-refresh on expiration, and automatic credential persistence.
-- **Four-Quadrant Routing Matrix**:
-  - `Auto-Reply`: AI replies autonomously based on triggers (`@me`, keywords, or all messages).
-  - `Copilot / Draft`: AI drafts proposed responses for human review, editing, and one-click dispatch.
-  - `Summary-Only`: Silent background collection for selected whitelisted groups to generate periodic summaries.
-  - `Ignore`: Full bypass without recording or AI intervention.
-- **Streaming Summaries & Observability**:
-  - Sliding time-window summarization with real-time SSE chunk streaming.
-  - Telemetry observability: Time to First Token (TTFT in ms) and token generation velocity (tokens/sec).
-- **Group File Knowledge Center**: Hierarchical tree explorer, background download manager, and local document extraction (PDF, DOCX, TXT, Markdown, code).
-- **External AI Superpower & Introspection**:
-  - `llms.txt` and `llms-full.txt` standard specification files.
-  - `eazyqq_cli schema --json` dynamic CLI and MCP tool JSON Schema introspection.
-  - `eazyqq_cli mcp` stdio server with clean stdout isolation for zero-corruption tool calls.
-
-## Design Philosophy & Principles
-1. **Zero-Fluff Minimalist Invariant ("非必要不添加文字")**:
-   - Clean, functional canvas without marketing welcome text or decorative prompt pills.
-   - UI surfaces only actionable controls, functional identifiers, and concise live statuses.
-2. **Predictable Autonomy**: Users hold full sovereignty over AI actions via explicit dual whitelists and draft buffers.
-3. **Local-First Reliability**: High-concurrency WAL SQLite storage, automated crash recovery, and self-healing watchdog.
+## 7. 产品原则
+1. **零冗余文字铁律（"非必要不添加文字"）**：界面杜绝营销型介绍文案、欢迎导语或装饰性示例提示词，仅展示功能性标识、有效数据与操作控件。
+2. **绝对确定性自主权**：用户对 AI 拥有绝对控制权，严格区分全自动与人工审查。
+3. **本地优先与高并发可靠性**：强制启用 SQLite WAL 模式，内置进程心跳自愈与崩溃重启节流。
