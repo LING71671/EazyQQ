@@ -8,6 +8,18 @@ edition = "2021"
 # (`cargo run --bin eazyqq-cli -- status`) so `tauri dev` keeps working unchanged.
 default-run = "eazyqq"
 
+[[bin]]
+name = "eazyqq"
+path = "src/main.rs"
+
+[[bin]]
+name = "ezq"
+path = "src/bin/eazyqq_cli/main.rs"
+
+[[bin]]
+name = "eazyqq_cli"
+path = "src/bin/eazyqq_cli/main.rs"
+
 [lib]
 name = "eazyqq_lib"
 # `rlib` only: the desktop binary links the library directly. Keeping `cdylib` here made

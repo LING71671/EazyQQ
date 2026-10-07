@@ -181,8 +181,15 @@ if ($UserPath -notlike "*$BinDir*") {
 }
 $env:Path = "$BinDir;$env:Path"
 
+# 确保 ezq.exe 与 eazyqq_cli.exe 双向存在
+if (Test-Path "$BinDir\eazyqq_cli.exe" -and -not (Test-Path "$BinDir\ezq.exe")) {
+    Copy-Item "$BinDir\eazyqq_cli.exe" "$BinDir\ezq.exe" -Force
+} elseif (Test-Path "$BinDir\ezq.exe" -and -not (Test-Path "$BinDir\eazyqq_cli.exe")) {
+    Copy-Item "$BinDir\ezq.exe" "$BinDir\eazyqq_cli.exe" -Force
+}
+
 # 7. 完成提示与指令指南
-$ExePath = "$BinDir\eazyqq_cli.exe"
+$ExePath = if (Test-Path "$BinDir\ezq.exe") { "$BinDir\ezq.exe" } else { "$BinDir\eazyqq_cli.exe" }
 if (Test-Path $ExePath) {
     Write-Host ""
     Write-Host "==========================================" -ForegroundColor Green
@@ -191,14 +198,14 @@ if (Test-Path $ExePath) {
     Write-Host ""
     & $ExePath version
     Write-Host ""
-    Write-Host "核心无头常用指令:" -ForegroundColor Cyan
-    Write-Host "  eazyqq_cli qr                 # 终端字符扫码登录（手机 QQ 扫一扫即登）" -ForegroundColor White
-    Write-Host "  eazyqq_cli qr --browser       # 浏览器弹出扫码" -ForegroundColor White
-    Write-Host "  eazyqq_cli status             # 查看协议在线态" -ForegroundColor White
-    Write-Host "  eazyqq_cli send --target <ID> --text <内容> # 真实收发消息" -ForegroundColor White
-    Write-Host "  eazyqq_cli instances list     # 查看/管理多开账号实例池" -ForegroundColor White
-    Write-Host "  eazyqq_cli mcp                # 启动 stdio MCP 服务供 Cursor/Claude 接入" -ForegroundColor White
+    Write-Host "核心无头常用指令 (短命令: ezq):" -ForegroundColor Cyan
+    Write-Host "  ezq qr                 # 终端字符扫码登录（手机 QQ 扫一扫即登）" -ForegroundColor White
+    Write-Host "  ezq qr --browser       # 浏览器弹出扫码" -ForegroundColor White
+    Write-Host "  ezq status             # 查看协议在线态" -ForegroundColor White
+    Write-Host "  ezq send --target <ID> --text <内容> # 真实收发消息" -ForegroundColor White
+    Write-Host "  ezq instances list     # 查看/管理多开账号实例池" -ForegroundColor White
+    Write-Host "  ezq mcp                # 启动 stdio MCP 服务供 Cursor/Claude 接入" -ForegroundColor White
     Write-Host ""
 } else {
-    Write-Error "安装异常：未能在 $BinDir 找到 eazyqq_cli.exe。"
+    Write-Error "安装异常：未能在 $BinDir 找到 ezq.exe 或 eazyqq_cli.exe。"
 }

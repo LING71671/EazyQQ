@@ -1,33 +1,54 @@
+<div align="center">
+
 # EazyQQ
 
-个人专属 QQ 智能助手桌面端与自动化控制系统。  
-专为隐私自治、人机协同与外部 AI 智能体调度设计的双模运行架构。
+个人专属 QQ 助手桌面端与自动化调度系统  
+双模运行架构 · 隐私自治 · 人机协同 · 原生多开
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](LICENSE)
-[![Framework](https://img.shields.io/badge/Frontend-React_19_%7C_Tailwind_CSS-38bdf8.svg?style=flat-square)](https://react.dev/)
-[![Engine](https://img.shields.io/badge/Backend-Tauri_2_%7C_Rust-f97316.svg?style=flat-square)](https://tauri.app/)
-[![Protocol](https://img.shields.io/badge/Protocol-OneBot_11_%7C_NapCat-6366f1.svg?style=flat-square)](https://napneko.github.io/)
-[![Platform](https://img.shields.io/badge/Platform-Windows_10_%2F_11_x64-slate.svg?style=flat-square)](https://www.microsoft.com/windows)
+<p>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-24292f?style=flat-square" alt="License" /></a>
+  <a href="https://tauri.app/"><img src="https://img.shields.io/badge/Core-Tauri_2_%7C_Rust-24292f?style=flat-square" alt="Core" /></a>
+  <a href="https://react.dev/"><img src="https://img.shields.io/badge/UI-React_19-24292f?style=flat-square" alt="UI" /></a>
+  <a href="https://napneko.github.io/"><img src="https://img.shields.io/badge/Protocol-OneBot_11-24292f?style=flat-square" alt="Protocol" /></a>
+  <a href="https://www.microsoft.com/windows"><img src="https://img.shields.io/badge/OS-Windows_x64-24292f?style=flat-square" alt="Platform" /></a>
+</p>
+
+<br />
+
+<img src="docs/assets/banner.png" alt="EazyQQ Architecture and Overview" width="100%" />
+
+</div>
 
 ---
 
-## ⚡ 极速开始使用
+## 使用方式
 
-### 方式一：CLI 无头极速安装（免桌面版 / 免 WebView2，推荐）
-在任意 Windows PowerShell 终端粘贴执行下方一行命令，自动配置全部协议依赖、自动探测宿主机 QQNT 并注入全局 PATH：
-```powershell
-irm https://raw.githubusercontent.com/LING71671/EazyQQ/main/scripts/install.ps1 | iex
-```
-安装完成后即可在任意路径直接使用：
-```powershell
-eazyqq_cli qr                 # 终端 ANSI 二维码直接扫码登录（加 --browser 可弹浏览器）
-eazyqq_cli status             # 查看协议在线状态与登录账号
-eazyqq_cli instances list     # 管理同机原生多开分身（免容器化）
-eazyqq_cli mcp                # 启动 stdio MCP 服务供 Cursor / Claude 作为工具调用
+### 桌面客户端 (GUI)
+项目当前处于内测阶段（v0.3.0-beta），可通过源码直接运行或打包：
+```bash
+pnpm install
+pnpm tauri dev   # 启动调试环境
+pnpm tauri build # 构建本地安装包
 ```
 
-### 方式二：桌面版客户端 (GUI)
-前往 [GitHub Releases](https://github.com/LING71671/EazyQQ/releases) 下载最新安装包 `EazyQQ_x64_en-US.msi`，双击安装即可。
+### 自动化与 AI 智能体通道 (CLI / MCP)
+提供独立无头命令行程序 `ezq`（兼容别名 `eazyqq_cli`），主要供外部 AI 智能体（Cursor、Claude 等通过 MCP）、自动化流水线及后台无界面环境调用调度。
+
+源码构建命令：
+```bash
+cargo build --manifest-path src-tauri/Cargo.toml --bin ezq
+```
+或通过本地安装脚本自动补齐运行时并写入 PATH：
+```powershell
+./scripts/install.ps1
+```
+安装后支持直接调用 `ezq`：
+```powershell
+ezq qr                 # 终端 ANSI 二维码登录（可加 --browser）
+ezq status             # 查询协议与账号在线状态
+ezq instances list     # 原生多开实例查询与调度
+ezq mcp                # 启动 stdio MCP 服务供 AI 智能体集成
+```
 
 ---
 
@@ -80,8 +101,8 @@ eazyqq_cli mcp                # 启动 stdio MCP 服务供 Cursor / Claude 作�
 ================================================================================
                                 接入与展现层
 ================================================================================
-  [ 桌面交互端 GUI ]                            [ 自动化命令行 CLI ]
-  React 19 + TypeScript + Tailwind             eazyqq_cli.exe
+  [ 桌面交互端 GUI ]                            [ 自动化控制端 CLI / MCP ]
+  React 19 + TypeScript + Tailwind             ezq (别名 eazyqq_cli)
   - 链路健康抽屉与自愈操作面板                  - 全指令原生输出结构化 JSON
   - 双白名单管理与会话规则配置                  - 供外部 AI Agent 与脚本调用
   - AI 草稿箱审核与简报聚合视图                - 支持无缝接入 MCP 工具服务生态
@@ -148,42 +169,42 @@ EazyQQ/
 
 ---
 
-## 命令行与 AI 智能体集成
+## 自动化协议接口与 AI 智能体集成
 
-项目内置独立 CLI 工具（单文件 `eazyqq_cli.exe`），无需开启 GUI 即可独立执行全部协议管控、收发消息与多开调度：
+项目提供独立无头协议工具 `ezq`（别名 `eazyqq_cli`），主要面向 AI 智能体编排（通过 Model Context Protocol 或子进程调用）、无界面服务器常驻及脚本自动化流水线：
 
-### 核心操作指令速查
+### 接口指令参考 (ezq)
 
 #### 1. 协议与登录
 ```bash
-eazyqq_cli qr                     # 终端 ANSI 二维码直接扫码登录
-eazyqq_cli qr --browser           # 自动唤起系统默认浏览器扫码
-eazyqq_cli quick-login-list       # 列出可免扫码快速登录的账号
-eazyqq_cli quick-login --uin <QQ> # 对指定账号执行免扫码极速登录
-eazyqq_cli status                 # 协议在线态与当前登录 QQ 详情
+ezq qr                     # 终端 ANSI 二维码直接扫码登录
+ezq qr --browser           # 自动唤起系统默认浏览器扫码
+ezq quick-login-list       # 列出可免扫码快速登录的账号
+ezq quick-login --uin <QQ> # 对指定账号执行免扫码极速登录
+ezq status                 # 协议在线态与当前登录 QQ 详情
 ```
 
 #### 2. 原生多开分身管理（免 Docker / 纯原生并发）
 ```bash
-eazyqq_cli instances list         # 查看所有登记分身、分配端口与在线状态
-eazyqq_cli instances add --uin <QQ> [--nick <备注>] # 登记新分身并自动分配端口
-eazyqq_cli instances start --uin <QQ> # 启动指定分身实例
-eazyqq_cli instances stop --uin <QQ>  # 定向安全停止指定分身（绝不误伤日常 QQ）
+ezq instances list         # 查看所有登记分身、分配端口与在线状态
+ezq instances add --uin <QQ> [--nick <备注>] # 登记新分身并自动分配端口
+ezq instances start --uin <QQ> # 启动指定分身实例
+ezq instances stop --uin <QQ>  # 定向安全停止指定分身（绝不误伤日常 QQ）
 ```
 
 #### 3. 消息收发与记录
 ```bash
-eazyqq_cli send --target <QQ/群号> --text "消息正文" # 发送私聊或群聊消息
-eazyqq_cli send --account <分身QQ> --target <目标ID> --text "指定分身发送"
-eazyqq_cli history --target <目标ID> --limit 20   # 检索会话历史记录
-eazyqq_cli contacts                               # 同步并查看好友与群聊列表
+ezq send --target <QQ/群号> --text "消息正文" # 发送私聊或群聊消息
+ezq send --account <分身QQ> --target <目标ID> --text "指定分身发送"
+ezq history --target <目标ID> --limit 20   # 检索会话历史记录
+ezq contacts                               # 同步并查看好友与群聊列表
 ```
 
 #### 4. AI 简报与外部 Agent 接入
 ```bash
-eazyqq_cli summarize --target <群号> --hours 6    # AI 自动生成群聊结构化简报
-eazyqq_cli mcp                                    # 启动 stdio MCP 服务接入 Cursor / Claude
-eazyqq_cli napcat-doctor                          # 协议端启动路径健康逐项诊断
+ezq summarize --target <群号> --hours 6    # AI 自动生成群聊结构化简报
+ezq mcp                                    # 启动 stdio MCP 服务接入 Cursor / Claude
+ezq napcat-doctor                          # 协议端启动路径健康逐项诊断
 ```
 
 ---

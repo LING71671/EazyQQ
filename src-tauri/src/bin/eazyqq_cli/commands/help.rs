@@ -2,7 +2,7 @@ pub fn cmd_help() {
     println!(
         r#"EazyQQ CLI - 无界面控制通道 (v{version})
 
-用法: eazyqq-cli <命令> [选项]
+用法: ezq <命令> [选项]  (别名: eazyqq_cli)
 
 协议与登录
   status                          协议进程、登录态、二维码可用性一览

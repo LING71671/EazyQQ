@@ -71,6 +71,8 @@ jobs:
           $distDir = "eazyqq-cli-dist"
           New-Item -ItemType Directory -Path "$distDir/bin" -Force | Out-Null
           Copy-Item "src-tauri/target/release/eazyqq_cli.exe" "$distDir/bin/eazyqq_cli.exe" -Force
+          Copy-Item "src-tauri/target/release/eazyqq_cli.exe" "$distDir/bin/ezq.exe" -Force
+          Copy-Item "src-tauri/target/release/eazyqq_cli.exe" "src-tauri/target/release/ezq.exe" -Force
           if (Test-Path "src-tauri/resources/napcat") {
             Copy-Item "src-tauri/resources/napcat" "$distDir/napcat" -Recurse -Force
           }
@@ -96,3 +98,4 @@ jobs:
           files: |
             eazyqq-cli-windows-x64.zip
             src-tauri/target/release/eazyqq_cli.exe
+            src-tauri/target/release/ezq.exe
