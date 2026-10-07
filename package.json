@@ -1,6 +1,6 @@
 {
   "name": "eazyqq",
-  "version": "0.3.2-beta",
+  "version": "0.3.3-beta",
   "description": "Zero-CLI out-of-the-box personal QQ AI assistant client",
   "type": "module",
   "scripts": {
