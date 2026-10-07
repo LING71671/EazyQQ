@@ -68,10 +68,18 @@ pub fn start_onebot_ws_listener(
                 }
                 Err(e) => {
                     warn!("OneBot WebSocket connect failed ({}), retrying in 3s", e);
-                    crate::services::chain::record_error(
-                        crate::services::chain::Link::OneBotWs,
-                        format!("无法连接 {}: {}", ws_url, e),
-                    );
+                    let is_logged_in = crate::services::accounts::active().is_some();
+                    if is_logged_in {
+                        crate::services::chain::record_error(
+                            crate::services::chain::Link::OneBotWs,
+                            format!("无法连接 {}: {}", ws_url, e),
+                        );
+                    } else {
+                        crate::services::chain::record_unknown(
+                            crate::services::chain::Link::OneBotWs,
+                            format!("待扫码登录后就绪 ({})", ws_url),
+                        );
+                    }
                     tokio::time::sleep(Duration::from_secs(3)).await;
                 }
             }

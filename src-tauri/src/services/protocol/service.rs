@@ -80,8 +80,13 @@ impl NapCatService {
     }
 
     pub async fn is_alive(&self) -> bool {
-        let url = format!("{}/webui", self.webui_base_url);
-        self.client.get(&url).send().await.map(|r| r.status().is_success()).unwrap_or(false)
+        let url = format!("{}/webui/", self.webui_base_url);
+        self.client
+            .get(&url)
+            .send()
+            .await
+            .map(|r| r.status().is_success() || r.status().is_redirection())
+            .unwrap_or(false)
     }
 
     pub fn launch_if_needed(&self) -> Result<(), String> {

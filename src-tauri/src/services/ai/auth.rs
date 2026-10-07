@@ -51,6 +51,15 @@ pub fn detect_api_key() -> Option<String> {
                             return Some(key.trim().to_string());
                         }
                     }
+                    if let Some(map) = json.as_object() {
+                        for (_provider_name, entry) in map {
+                            if let Some(k) = entry.get("key").and_then(|v| v.as_str()) {
+                                if !k.trim().is_empty() {
+                                    return Some(k.trim().to_string());
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

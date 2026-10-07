@@ -170,10 +170,11 @@ pub fn stop() -> BootOutcome {
         if let Some(pid) = st.child_pid.take() {
             #[cfg(target_os = "windows")]
             {
-                let output = std::process::Command::new("taskkill")
-                    .args(["/F", "/T", "/PID", &pid.to_string()])
-                    .output();
-                if let Ok(o) = output {
+                use std::os::windows::process::CommandExt;
+                let mut kill_cmd = std::process::Command::new("taskkill");
+                kill_cmd.args(["/F", "/T", "/PID", &pid.to_string()]);
+                kill_cmd.creation_flags(0x08000000);
+                if let Ok(o) = kill_cmd.output() {
                     if o.status.success() {
                         killed_any = true;
                         detail_msgs.push(format!("已清理 NapCat 进程树 (PID {})", pid));
@@ -185,10 +186,11 @@ pub fn stop() -> BootOutcome {
 
     #[cfg(target_os = "windows")]
     {
-        let output = std::process::Command::new("taskkill")
-            .args(["/F", "/IM", "NapCatWinBootMain.exe"])
-            .output();
-        if let Ok(o) = output {
+        use std::os::windows::process::CommandExt;
+        let mut kill_cmd = std::process::Command::new("taskkill");
+        kill_cmd.args(["/F", "/IM", "NapCatWinBootMain.exe"]);
+        kill_cmd.creation_flags(0x08000000);
+        if let Ok(o) = kill_cmd.output() {
             if o.status.success() {
                 killed_any = true;
                 detail_msgs.push("已清理残留 NapCat 引导进程".to_string());
@@ -228,10 +230,11 @@ pub fn stop_instance(uin: &str) -> BootOutcome {
     if let Some(pid) = pid_to_kill {
         #[cfg(target_os = "windows")]
         {
-            let output = std::process::Command::new("taskkill")
-                .args(["/F", "/T", "/PID", &pid.to_string()])
-                .output();
-            if let Ok(o) = output {
+            use std::os::windows::process::CommandExt;
+            let mut kill_cmd = std::process::Command::new("taskkill");
+            kill_cmd.args(["/F", "/T", "/PID", &pid.to_string()]);
+            kill_cmd.creation_flags(0x08000000);
+            if let Ok(o) = kill_cmd.output() {
                 if o.status.success() {
                     killed_any = true;
                     detail_msgs.push(format!("已停止账号 {} 进程树 (PID {})", uin, pid));

@@ -4,7 +4,7 @@ use serde_json::Value;
 use super::auth::detect_api_key;
 
 pub const PRESET_OPENCODE: &str = "https://opencode.ai/zen/v1";
-pub const DEFAULT_MODEL_OPENCODE: &str = "";
+pub const DEFAULT_MODEL_OPENCODE: &str = "qwen3.8-flash";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiRuntimeConfig {
@@ -22,7 +22,7 @@ impl Default for AiRuntimeConfig {
             provider: "opencode".to_string(),
             base_url: PRESET_OPENCODE.to_string(),
             api_key: String::new(),
-            model: String::new(),
+            model: DEFAULT_MODEL_OPENCODE.to_string(),
             temperature: 0.7,
             max_context_messages: 10,
         }
@@ -46,8 +46,11 @@ pub fn preset_base_url(provider: &str) -> Option<&'static str> {
     }
 }
 
-pub fn preset_model(_provider: &str) -> Option<&'static str> {
-    None
+pub fn preset_model(provider: &str) -> Option<&'static str> {
+    match provider {
+        "opencode" | "opencode-go" => Some(DEFAULT_MODEL_OPENCODE),
+        _ => None,
+    }
 }
 
 pub fn provider_preset(provider: &str) -> (Option<String>, Option<String>) {
@@ -62,7 +65,7 @@ pub fn known_providers() -> Vec<(String, String, String, bool)> {
     vec![(
         "opencode".to_string(),
         PRESET_OPENCODE.to_string(),
-        String::new(),
+        DEFAULT_MODEL_OPENCODE.to_string(),
         false,
     )]
 }
@@ -150,7 +153,7 @@ impl AiRuntimeConfig {
 
     pub fn requires_api_key(&self) -> bool {
         if self.provider == "opencode" || self.provider == "opencode-go" {
-            return detect_api_key().is_none();
+            return self.api_key.trim().is_empty() && detect_api_key().is_none();
         }
         !is_local_endpoint(&self.base_url)
     }

@@ -18,18 +18,35 @@ pub fn configured_qq_path(napcat_dir: &Path) -> Result<PathBuf, String> {
         }
     }
 
-    // Dynamic auto-detection: running process -> Windows Registry -> standard ProgramFiles
+    // Dynamic auto-detection: standard ProgramFiles -> running process -> Windows Registry
     #[cfg(target_os = "windows")]
     {
-        // 1. Check if QQ is currently running
-        if let Ok(output) = Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                "(Get-Process -Name QQ -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path -First 1)",
-            ])
-            .output()
-        {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        // 1. Check standard ProgramFiles environment variables first (fastest, zero-subprocess)
+        for env_var in ["ProgramFiles", "ProgramFiles(x86)"] {
+            if let Ok(prog) = std::env::var(env_var) {
+                let candidate = PathBuf::from(prog).join("Tencent").join("QQNT").join("QQ.exe");
+                if candidate.is_file() {
+                    let path_str = candidate.to_string_lossy().to_string();
+                    let _ = std::fs::create_dir_all(napcat_dir.join("config"));
+                    let _ = std::fs::write(&cfg, &path_str);
+                    tracing::info!("resolved QQ path from standard environment -> {}", path_str);
+                    return Ok(candidate);
+                }
+            }
+        }
+
+        // 2. Check if QQ is currently running (silent, no window)
+        let mut running_cmd = Command::new("powershell");
+        running_cmd.args([
+            "-NoProfile",
+            "-Command",
+            "(Get-Process -Name QQ -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path -First 1)",
+        ]);
+        running_cmd.creation_flags(CREATE_NO_WINDOW);
+        if let Ok(output) = running_cmd.output() {
             let line = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !line.is_empty() {
                 let p = PathBuf::from(&line);
@@ -42,15 +59,15 @@ pub fn configured_qq_path(napcat_dir: &Path) -> Result<PathBuf, String> {
             }
         }
 
-        // 2. Query Windows Registry for official QQNT install location
-        if let Ok(output) = Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                "(Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\WOW6432Node\\Tencent\\QQNT','HKCU:\\Software\\Tencent\\QQNT' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Install -First 1)",
-            ])
-            .output()
-        {
+        // 3. Query Windows Registry for official QQNT install location (silent, no window)
+        let mut reg_cmd = Command::new("powershell");
+        reg_cmd.args([
+            "-NoProfile",
+            "-Command",
+            "(Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\WOW6432Node\\Tencent\\QQNT','HKCU:\\Software\\Tencent\\QQNT' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Install -First 1)",
+        ]);
+        reg_cmd.creation_flags(CREATE_NO_WINDOW);
+        if let Ok(output) = reg_cmd.output() {
             let dir_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !dir_str.is_empty() {
                 let candidate = PathBuf::from(&dir_str).join("QQ.exe");
@@ -59,20 +76,6 @@ pub fn configured_qq_path(napcat_dir: &Path) -> Result<PathBuf, String> {
                     let _ = std::fs::create_dir_all(napcat_dir.join("config"));
                     let _ = std::fs::write(&cfg, &path_str);
                     tracing::info!("dynamically resolved QQ path from registry -> {}", path_str);
-                    return Ok(candidate);
-                }
-            }
-        }
-
-        // 3. Fallback to standard ProgramFiles environment variables
-        for env_var in ["ProgramFiles", "ProgramFiles(x86)"] {
-            if let Ok(prog) = std::env::var(env_var) {
-                let candidate = PathBuf::from(prog).join("Tencent").join("QQNT").join("QQ.exe");
-                if candidate.is_file() {
-                    let path_str = candidate.to_string_lossy().to_string();
-                    let _ = std::fs::create_dir_all(napcat_dir.join("config"));
-                    let _ = std::fs::write(&cfg, &path_str);
-                    tracing::info!("resolved QQ path from standard environment -> {}", path_str);
                     return Ok(candidate);
                 }
             }

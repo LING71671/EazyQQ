@@ -68,11 +68,29 @@ pub async fn check_dependencies(state: State<'_, AppState>) -> Result<ApiRespons
         || std::env::var("OPENAI_API_KEY").is_ok()
         || std::env::var("AI_API_KEY").is_ok();
 
+    let ai_cfg = state.ai.current();
+    let has_valid_key = !ai_cfg.api_key.trim().is_empty() || crate::services::ai::detect_api_key().is_some() || has_key;
+    let is_local_llm = crate::services::ai::is_local_endpoint(&ai_cfg.base_url);
+
     let opencode_found = detect_opencode_binary();
     let (ai_ready, ai_path) = match opencode_found {
-        Some(p) => (true, p),
-        None if has_key => (true, format!("云端模型 (API Key 已配置, {})", state.ai.model())),
-        None => (false, "未检测到本地 OpenCode，且未配置 API Key".to_string()),
+        Some(p) if is_local_llm || has_valid_key => (
+            true,
+            format!("本地 OpenCode CLI ({})，推理端点已就绪", p),
+        ),
+        Some(p) => (
+            false,
+            format!("检测到 OpenCode CLI ({})，但未配置推理凭证 (API Key)", p),
+        ),
+        None if is_local_llm => (
+            true,
+            format!("本地端点 ({}, 无需 Key)", state.ai.model()),
+        ),
+        None if has_valid_key => (
+            true,
+            format!("云端模型 (API Key 已就绪, {})", state.ai.model()),
+        ),
+        None => (false, "未检测到本地推理服务，且未配置 API Key".to_string()),
     };
 
     // 3. Storage: check writable status and free disk space

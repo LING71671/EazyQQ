@@ -137,7 +137,11 @@ export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
             <div>
               <span className="font-semibold block text-slate-800">本地 OpenCode</span>
               <span className="text-slate-400 text-[11px] block">
-                {health.openCode?.ready ? '已就绪 (免 API 模式)' : '未运行本地服务'}
+                {health.openCode?.ready
+                  ? '推理服务已就绪'
+                  : health.openCode?.path?.includes('未配置')
+                  ? '已检测到 CLI (需配置 API 凭证)'
+                  : '未运行本地服务'}
               </span>
               {!health.openCode?.ready && (
                 <button

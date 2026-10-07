@@ -136,7 +136,7 @@ export interface SummaryEndPayload {
 export interface DependencyHealthReport {
   isAllReady: boolean;
   qqNt: { ready: boolean; path: string; error?: string };
-  openCode: { ready: boolean; version?: string; activeModel?: string; error?: string };
+  openCode: { ready: boolean; path?: string; version?: string; activeModel?: string; error?: string };
   ports: { napcatPort: number; opencodePort: number; isConflict: boolean };
   storage: { workspacePath: string; isWritable: boolean; freeSpaceMb: number };
 }

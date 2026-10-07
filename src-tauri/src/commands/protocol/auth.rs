@@ -144,24 +144,25 @@ pub async fn get_protocol_status(
         }
     }
 
-    // 4. Auto-trigger quick login if remembered accounts exist (defaults to last bound account e.g. 462564834)
+    // 4. Auto-trigger quick login at most ONCE upon startup if remembered accounts exist
     if !quick_login_accounts.is_empty() {
-        let last_acc = crate::services::accounts::read_bootstrap().last_account;
-        let candidate = last_acc
-            .as_deref()
-            .and_then(|target| quick_login_accounts.iter().find(|a| a.uin == target))
-            .unwrap_or(&quick_login_accounts[0]);
-
-        let now_sec = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
         let last_attempt = LAST_AUTO_QUICK_LOGIN_TIME.load(Ordering::Relaxed);
 
-        if now_sec - last_attempt > 10 {
+        if last_attempt == 0 {
+            let now_sec = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
             LAST_AUTO_QUICK_LOGIN_TIME.store(now_sec, Ordering::Relaxed);
+
+            let last_acc = crate::services::accounts::read_bootstrap().last_account;
+            let candidate = last_acc
+                .as_deref()
+                .and_then(|target| quick_login_accounts.iter().find(|a| a.uin == target))
+                .unwrap_or(&quick_login_accounts[0]);
+
             tracing::info!(
-                "get_protocol_status: auto-triggering quick login for {} ({})",
+                "get_protocol_status: initial attempt quick login for {} ({})",
                 candidate.nickname,
                 candidate.uin
             );
@@ -192,15 +193,19 @@ pub async fn get_protocol_status(
                     }
                 }
             }
+            tracing::info!("initial quick login attempt did not immediately succeed; proceeding with QR code");
         }
     }
 
     let (qrcode_base64, qrcode_error) = match state.napcat.get_qrcode().await {
         Ok(qr) => (Some(qr), None),
-        Err(_) => (
-            None,
-            Some("NapCat 协议端启动加载中，正在准备登录二维码与凭据...".to_string()),
-        ),
+        Err(e) => match state.napcat.refresh_qrcode().await {
+            Ok(qr) => (Some(qr), None),
+            Err(_) => (
+                None,
+                Some(format!("NapCat 协议端启动加载中，正在准备登录二维码与凭据... ({})", e)),
+            ),
+        },
     };
 
     Ok(ApiResponse::ok(ProtocolStatusDto {
@@ -306,12 +311,14 @@ pub async fn logout() -> Result<ApiResponse<()>, String> {
     tracing::info!("logout requested: terminating QQ and resetting active account session");
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("taskkill")
-            .args(["/F", "/IM", "QQ.exe"])
-            .output();
+        use std::os::windows::process::CommandExt;
+        let mut kill_cmd = std::process::Command::new("taskkill");
+        kill_cmd.args(["/F", "/IM", "QQ.exe"]);
+        kill_cmd.creation_flags(0x08000000);
+        let _ = kill_cmd.output();
     }
     let _ = crate::services::accounts::clear_active();
-    LAST_AUTO_QUICK_LOGIN_TIME.store(0, Ordering::Relaxed);
+    LAST_AUTO_QUICK_LOGIN_TIME.store(i64::MAX, Ordering::Relaxed);
     crate::services::chain::record_unknown(
         crate::services::chain::Link::QqLogin,
         "已主动退出登录，等待重新扫码或选择账号",

@@ -225,6 +225,7 @@ pub fn spawn_monitor(db: std::sync::Arc<crate::services::db::Database>,
                 Err(e) => record_error(Link::Database, format!("{}", e)),
             }
 
+            let mut napcat_logged_in = false;
             match napcat.check_login().await {
                 Ok(v) => {
                     napcat_boot::note_healthy();
@@ -233,6 +234,7 @@ pub fn spawn_monitor(db: std::sync::Arc<crate::services::db::Database>,
                         .and_then(|d| d.get("isLogin"))
                         .and_then(|b| b.as_bool())
                         .unwrap_or(false);
+                    napcat_logged_in = logged_in;
                     record_ok(Link::NapcatWebUi, "WebUI 可达");
                     if logged_in {
                         record_ok(Link::QqLogin, "已登录");
@@ -284,7 +286,13 @@ pub fn spawn_monitor(db: std::sync::Arc<crate::services::db::Database>,
                         .unwrap_or("");
                     record_ok(Link::OneBotHttp, format!("可达{}", if nick.is_empty() { String::new() } else { format!(" ({})", nick) }));
                 }
-                Err(e) => record_error(Link::OneBotHttp, e),
+                Err(e) => {
+                    if !napcat_logged_in {
+                        record_unknown(Link::OneBotHttp, "待扫码登录后就绪（NapCat 登录后自动开放服务）");
+                    } else {
+                        record_error(Link::OneBotHttp, e);
+                    }
+                }
             }
 
             // 周期性确认定时调度任务健康
