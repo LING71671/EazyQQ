@@ -134,16 +134,18 @@ pub fn diagnose(napcat_dir: &Path, uin: Option<&str>) -> Vec<Step> {
         )),
     }
 
-    // 8. NapCat log check
-    let log_dir = napcat_dir.join("logs");
-    let newest = std::fs::read_dir(&log_dir)
-        .ok()
-        .and_then(|rd| {
-            rd.filter_map(|e| e.ok())
-                .filter_map(|e| e.metadata().ok())
-                .filter_map(|m| m.modified().ok())
-                .max()
-        });
+    // 8. NapCat log check (check both shared logs and isolated account logs)
+    let log_dirs = [
+        napcat_dir.join("logs"),
+        crate::services::logging::data_dir().join("napcat_logs"),
+    ];
+    let newest = log_dirs
+        .iter()
+        .filter_map(|d| std::fs::read_dir(d).ok())
+        .flat_map(|rd| rd.filter_map(|e| e.ok()))
+        .filter_map(|e| e.metadata().ok())
+        .filter_map(|m| m.modified().ok())
+        .max();
     steps.push(match newest {
         Some(t) => {
             let age = t.elapsed().map(|d| d.as_secs()).unwrap_or(u64::MAX);
@@ -151,11 +153,7 @@ pub fn diagnose(napcat_dir: &Path, uin: Option<&str>) -> Vec<Step> {
         }
         None => Step::fail(
             "NapCat 自身日志",
-            format!(
-                "{} 下没有任何日志，fileLog 是开启的。NapCat 会自行创建该目录，\
-                 没有日志表示尚未完成初始化启动。",
-                log_dir.display()
-            ),
+            "未检测到日志文件，表示 NapCat 尚未完成初始化启动。".to_string(),
         ),
     });
 
