@@ -5,5 +5,7 @@ pub mod contacts;
 pub mod diagnostics;
 pub mod files;
 pub mod help;
+pub mod mcp;
 pub mod protocol;
+pub mod schema;
 pub mod summary;

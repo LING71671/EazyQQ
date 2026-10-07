@@ -34,6 +34,47 @@ pub async fn generate_summary(
 }
 
 #[command]
+pub async fn generate_summary_stream(
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    target_id: String,
+    sliding_window_hours: Option<i32>,
+    hours: Option<i32>,
+) -> Result<ApiResponse<GroupSummaryDto>, String> {
+    use tauri::Emitter;
+
+    let settings = crate::services::scheduler::read_settings(&state.db);
+    let window_hours = sliding_window_hours
+        .or(hours)
+        .unwrap_or(settings.sliding_window_hours)
+        .clamp(1, 720);
+
+    tracing::info!("streaming summary requested for {} ({}h window)", target_id, window_hours);
+
+    let req = crate::services::summarizer::SummaryRequest {
+        target_id: target_id.clone(),
+        sliding_window_hours: window_hours,
+        custom_prompt: Some(settings.custom_prompt),
+        max_messages: 400,
+        min_messages: 1,
+    };
+
+    let w = window.clone();
+    let outcome = crate::services::summarizer::generate_stream(
+        &state.db,
+        &state.ai,
+        &req,
+        move |chunk| {
+            let _ = w.emit("summary-chunk", serde_json::json!({ "chunk": chunk }));
+        },
+    )
+    .await?;
+
+    let _ = window.emit("summary-end", serde_json::json!({ "summary": &outcome.summary }));
+    Ok(ApiResponse::ok(outcome.summary))
+}
+
+#[command]
 pub async fn get_summary_history(
     state: State<'_, AppState>,
     target_id: Option<String>,

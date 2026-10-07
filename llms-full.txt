@@ -1,0 +1,53 @@
+# EazyQQ Full Technical Specification & Machine Interface Guide
+
+## Architecture Overview
+EazyQQ consists of:
+1. **Frontend**: React 19 + TypeScript + TailwindCSS bundled via Vite into a Tauri v2 Webview2 shell.
+2. **Backend Library (`eazyqq_lib`)**:
+   - `services::identity`: Machine-account path derivation, bootstrap state, and pre-isolation data migration.
+   - `services::protocol`: NapCat process supervision, OneBot v11 HTTP/WebSocket client, and patch verification.
+   - `services::security`: Default-deny rule evaluation, rate limiters, cooldowns, and mention detection.
+   - `services::workflows`: Message pipeline, noise filters, group chat summarization, and Office/PDF text extraction.
+   - `services::ai`: OpenAI-compatible HTTP client, local endpoint detection, and runtime configuration.
+   - `services::storage`: SQLite database manager with WAL mode, busy timeout, and contact rule persistence.
+   - `services::infra`: Pure-Rust ZIP container, desensitization/redaction, and persistent file logging.
+3. **CLI Binary (`eazyqq_cli`)**: Modular CLI offering all GUI backend capabilities headlessly, including a native MCP server (`eazyqq_cli mcp`).
+
+## CLI Commands
+- `eazyqq_cli status [--json]`: Shows current account, NapCat status, and active AI model.
+- `eazyqq_cli health [--json] [--deep]`: Runs diagnostics on NapCat, OneBot, SQLite, and AI endpoints.
+- `eazyqq_cli selftest [--json]`: Runs internal end-to-end selftests (ZIP, redaction, migrations).
+- `eazyqq_cli contacts [--type friend|group] [--json]`: Lists all known contacts with unread badges.
+- `eazyqq_cli chat --target <ID> --message <TEXT>`: Sends a private or group message.
+- `eazyqq_cli history --target <ID> [--limit <N>]`: Retrieves latest messages from the local SQLite store.
+- `eazyqq_cli summary --target <ID> [--hours <N>] [--prompt <TEXT>]`: Generates a group chat summary.
+- `eazyqq_cli extract-file --path <PATH>`: Extracts readable text from .docx, .pptx, .xlsx, or .txt files.
+- `eazyqq_cli rule-set --target <ID> [--ai-mode on|off|auto] [--summary-whitelist true|false]`: Updates dispatch rules.
+- `eazyqq_cli mcp`: Runs the Model Context Protocol (stdio) server for external AI agents.
+- `eazyqq_cli schema [--json]`: Exports full JSON schemas for CLI commands and MCP tools.
+
+## Model Context Protocol (MCP) Interface
+Run `eazyqq_cli mcp` over stdio with JSON-RPC 2.0 messages:
+- `initialize`: Returns server capabilities and metadata.
+- `tools/list`: Lists all available tools and parameter schemas.
+- `tools/call`: Executes a tool with the provided arguments.
+
+### Exposed Tools
+1. `send_message`: `target_type` ("private" | "group"), `target_id` (string), `message` (string).
+2. `get_chat_history`: `target_id` (string), `limit` (integer, default 20).
+3. `list_contacts`: `target_type` ("friend" | "group" | "all", default "all").
+4. `trigger_group_summary`: `target_id` (string), `sliding_window_hours` (integer, default 6), `custom_prompt` (string, optional).
+5. `extract_document`: `file_path` (string).
+6. `simulate_rule_match`: `sender_id` (string), `target_id` (string), `content` (string), `is_group` (boolean).
+7. `update_target_rule`: `target_id` (string), `ai_mode` ("on" | "off" | "auto", optional), `is_summary_whitelist` (boolean, optional).
+8. `get_system_health`: Deep health check of NapCat, OneBot, SQLite, and AI inference endpoints.
+9. `restart_napcat`: Gracefully restarts the NapCat supervisor process.
+
+## Environment Variables
+- `LLM_API_KEY`: API key for OpenAI-compatible cloud inference.
+- `OPENAI_API_KEY`: Fallback alias for `LLM_API_KEY`.
+- `AI_API_KEY`: Fallback alias for `LLM_API_KEY`.
+- `TEST_SECRET_KEY`: Custom secret token for redaction and unit test fixtures.
+- `NAPCAT_WEBUI_PORT`: Default 6099.
+- `ONEBOT_HTTP_PORT`: Default 3000.
+- `ONEBOT_WS_PORT`: Default 3001.

@@ -59,6 +59,8 @@ pub fn cmd_help() {
   export                          导出脱敏诊断包 zip
   simulate --target <id> --text <消息>  调试后门：注入模拟消息走完整处理链路
            [--type group|friend] [--sender-name <名>] [--sender-id <号>]
+  mcp                             启动 Model Context Protocol (stdio) 供外部 AI 接入
+  schema                          导出机器可读的全量命令与工具 Schema 契约
   log-path                        打印日志文件路径
   log-tail [--lines N]            查看日志尾部
   version                         版本信息

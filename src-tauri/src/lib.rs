@@ -494,6 +494,7 @@ pub fn run() {
             summarize_file,
             open_folder,
             generate_summary,
+            generate_summary_stream,
             get_summary_history,
             delete_summary,
             get_config,

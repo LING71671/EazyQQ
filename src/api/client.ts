@@ -10,6 +10,8 @@ import type {
   GroupFileItemDto,
   FileSummaryResultDto,
   GroupSummaryDto,
+  SummaryChunkPayload,
+  SummaryEndPayload,
   DependencyHealthReport,
   AppConfig,
   WindowBehaviorDto,
@@ -121,6 +123,9 @@ export const api = {
   generateSummary: async (targetId: string, slidingWindowHours = 6): Promise<ApiResponse<GroupSummaryDto>> => {
     return invoke('generate_summary', { targetId, slidingWindowHours });
   },
+  generateSummaryStream: async (targetId: string, slidingWindowHours = 6): Promise<ApiResponse<GroupSummaryDto>> => {
+    return invoke('generate_summary_stream', { targetId, slidingWindowHours });
+  },
   getSummaryHistory: async (targetId?: string): Promise<ApiResponse<GroupSummaryDto[]>> => {
     return invoke('get_summary_history', { targetId });
   },
@@ -161,6 +166,12 @@ export const api = {
   },
   onMessageReceived: (callback: (msg: MessageItemDto) => void): Promise<UnlistenFn> => {
     return listen<MessageItemDto>('new-chat-message', (event) => callback(event.payload));
+  },
+  onSummaryChunk: (callback: (payload: SummaryChunkPayload) => void): Promise<UnlistenFn> => {
+    return listen<SummaryChunkPayload>('summary-chunk', (event) => callback(event.payload));
+  },
+  onSummaryEnd: (callback: (payload: SummaryEndPayload) => void): Promise<UnlistenFn> => {
+    return listen<SummaryEndPayload>('summary-end', (event) => callback(event.payload));
   },
 
   // Window Management

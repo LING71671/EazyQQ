@@ -125,6 +125,14 @@ export interface GroupSummaryDto {
   createdAt: number;
 }
 
+export interface SummaryChunkPayload {
+  chunk: string;
+}
+
+export interface SummaryEndPayload {
+  summary: GroupSummaryDto;
+}
+
 export interface DependencyHealthReport {
   isAllReady: boolean;
   qqNt: { ready: boolean; path: string; error?: string };

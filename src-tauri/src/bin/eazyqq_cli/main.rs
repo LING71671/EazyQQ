@@ -13,6 +13,7 @@ mod context;
 mod format;
 
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use args::Args;
 use context::Services;
@@ -39,9 +40,30 @@ async fn main() -> ExitCode {
         eazyqq_lib::services::accounts::set_active(bootstrap.last_account.clone());
     }
 
-    eazyqq_lib::services::logging::init(true);
+    if args.command == "schema" {
+        return match commands::schema::cmd_schema(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("错误: {}", e);
+                ExitCode::FAILURE
+            }
+        };
+    }
+
+    let is_mcp = args.command == "mcp";
+    eazyqq_lib::services::logging::init(!is_mcp);
 
     let result = match args.command.as_str() {
+        "mcp" => {
+            let svc = match Services::build() {
+                Ok(s) => Arc::new(s),
+                Err(e) => {
+                    eprintln!("初始化失败: {}", e);
+                    return ExitCode::FAILURE;
+                }
+            };
+            commands::mcp::run_mcp_server(svc).await
+        }
         "log-path" => commands::diagnostics::cmd_log_path(),
         "log-tail" => commands::diagnostics::cmd_log_tail(&args),
         _ => {

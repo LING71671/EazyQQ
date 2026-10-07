@@ -256,7 +256,7 @@ export const App: React.FC = () => {
   const handleGenerateSummary = async (targetId: string, hours: number) => {
     setIsSummarizing(true);
     try {
-      const res = await api.generateSummary(targetId, hours);
+      const res = await api.generateSummaryStream(targetId, hours);
       if (res.success && res.data) {
         const newSummary = res.data;
         setSummaries((prev) => [newSummary, ...prev.filter((s) => s.id !== newSummary.id)]);

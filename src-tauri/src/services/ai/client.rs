@@ -160,6 +160,139 @@ impl AiService {
         Ok((content, reasoning))
     }
 
+    /// Stream chat response token by token via Server-Sent Events.
+    pub async fn stream_chat<F>(
+        &self,
+        mut payload: Value,
+        mut on_chunk: F,
+    ) -> Result<(String, Option<String>), String>
+    where
+        F: FnMut(&str) + Send + 'static,
+    {
+        let cfg = self.current();
+        cfg.validate()?;
+
+        if cfg.requires_api_key() && cfg.api_key.trim().is_empty() {
+            return Err(format!(
+                "未配置大模型 API Key（provider={}, endpoint={}）。",
+                cfg.provider, cfg.base_url
+            ));
+        }
+
+        if payload.get("temperature").is_none() {
+            payload["temperature"] = serde_json::json!(cfg.temperature);
+        }
+        payload["model"] = serde_json::json!(cfg.model);
+        payload["stream"] = serde_json::json!(true);
+
+        let url = format!("{}/chat/completions", cfg.base_url.trim_end_matches('/'));
+
+        let mut request = self
+            .client_for(&cfg)
+            .post(&url)
+            .header("Content-Type", "application/json");
+
+        if !cfg.api_key.trim().is_empty() {
+            request = request.header("Authorization", format!("Bearer {}", cfg.api_key));
+        }
+
+        let resp = match request.json(&payload).send().await {
+            Ok(r) => r,
+            Err(e) => return Err(format!("大模型网络请求失败 ({}): {}", url, e)),
+        };
+
+        if !resp.status().is_success() {
+            let err_body = resp.text().await.unwrap_or_default();
+            return Err(format!("大模型接口返回错误: {}", err_body));
+        }
+
+        use futures_util::StreamExt;
+        let mut stream = resp.bytes_stream();
+        let mut full_content = String::new();
+        let mut reasoning_content = String::new();
+        let mut buffer = String::new();
+
+        while let Some(item) = stream.next().await {
+            let chunk = match item {
+                Ok(bytes) => bytes,
+                Err(e) => return Err(format!("流式读取异常: {}", e)),
+            };
+            buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+            while let Some(pos) = buffer.find('\n') {
+                let line = buffer[..pos].trim().to_string();
+                buffer.drain(..=pos);
+
+                if line.is_empty() || line.starts_with(':') {
+                    continue;
+                }
+
+                if let Some(data) = line.strip_prefix("data:") {
+                    let data = data.trim();
+                    if data == "[DONE]" {
+                        break;
+                    }
+                    if let Ok(parsed) = serde_json::from_str::<Value>(data) {
+                        if let Some(delta) = parsed
+                            .get("choices")
+                            .and_then(|c| c.get(0))
+                            .and_then(|c| c.get("delta"))
+                        {
+                            if let Some(c) = delta.get("content").and_then(|v| v.as_str()) {
+                                full_content.push_str(c);
+                                on_chunk(c);
+                            }
+                            if let Some(r) = delta.get("reasoning_content").and_then(|v| v.as_str()) {
+                                reasoning_content.push_str(r);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let reasoning_opt = if reasoning_content.is_empty() {
+            None
+        } else {
+            Some(reasoning_content)
+        };
+
+        Ok((full_content, reasoning_opt))
+    }
+
+    /// Generate a streaming AI reply given history and user input.
+    pub async fn generate_reply_stream<F>(
+        &self,
+        history: &[ChatMessage],
+        incoming: &str,
+        instruction: &str,
+        on_chunk: F,
+    ) -> Result<(String, Option<String>), String>
+    where
+        F: FnMut(&str) + Send + 'static,
+    {
+        let mut messages = Vec::new();
+        if !instruction.trim().is_empty() {
+            messages.push(serde_json::json!({
+                "role": "system",
+                "content": instruction
+            }));
+        }
+        for m in history {
+            messages.push(serde_json::json!({
+                "role": m.role,
+                "content": m.content
+            }));
+        }
+        messages.push(serde_json::json!({
+            "role": "user",
+            "content": incoming
+        }));
+
+        self.stream_chat(serde_json::json!({ "messages": messages }), on_chunk)
+            .await
+    }
+
     /// Generate an AI reply given the incoming message and context.
     pub async fn generate_reply(
         &self,
@@ -233,6 +366,41 @@ impl AiService {
             "temperature": temperature,
             "stream": false
         }))
+        .await
+    }
+
+    /// Generate a streaming completion with an explicit system prompt.
+    pub async fn generate_with_system_stream<F>(
+        &self,
+        system_prompt: &str,
+        messages: &[ChatMessage],
+        temperature: f32,
+        on_chunk: F,
+    ) -> Result<(String, Option<String>), String>
+    where
+        F: FnMut(&str) + Send + 'static,
+    {
+        let mut payload_messages = vec![serde_json::json!({
+            "role": "system",
+            "content": system_prompt
+        })];
+
+        for msg in messages {
+            payload_messages.push(serde_json::json!({
+                "role": msg.role,
+                "content": msg.content
+            }));
+        }
+
+        info!("Calling streaming LLM ({}) with custom system prompt", self.model());
+
+        self.stream_chat(
+            serde_json::json!({
+                "messages": payload_messages,
+                "temperature": temperature,
+            }),
+            on_chunk,
+        )
         .await
     }
 

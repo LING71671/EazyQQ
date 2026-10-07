@@ -1,0 +1,17 @@
+# EazyQQ
+
+> Personal QQ AI Assistant Desktop Client & Headless Automation Platform.
+
+EazyQQ is a desktop application and CLI toolchain built with Tauri v2, Rust, React 19, and TailwindCSS. It integrates the NapCatQQ (OneBot 11) protocol with local/cloud LLM inference (OpenAI-compatible, Ollama, LM Studio, llama.cpp, vLLM) to provide autonomous message filtering, group summarization, document extraction, and headless AI agent integration.
+
+## Key Capabilities
+- **Desktop UI**: Modern dark-mode interface for rule dispatch, contact whitelists, sliding-window group summaries, and diagnostics.
+- **Headless CLI (`eazyqq_cli`)**: Full terminal control without launching GUI (`eazyqq_cli health`, `chat`, `contacts`, `summary`, `diagnostics`, `mcp`).
+- **MCP Server (`eazyqq_cli mcp`)**: Standard Model Context Protocol over stdio for external AI agents (Cursor, Claude Desktop, Antigravity).
+- **Default-Deny Policy**: Zero persistence or processing of messages from non-whitelisted sessions.
+- **Offline Diagnostics**: Self-implemented pure Rust ZIP container to export redacted diagnostics.
+
+## Quick Links
+- [Detailed Technical Specification](llms-full.txt): Complete architecture, CLI command references, and MCP tool schemas.
+- [Repository](https://github.com/LING71671/EazyQQ): Source code and releases.
+- [Issue Tracker](docs/ISSUE.md): Defect log and technical post-mortems.

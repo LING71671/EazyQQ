@@ -113,6 +113,18 @@ pub async fn generate(
     ai: &Arc<AiService>,
     req: &SummaryRequest,
 ) -> Result<SummaryOutcome, String> {
+    generate_stream(db, ai, req, |_| {}).await
+}
+
+pub async fn generate_stream<F>(
+    db: &Arc<Database>,
+    ai: &Arc<AiService>,
+    req: &SummaryRequest,
+    on_chunk: F,
+) -> Result<SummaryOutcome, String>
+where
+    F: FnMut(&str) + Send + 'static,
+{
     let window_hours = req.sliding_window_hours.max(1);
     let end_time = now_ms();
     let start_time = end_time - (window_hours as i64 * 3600 * 1000);
@@ -217,7 +229,7 @@ pub async fn generate(
     }];
 
     let (raw_reply, thinking) = ai
-        .generate_with_system(&system, &history, 0.3)
+        .generate_with_system_stream(&system, &history, 0.3, on_chunk)
         .await
         .map_err(|e| format!("大模型简报生成失败: {}", e))?;
 
