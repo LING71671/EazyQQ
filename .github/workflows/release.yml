@@ -80,6 +80,17 @@ jobs:
           }
           Compress-Archive -Path "$distDir/*" -DestinationPath "eazyqq-cli-windows-x64.zip" -Force
 
+      - name: Generate Changelog
+        shell: pwsh
+        run: |
+          $prevTag = git describe --tags --abbrev=0 HEAD^ 2>$null
+          if ($prevTag) {
+            $log = (git log "$prevTag..HEAD" --pretty=format:"- %s") -join "`n"
+          } else {
+            $log = (git log -n 10 --pretty=format:"- %s") -join "`n"
+          }
+          "CHANGELOG<<EOF`n$log`nEOF" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
@@ -87,7 +98,12 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'EazyQQ ${{ github.ref_name }}'
-          releaseBody: '自动化构建发布的 EazyQQ 桌面客户端与独立无头 CLI 工具（内置 NapCat 协议，开箱即用）。'
+          releaseBody: |
+            ### 变更日志 (Changelog)
+            ${{ env.CHANGELOG }}
+
+            ---
+            *自动化构建发布的 EazyQQ 桌面客户端与独立无头 CLI 工具（内置 NapCat 协议，开箱即用）。*
           releaseDraft: false
           prerelease: false
 
@@ -97,6 +113,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          generate_release_notes: true
           files: |
             eazyqq-cli-windows-x64.zip
             src-tauri/target/release/eazyqq_cli.exe
