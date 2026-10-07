@@ -12,6 +12,10 @@ const destDir = path.join(rootDir, 'src-tauri', 'resources', 'napcat');
 console.log(`[sync-napcat] Syncing NapCat runtime from ${srcDir} to ${destDir}...`);
 
 if (!fs.existsSync(srcDir)) {
+  if (fs.existsSync(destDir)) {
+    console.log(`[sync-napcat] Root napcat/ not found, but pre-bundled resources exist at ${destDir}. Skipping sync.`);
+    process.exit(0);
+  }
   console.error(`[sync-napcat] Source directory not found: ${srcDir}`);
   process.exit(1);
 }
