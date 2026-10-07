@@ -11,6 +11,26 @@
 
 ---
 
+## ⚡ 极速开始使用
+
+### 方式一：CLI 无头极速安装（免桌面版 / 免 WebView2，推荐）
+在任意 Windows PowerShell 终端粘贴执行下方一行命令，自动配置全部协议依赖、自动探测宿主机 QQNT 并注入全局 PATH：
+```powershell
+irm https://raw.githubusercontent.com/LING71671/EazyQQ/main/scripts/install.ps1 | iex
+```
+安装完成后即可在任意路径直接使用：
+```powershell
+eazyqq_cli qr                 # 终端 ANSI 二维码直接扫码登录（加 --browser 可弹浏览器）
+eazyqq_cli status             # 查看协议在线状态与登录账号
+eazyqq_cli instances list     # 管理同机原生多开分身（免容器化）
+eazyqq_cli mcp                # 启动 stdio MCP 服务供 Cursor / Claude 作为工具调用
+```
+
+### 方式二：桌面版客户端 (GUI)
+前往 [GitHub Releases](https://github.com/LING71671/EazyQQ/releases) 下载最新安装包 `EazyQQ_x64_en-US.msi`，双击安装即可。
+
+---
+
 ## 核心设计与特性矩阵
 
 | 核心维度 | 传统 QQ 自动化方案 | EazyQQ 工程实现 |
@@ -130,42 +150,40 @@ EazyQQ/
 
 ## 命令行与 AI 智能体集成
 
-项目内置独立 CLI 工具，可通过终端交互、批处理脚本或直接作为工具供外部 AI Agent 调度。
+项目内置独立 CLI 工具（单文件 `eazyqq_cli.exe`），无需开启 GUI 即可独立执行全部协议管控、收发消息与多开调度：
 
-### 核心操作指令
+### 核心操作指令速查
 
-查询系统与协议运行状态：
+#### 1. 协议与登录
 ```bash
-cargo run --bin eazyqq_cli -- status --json
+eazyqq_cli qr                     # 终端 ANSI 二维码直接扫码登录
+eazyqq_cli qr --browser           # 自动唤起系统默认浏览器扫码
+eazyqq_cli quick-login-list       # 列出可免扫码快速登录的账号
+eazyqq_cli quick-login --uin <QQ> # 对指定账号执行免扫码极速登录
+eazyqq_cli status                 # 协议在线态与当前登录 QQ 详情
 ```
 
-拉取好友与群聊列表：
+#### 2. 原生多开分身管理（免 Docker / 纯原生并发）
 ```bash
-cargo run --bin eazyqq_cli -- friends --json
-cargo run --bin eazyqq_cli -- groups --json
+eazyqq_cli instances list         # 查看所有登记分身、分配端口与在线状态
+eazyqq_cli instances add --uin <QQ> [--nick <备注>] # 登记新分身并自动分配端口
+eazyqq_cli instances start --uin <QQ> # 启动指定分身实例
+eazyqq_cli instances stop --uin <QQ>  # 定向安全停止指定分身（绝不误伤日常 QQ）
 ```
 
-发送好友私聊或群聊消息：
+#### 3. 消息收发与记录
 ```bash
-cargo run --bin eazyqq_cli -- send --to <好友QQ号> --text "消息正文" --type user
-cargo run --bin eazyqq_cli -- send --to <群号> --text "消息正文" --type group
+eazyqq_cli send --target <QQ/群号> --text "消息正文" # 发送私聊或群聊消息
+eazyqq_cli send --account <分身QQ> --target <目标ID> --text "指定分身发送"
+eazyqq_cli history --target <目标ID> --limit 20   # 检索会话历史记录
+eazyqq_cli contacts                               # 同步并查看好友与群聊列表
 ```
 
-检索会话历史记录：
+#### 4. AI 简报与外部 Agent 接入
 ```bash
-cargo run --bin eazyqq_cli -- history --to <目标ID> --limit 30 --json
-```
-
-处置 AI 待审草稿：
-```bash
-cargo run --bin eazyqq_cli -- drafts --json
-cargo run --bin eazyqq_cli -- send-draft --id <草稿ID>
-cargo run --bin eazyqq_cli -- dismiss-draft --id <草稿ID>
-```
-
-按时间窗口生成群聊总结：
-```bash
-cargo run --bin eazyqq_cli -- summary --to <群号> --hours 6 --json
+eazyqq_cli summarize --target <群号> --hours 6    # AI 自动生成群聊结构化简报
+eazyqq_cli mcp                                    # 启动 stdio MCP 服务接入 Cursor / Claude
+eazyqq_cli napcat-doctor                          # 协议端启动路径健康逐项诊断
 ```
 
 ---
