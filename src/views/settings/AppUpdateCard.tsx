@@ -98,7 +98,7 @@ export const AppUpdateCard: React.FC = () => {
             <div className="flex items-center gap-2">
               <h4 className="text-xs font-semibold text-slate-900">关于与版本更新</h4>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-sky-50 text-sky-700 border border-sky-200/60">
-                v0.1.3
+                v0.3.0-beta
               </span>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
