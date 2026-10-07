@@ -1,9 +1,9 @@
 <div align="center">
 
-# EazyQQ
+<img src="docs/assets/social-preview.png" alt="EazyQQ" width="820" style="max-width: 100%;" />
 
-个人专属 QQ 助手桌面端与自动化调度系统  
-双模运行架构 · 隐私自治 · 人机协同 · 原生多开
+<br />
+<br />
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-24292f?style=flat-square" alt="License" /></a>
@@ -13,9 +13,7 @@
   <a href="https://www.microsoft.com/windows"><img src="https://img.shields.io/badge/OS-Windows_x64-24292f?style=flat-square" alt="Platform" /></a>
 </p>
 
-<br />
-
-<img src="docs/assets/banner.png" alt="EazyQQ Architecture and Overview" width="100%" />
+<p>个人专属 QQ 助手桌面端与自动化调度系统 · 双模运行架构</p>
 
 </div>
 

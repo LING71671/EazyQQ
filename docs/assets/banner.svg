@@ -1,14 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" width="1200" height="400" fill="none">
   <defs>
-    <linearGradient id="canvas-grad" x1="0" y1="0" x2="1280" y2="640" gradientUnits="userSpaceOnUse">
+    <linearGradient id="canvas-grad" x1="0" y1="0" x2="1200" y2="400" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#f8fafc" />
       <stop offset="50%" stop-color="#ffffff" />
       <stop offset="100%" stop-color="#f1f5f9" />
     </linearGradient>
 
-    <radialGradient id="sky-glow" cx="640" cy="210" r="540" gradientUnits="userSpaceOnUse">
+    <radialGradient id="sky-glow" cx="600" cy="130" r="440" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#e0f2fe" stop-opacity="0.8" />
-      <stop offset="55%" stop-color="#f0f9ff" stop-opacity="0.35" />
+      <stop offset="55%" stop-color="#f0f9ff" stop-opacity="0.3" />
       <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
     </radialGradient>
 
@@ -17,12 +17,12 @@
     </pattern>
 
     <filter id="card-shadow" x="-8%" y="-8%" width="116%" height="124%">
-      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.04" />
+      <feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.04" />
       <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.02" />
     </filter>
 
     <filter id="logo-drop" x="-15%" y="-15%" width="130%" height="130%">
-      <feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#0284c7" flood-opacity="0.25" />
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#0284c7" flood-opacity="0.22" />
     </filter>
 
     <linearGradient id="eazyqq-grad-primary" x1="16" y1="16" x2="112" y2="112" gradientUnits="userSpaceOnUse">
@@ -35,69 +35,69 @@
     </linearGradient>
   </defs>
 
-  <rect width="1280" height="640" rx="16" fill="url(#canvas-grad)" />
-  <rect width="1280" height="640" rx="16" fill="url(#light-grid)" />
-  <rect width="1280" height="640" rx="16" fill="url(#sky-glow)" />
-  <rect x="0.5" y="0.5" width="1279" height="639" rx="15.5" stroke="#e2e8f0" stroke-width="1" />
+  <rect width="1200" height="400" rx="14" fill="url(#canvas-grad)" />
+  <rect width="1200" height="400" rx="14" fill="url(#light-grid)" />
+  <rect width="1200" height="400" rx="14" fill="url(#sky-glow)" />
+  <rect x="0.5" y="0.5" width="1199" height="399" rx="13.5" stroke="#e2e8f0" stroke-width="1" />
 
-  <g transform="translate(640, 205)">
-    <g transform="translate(-48, -120)" filter="url(#logo-drop)">
-      <rect x="13" y="18" width="60" height="48" rx="15" fill="url(#eazyqq-grad-primary)" />
-      <path d="M25 66 L25 78 Q25 81 28 79.5 L42 66 Z" fill="#0284c7" />
-      <rect x="21" y="25" width="45" height="33" rx="9" fill="#ffffff" fill-opacity="0.95" />
-      <rect x="28" y="34" width="16" height="3" rx="1.5" fill="#0284c7" />
-      <rect x="28" y="42" width="28" height="3" rx="1.5" fill="#94a3b8" />
-      <rect x="28" y="50" width="22" height="3" rx="1.5" fill="#cbd5e1" />
-      <g transform="translate(51, 12)">
-        <circle cx="18" cy="18" r="16.5" fill="#ffffff" />
-        <path d="M18 7.5 Q18 18 28.5 18 Q18 18 18 28.5 Q18 18 7.5 18 Q18 18 18 7.5 Z" fill="url(#eazyqq-grad-sparkle)" />
+  <g transform="translate(600, 130)">
+    <g transform="translate(-36, -88)" filter="url(#logo-drop)">
+      <rect x="10" y="14" width="46" height="36" rx="11" fill="url(#eazyqq-grad-primary)" />
+      <path d="M19 50 L19 59 Q19 61 21 60 L32 50 Z" fill="#0284c7" />
+      <rect x="16" y="19" width="34" height="25" rx="7" fill="#ffffff" fill-opacity="0.95" />
+      <rect x="21" y="26" width="12" height="2.2" rx="1.1" fill="#0284c7" />
+      <rect x="21" y="32" width="21" height="2.2" rx="1.1" fill="#94a3b8" />
+      <rect x="21" y="38" width="16" height="2.2" rx="1.1" fill="#cbd5e1" />
+      <g transform="translate(39, 9)">
+        <circle cx="13" cy="13" r="12" fill="#ffffff" />
+        <path d="M13 5.5 Q13 13 20.5 13 Q13 13 13 20.5 Q13 13 5.5 13 Q13 13 13 5.5 Z" fill="url(#eazyqq-grad-sparkle)" />
       </g>
     </g>
 
-    <text text-anchor="middle" y="32" fill="#0f172a" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="52" font-weight="700" letter-spacing="-0.03em">
+    <text text-anchor="middle" y="24" fill="#0f172a" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="40" font-weight="700" letter-spacing="-0.03em">
       EazyQQ
     </text>
 
-    <text text-anchor="middle" y="70" fill="#475569" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="18" font-weight="400" letter-spacing="-0.01em">
+    <text text-anchor="middle" y="54" fill="#475569" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="400" letter-spacing="-0.01em">
       个人专属 QQ 助手与自动化调度系统 · 双模运行架构
     </text>
   </g>
 
-  <g transform="translate(96, 420)">
+  <g transform="translate(91, 245)">
     <g transform="translate(0, 0)" filter="url(#card-shadow)">
-      <rect width="254" height="132" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
-      <rect x="18" y="16" width="60" height="22" rx="6" fill="#f0f9ff" stroke="#bae6fd" stroke-width="0.75" />
-      <text x="48" y="31.5" text-anchor="middle" fill="#0284c7" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600">DESKTOP</text>
-      <text x="18" y="68" fill="#0f172a" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="17" font-weight="600">图形工作台</text>
-      <text x="18" y="93" fill="#64748b" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13">React 19 + Tauri 2</text>
-      <text x="18" y="112" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12">白名单规则 · AI 草稿箱审核</text>
+      <rect width="238" height="112" rx="10" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
+      <rect x="16" y="14" width="56" height="20" rx="5" fill="#f0f9ff" stroke="#bae6fd" stroke-width="0.75" />
+      <text x="44" y="28" text-anchor="middle" fill="#0284c7" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10.5" font-weight="600">DESKTOP</text>
+      <text x="16" y="58" fill="#0f172a" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15.5" font-weight="600">图形工作台</text>
+      <text x="16" y="79" fill="#64748b" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12">React 19 + Tauri 2</text>
+      <text x="16" y="96" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11">白名单规则 · AI 草稿箱审核</text>
     </g>
 
-    <g transform="translate(278, 0)" filter="url(#card-shadow)">
-      <rect width="254" height="132" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
-      <rect x="18" y="16" width="72" height="22" rx="6" fill="#f0f9ff" stroke="#bae6fd" stroke-width="0.75" />
-      <text x="54" y="31.5" text-anchor="middle" fill="#0284c7" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600">PROTOCOL</text>
-      <text x="18" y="68" fill="#0f172a" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="17" font-weight="600">无头控制集</text>
-      <text x="18" y="93" fill="#64748b" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13">短命令 ezq (别名 eazyqq_cli)</text>
-      <text x="18" y="112" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12">单文件独立常驻 · 扫码探活</text>
+    <g transform="translate(260, 0)" filter="url(#card-shadow)">
+      <rect width="238" height="112" rx="10" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
+      <rect x="16" y="14" width="66" height="20" rx="5" fill="#f0f9ff" stroke="#bae6fd" stroke-width="0.75" />
+      <text x="49" y="28" text-anchor="middle" fill="#0284c7" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10.5" font-weight="600">PROTOCOL</text>
+      <text x="16" y="58" fill="#0f172a" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15.5" font-weight="600">无头控制集</text>
+      <text x="16" y="79" fill="#64748b" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12">短命令 ezq (别名 eazyqq_cli)</text>
+      <text x="16" y="96" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11">单文件独立常驻 · 扫码探活</text>
     </g>
 
-    <g transform="translate(556, 0)" filter="url(#card-shadow)">
-      <rect width="254" height="132" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
-      <rect x="18" y="16" width="66" height="22" rx="6" fill="#f5f3ff" stroke="#ddd6fe" stroke-width="0.75" />
-      <text x="51" y="31.5" text-anchor="middle" fill="#7c3aed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600">AI AGENT</text>
-      <text x="18" y="68" fill="#0f172a" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="17" font-weight="600">智能体生态</text>
-      <text x="18" y="93" fill="#64748b" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13">stdio MCP 服务通道</text>
-      <text x="18" y="112" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12">Cursor / Claude / 外部 Agent</text>
+    <g transform="translate(520, 0)" filter="url(#card-shadow)">
+      <rect width="238" height="112" rx="10" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
+      <rect x="16" y="14" width="62" height="20" rx="5" fill="#f5f3ff" stroke="#ddd6fe" stroke-width="0.75" />
+      <text x="47" y="28" text-anchor="middle" fill="#7c3aed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10.5" font-weight="600">AI AGENT</text>
+      <text x="16" y="58" fill="#0f172a" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15.5" font-weight="600">智能体生态</text>
+      <text x="16" y="79" fill="#64748b" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12">stdio MCP 服务通道</text>
+      <text x="16" y="96" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11">Cursor / Claude / 外部 Agent</text>
     </g>
 
-    <g transform="translate(834, 0)" filter="url(#card-shadow)">
-      <rect width="254" height="132" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
-      <rect x="18" y="16" width="74" height="22" rx="6" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="0.75" />
-      <text x="55" y="31.5" text-anchor="middle" fill="#059669" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600">INSTANCES</text>
-      <text x="18" y="68" fill="#0f172a" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="17" font-weight="600">原生多开并发</text>
-      <text x="18" y="93" fill="#64748b" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13">免 Docker / 免虚拟机</text>
-      <text x="18" y="112" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12">端口自动分配 · 账号隔离</text>
+    <g transform="translate(780, 0)" filter="url(#card-shadow)">
+      <rect width="238" height="112" rx="10" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
+      <rect x="16" y="14" width="70" height="20" rx="5" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="0.75" />
+      <text x="51" y="28" text-anchor="middle" fill="#059669" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10.5" font-weight="600">INSTANCES</text>
+      <text x="16" y="58" fill="#0f172a" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15.5" font-weight="600">原生多开并发</text>
+      <text x="16" y="79" fill="#64748b" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12">免 Docker / 免虚拟机</text>
+      <text x="16" y="96" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11">端口自动分配 · 账号隔离</text>
     </g>
   </g>
 </svg>
