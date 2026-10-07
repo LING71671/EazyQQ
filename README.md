@@ -1,177 +1,211 @@
 # EazyQQ
 
 个人专属 QQ 智能助手桌面端与自动化控制系统。  
-基于 Tauri 2、Rust、React 19、Tailwind CSS 与 SQLite WAL 构建，内置 NapCat 协议引擎与模块化 CLI，支持图形化人机协同及外部 AI 智能体自动化调度。
+专为隐私自治、人机协同与外部 AI 智能体调度设计的双模运行架构。
+
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](LICENSE)
+[![Framework](https://img.shields.io/badge/Frontend-React_19_%7C_Tailwind_CSS-38bdf8.svg?style=flat-square)](https://react.dev/)
+[![Engine](https://img.shields.io/badge/Backend-Tauri_2_%7C_Rust-f97316.svg?style=flat-square)](https://tauri.app/)
+[![Protocol](https://img.shields.io/badge/Protocol-OneBot_11_%7C_NapCat-6366f1.svg?style=flat-square)](https://napneko.github.io/)
+[![Platform](https://img.shields.io/badge/Platform-Windows_10_%2F_11_x64-slate.svg?style=flat-square)](https://www.microsoft.com/windows)
 
 ---
 
-## 核心特性
+## 核心设计与特性矩阵
 
-### 1. 严格双重独立白名单机制
-- 默认拒绝策略：未显式加入白名单的好友与群聊完全处于旁路静默状态，系统不记录消息、不触发大模型计算。
-- 消息接管与群聊总结独立控制：消息托管白名单支持草稿审核或自动回复，群聊简报白名单按群单独配置统计周期与滑动回溯窗口。
+| 核心维度 | 传统 QQ 自动化方案 | EazyQQ 工程实现 |
+| :--- | :--- | :--- |
+| 准入策略 | 全量监听上报，隐私易泄漏 | 严格 Default-Deny 默认拒绝，仅处理白名单对象 |
+| 交互可靠性 | 大模型直接发群，容易翻车 | 引入 AI 草稿箱缓冲审查，支持人类微调与二次确认 |
+| 群聊沉淀 | 人工爬楼消耗精力 | 配置化定时巡检，自动剔除水群噪声并提炼共识待办 |
+| 进程自愈 | 协议端断线卡死需手动处理 | 8 节点健康监控持续嗅探，支持强杀僵尸进程一键拉起 |
+| 控制通道 | 单一界面，难以二次扩展 | GUI 桌面端与 CLI 命令行双模并行，原生支持 JSON 管道 |
+
+### 1. 严格双重独立白名单
+系统在初始状态下对所有好友与群聊执行完全旁路静默，不落盘存储、不调用大模型。  
+消息托管白名单与群聊简报白名单完全解耦，用户可精确指定单个对象的托管模式：手动放行、半自动草稿审核或全自动秒回。
 
 ### 2. 人机协同 AI 草稿审核
-- 命中白名单的提问或被提及消息，系统将自动生成候选回复并存入草稿箱。
-- 用户可在图形界面进行二次微调、补充指令重新生成，或直接放行发送，杜绝大模型幻觉与不可控回复。
+当白名单群聊收到提问或被提及触发时，系统在后台生成附带思考上下文的拟答草稿。  
+用户可在桌面抽屉中直观查看草稿，输入补充修正指令触发重新推理，或直接确认发送，确保对外输出内容始终处于受控状态。
 
 ### 3. 定时群聊智能简报
-- 支持按小时或自定义分钟周期性巡检白名单群聊。
-- 自动滤除无意义闲聊与刷屏信息，提炼关键讨论议题、共识决策及后续待办事项。
+内置轻量级调度引擎，支持按 1 小时至 24 小时或自定义分钟数周期性巡检。  
+结合滑动时间窗口读取本地 SQLite 会话流水，自动滤除表情包、无意义刷屏与闲聊噪声，结构化输出核心议题、决议结论与待办清单。
 
-### 4. 全链路实时监控与一键自愈
-- 对链路 8 大核心环节进行持续嗅探：NapCat WebUI、QQ 登录会话、OneBot HTTP、OneBot WebSocket、本地 SQLite 数据库、大模型推理接口、定时调度引擎、前端交互界面。
-- 界面提供可视化状态检测面板与一键重启自愈能力，支持一键导出脱敏诊断压缩包。
+### 4. 链路健康嗅探与进程自愈
+系统持续对 8 个核心环节进行心跳与状态感知：
+- NapCat 控制平面
+- QQ 登录会话
+- OneBot HTTP 接口
+- OneBot WebSocket 事件总线
+- 本地 SQLite 数据库
+- 大模型推理端点
+- 定时简报调度引擎
+- 前端交互界面
 
-### 5. 协议端热更新与灵活路径配置
-- 内置 NapCat 运行状态与版本感知，支持连接 NapNeko 官方 Release 通道一键热升级。
-- 支持通过系统注册表、环境变量及当前进程动态检索 QQNT 路径，亦允许在设置界面自定义指定本地路径。
+检测到异常时，界面实时定位故障源，并支持调用系统底层能力关闭异常残留进程、重写引导加载代码并平滑重新拉起。
 
-### 6. 双模运行体系
-- 桌面客户端模式：沉浸式桌面 GUI，支持系统托盘后台静默运行。
-- 命令行 CLI 模式：提供独立可执行程序 eazyqq_cli，全指令原生支持结构化 JSON 输出，可无缝对接外部 AI Agent、自动化脚本或作为 MCP 工具服务。
+### 5. 协议端在线热升级与路径自适应
+内置对 NapCat 协议核心的版本嗅探。支持在设置面板直接检索 NapNeko 官方 Release 通道，一键完成压缩包下载、覆盖部署与引擎重启。  
+针对本地 QQNT 路径，支持通过系统注册表与运行进程动态嗅探，同时提供界面输入项以支持自定义指定非标准盘符路径。
 
 ---
 
 ## 系统完整架构
 
-系统采用模块化分层设计，划分为表现层、IPC 路由层、领域服务层、协议运行时及持久化存储层。
+系统自上而下严格划分为表现层、IPC 路由层、领域服务层、底层协议引擎及物理持久化层。
 
 ```text
-┌────────────────────────────────────────────────────────────────────────┐
-│                              接入与展现层                              │
-│  ┌───────────────────────────────────┐  ┌───────────────────────────┐  │
-│  │   桌面图形界面 (React 19 + Vite)   │  │   自动化命令行 eazyqq_cli  │  │
-│  │   - 链路健康抽屉与自愈面板        │  │   - 支持全指令 --json 输出    │  │
-│  │   - 双白名单管理与会话规则配置    │  │   - 供外部 AI Agent 直接调用  │  │
-│  │   - AI 草稿箱审核与简报展示       │  │   - 方便接入 MCP 工具生态     │  │
-│  └─────────────────┬─────────────────┘  └─────────────┬─────────────┘  │
-└────────────────────┼──────────────────────────────────┼────────────────┘
-                     │ Tauri IPC Invoke                 │ 模块化子命令
-┌────────────────────▼──────────────────────────────────▼────────────────┐
-│                        后端 IPC 路由分层 (commands/)                   │
-│  - system: 全局配置、依赖巡检、诊断包导出、NapCat 在线热更新、窗口管理 │
-│  - protocol: 登录凭证探活、二维码获取、快速登录切换、会话注销          │
-│  - chat: 好友与群聊列表、会话历史、消息发送、群文件管理与解析          │
-│  - ai: 大模型连通测试、模型列表动态嗅探、群聊简报生成与历史归档        │
-└────────────────────────────────────┬───────────────────────────────────┘
-                                     │ 业务调度
-┌────────────────────────────────────▼───────────────────────────────────┐
-│                      Rust 领域服务层 (services/)                       │
-│  - protocol: NapCat 托管注入、WinBootHook、OneBot HTTP 与 WebSocket 监听│
-│  - ai: 统一大模型推理客户端、模型嗅探、Prompt 模板装配                 │
-│  - security: Default-Deny 准入策略出口、冷却限制器、敏感消息触发器     │
-│  - workflows: 8 节点全链路探活巡检、定时简报调度器、群文件文档解析器   │
-│  - storage: SQLite WAL 数据库连接池、结构迁移、规则与消息读写          │
-│  - identity: 基于机器码与 QQ 账号的物理路径隔离、多账号平滑切换        │
-│  - infra: 日志按天分卷轮转、脱敏排障包导出、运行配置校验               │
-└──────────────────┬───────────────────────────────────┬─────────────────┘
-                   │                                   │
-                   │ DLL Hook 注入与 OneBot 协议交互    │ 本地物理存储
-┌──────────────────▼───────────────┐   ┌───────────────▼─────────────────┐
-│        本地 Windows 官方 QQ      │   │     本地数据目录 EazyQQ_Data     │
-│  - Tencent QQNT 客户端           │   │  - accounts/<机器码>/<账号>/    │
-│  - NapCat 协议注入运行时         │   │    - eazyqq.db (SQLite WAL)     │
-│  - 3000 HTTP / 3001 WebSocket    │   │    - logs/ (脱敏运行日志)       │
-│  - 6099 WebUI 控制平面           │   │    - group_files/ (群文件缓存)  │
-└──────────────────────────────────┘   └─────────────────────────────────┘
+================================================================================
+                                接入与展现层
+================================================================================
+  [ 桌面交互端 GUI ]                            [ 自动化命令行 CLI ]
+  React 19 + TypeScript + Tailwind             eazyqq_cli.exe
+  - 链路健康抽屉与自愈操作面板                  - 全指令原生输出结构化 JSON
+  - 双白名单管理与会话规则配置                  - 供外部 AI Agent 与脚本调用
+  - AI 草稿箱审核与简报聚合视图                - 支持无缝接入 MCP 工具服务生态
+         │                                              │
+         │ Tauri IPC Invoke                             │ 领域子命令
+         ▼                                              ▼
+================================================================================
+                         后端 IPC 路由分层 (src-tauri/src/commands/)
+================================================================================
+  [ system ]    全局应用配置、依赖项巡检、诊断包导出、NapCat 核心热更新、窗口控制
+  [ protocol ]  登录凭证探活、二维码获取、快速登录切换、会话安全注销
+  [ chat ]      好友与群聊信息同步、会话记录查询、消息发送、群文件检索与解析
+  [ ai ]        推理接口连通测试、模型列表动态嗅探、群聊简报生成与历史归档
+         │
+         │ 模块解耦调度
+         ▼
+================================================================================
+                         Rust 领域服务层 (src-tauri/src/services/)
+================================================================================
+  protocol   :: NapCat 运行时托管、WinBootHook 动态注入、OneBot 双向通信
+  ai         :: OpenAI 兼容客户端封装、OpenCode 免费通道嗅探、Prompt 装配
+  security   :: Default-Deny 准入网关、请求冷却限制器、敏感词与消息触发器
+  workflows  :: 8 节点全链路健康监测、定时简报调度器、群文档格式提取
+  storage    :: SQLite WAL 数据库连接池、Schema 自动迁移、会话与规则读写
+  identity   :: 基于机器硬件码与 QQ 号的双重隔离、多账号平滑切换与凭据重置
+  infra      :: 跨进程日志分卷轮转、脱敏排障包打包、全局运行配置校验
+         │                                              │
+         │ DLL Hook 注入与 OneBot 协议交互              │ 物理数据落地
+         ▼                                              ▼
+┌─────────────────────────────────┐            ┌────────────────────────────────┐
+│      本地 Windows 官方 QQ       │            │    数据持久化目录 EazyQQ_Data   │
+│  - Tencent QQNT 官方主程序      │            │  accounts/<机器码>/<QQ号>/     │
+│  - NapCat 协议注入运行时        │            │    - eazyqq.db (SQLite WAL)    │
+│  - 3000 HTTP / 3001 WebSocket   │            │    - logs/ (脱敏运行日志)      │
+│  - 6099 WebUI 控制接口          │            │    - group_files/ (群文件缓存) │
+└─────────────────────────────────┘            └────────────────────────────────┘
 ```
 
 ---
 
-## 模块组织说明
+## 模块组织架构
 
 ```text
 EazyQQ/
-├── src/                          # 前端工程源码
-│   ├── api/                      # Tauri IPC 接口契约定义与调用封装
-│   ├── components/               # 通用与功能组件，包含健康抽屉与聊天抽屉
-│   ├── views/                    # 页面视图，涵盖规则、草稿、简报、设置等
-│   └── index.css                 # 样式规范与设计系统定义
-├── src-tauri/                    # Rust 后端源码
+├── src/                               # 前端工程源码
+│   ├── api/                           # Tauri IPC 接口契约定义与强类型客户端
+│   ├── components/                    # 通用功能组件，含健康抽屉与聊天抽屉
+│   ├── views/                         # 核心页面视图：规则、草稿、文件、简报、设置
+│   └── index.css                      # 现代化设计系统与样式标记
+├── src-tauri/                         # Rust 原生后端工程
 │   ├── src/
-│   │   ├── bin/eazyqq_cli/       # 模块化命令行程序源码，按领域拆分子命令
-│   │   ├── commands/             # IPC 路由层，按 system, protocol, chat, ai 分目录
-│   │   ├── services/             # 7 大领域服务模块
-│   │   ├── lib.rs                # Tauri 桌面应用生命周期与指令注册中心
-│   │   └── main.rs               # 桌面应用启动入口
-│   ├── Cargo.toml                # Rust 依赖与构建配置
-│   └── tauri.conf.json           # 桌面外壳与安全权限描述
-├── napcat/                       # 本地协议端运行环境
-├── docs/                         # 项目技术文档与开发目录索引
-└── README.md                     # 项目技术说明文档
+│   │   ├── bin/eazyqq_cli/            # 模块化命令行程序源码，按领域拆分子命令
+│   │   ├── commands/                  # IPC 路由层，细分为 system, protocol, chat, ai
+│   │   ├── services/                  # 7 大领域服务模块
+│   │   ├── lib.rs                     # 应用生命周期管理与命令分发中心
+│   │   └── main.rs                    # 桌面端程序主入口
+│   ├── Cargo.toml                     # Rust 依赖声明与编译参数
+│   └── tauri.conf.json                # 桌面窗口、托盘与安全权限配置
+├── napcat/                            # 本地协议端运行时
+├── docs/                              # 项目设计规范与开发目录索引
+├── LICENSE                            # Apache 2.0 开源许可协议文本
+└── README.md                          # 项目架构与使用说明
 ```
 
 ---
 
-## 命令行与 AI Agent 集成
+## 命令行与 AI 智能体集成
 
-项目内置独立的 CLI 程序，便于通过终端、后台批处理或由外部 AI 智能体直接调用。
+项目内置独立 CLI 工具，可通过终端交互、批处理脚本或直接作为工具供外部 AI Agent 调度。
 
-### 常用命令
+### 核心操作指令
 
-- 查看状态：
-  ```bash
-  cargo run --bin eazyqq_cli -- status --json
-  ```
-- 查看好友与群聊：
-  ```bash
-  cargo run --bin eazyqq_cli -- friends --json
-  cargo run --bin eazyqq_cli -- groups --json
-  ```
-- 发送消息：
-  ```bash
-  cargo run --bin eazyqq_cli -- send --to <目标ID> --text "消息内容" --type user
-  cargo run --bin eazyqq_cli -- send --to <群号> --text "消息内容" --type group
-  ```
-- 查看历史记录：
-  ```bash
-  cargo run --bin eazyqq_cli -- history --to <目标ID> --limit 20 --json
-  ```
-- 处置待审草稿：
-  ```bash
-  cargo run --bin eazyqq_cli -- drafts --json
-  cargo run --bin eazyqq_cli -- send-draft --id <草稿ID>
-  ```
-- 生成群聊简报：
-  ```bash
-  cargo run --bin eazyqq_cli -- summary --to <群号> --hours 6 --json
-  ```
+查询系统与协议运行状态：
+```bash
+cargo run --bin eazyqq_cli -- status --json
+```
+
+拉取好友与群聊列表：
+```bash
+cargo run --bin eazyqq_cli -- friends --json
+cargo run --bin eazyqq_cli -- groups --json
+```
+
+发送好友私聊或群聊消息：
+```bash
+cargo run --bin eazyqq_cli -- send --to <好友QQ号> --text "消息正文" --type user
+cargo run --bin eazyqq_cli -- send --to <群号> --text "消息正文" --type group
+```
+
+检索会话历史记录：
+```bash
+cargo run --bin eazyqq_cli -- history --to <目标ID> --limit 30 --json
+```
+
+处置 AI 待审草稿：
+```bash
+cargo run --bin eazyqq_cli -- drafts --json
+cargo run --bin eazyqq_cli -- send-draft --id <草稿ID>
+cargo run --bin eazyqq_cli -- dismiss-draft --id <草稿ID>
+```
+
+按时间窗口生成群聊总结：
+```bash
+cargo run --bin eazyqq_cli -- summary --to <群号> --hours 6 --json
+```
 
 ---
 
-## 开发与构建
+## 编译与运行
 
-### 环境要求
+### 环境准备
 - Windows 10 或 Windows 11 操作系统，x64 架构。
-- Node.js 运行时及 pnpm 包管理器。
-- Rust 工具链及 Visual Studio C++ 生成工具。
-- 本地安装有腾讯官方 QQ 客户端。
+- Node.js 运行时与 pnpm 包管理工具。
+- Rust 工具链与 Visual Studio 2022 C++ 生成工具。
+- 本地已安装腾讯官方 QQ 客户端。
 
-### 调试与构建命令
-- 安装前端依赖：
-  ```bash
-  pnpm install
-  ```
-- 启动桌面端开发调试：
-  ```bash
-  pnpm tauri dev
-  ```
-- 执行前端类型检查：
-  ```bash
-  pnpm typecheck
-  ```
-- 执行后端完整单元测试：
-  ```bash
-  cargo test --manifest-path src-tauri/Cargo.toml
-  ```
-- 构建生产安装包：
-  ```bash
-  pnpm tauri build
-  ```
+### 开发与测试命令
+安装前端依赖包：
+```bash
+pnpm install
+```
+
+启动桌面客户端开发环境：
+```bash
+pnpm tauri dev
+```
+
+执行前端类型静态检查：
+```bash
+pnpm typecheck
+```
+
+执行后端单元测试集：
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+构建生产安装包：
+```bash
+pnpm tauri build
+```
 
 ---
 
-## 开源许可证
+## 开源许可
 
-本项目基于 [Apache License 2.0](LICENSE) 协议发布。
+本项目遵循 [Apache License 2.0](LICENSE) 协议开源。
