@@ -336,7 +336,7 @@
 - **额外发现**: `opencode serve` 的 `--port` 默认值是 **0（随机端口）**，因此「固定 4096」这一预设本身就不可靠；且实测其服务进程在运行数分钟后内存涨至 633MB 并出现请求无响应。
 - **修复方案与措施**:
   1. **移除 `opencode` 预设**，不再对外宣称其为可用供应源；
-  2. 供应源列表改为真实 OpenAI 兼容的实现：`ollama` / `lmstudio` / `llamacpp` / `vllm`（本地）+ `deepseek` / `openai` / `tokenrhythm`（云端）；
+  2. 供应源列表改为真实 OpenAI 兼容的实现：`ollama` / `lmstudio` / `llamacpp` / `vllm`（本地）+ `deepseek` / `openai` / 自定义云端端点；
   3. 未知 provider 视为**自定义供应商**：不套用任何预设，必须显式提供 `baseUrl` 与 `model`，否则 `validate()` 返回明确错误，而不是把请求发往空地址；
   4. 新增 `eazyqq_cli ai-detect`：逐一探测常见本地端口，并区分「可用 / 需鉴权 / 不兼容 / 不可用 / 未监听」，其中**专门识别"返回 HTML 的 Web UI"这一情形**并标记为不兼容，避免用户踩同一个坑；
   5. 前端设置页同步移除 OpenCode 选项，并新增 llama.cpp / vLLM。

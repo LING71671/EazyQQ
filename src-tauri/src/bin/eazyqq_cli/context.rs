@@ -83,10 +83,11 @@ impl Services {
 
         let onebot = Arc::new(OneBotClient::new(ONEBOT_HTTP.to_string()));
 
-        let api_key = std::env::var("TOKENRHYTHM_API_KEY")
+        let api_key = std::env::var("LLM_API_KEY")
+            .or_else(|_| std::env::var("OPENAI_API_KEY"))
             .or_else(|_| std::env::var("AI_API_KEY"))
             .ok()
-            .or_else(|| db.get_setting("tokenrhythm_api_key").ok().flatten())
+            .or_else(|| db.get_setting("ai_api_key").ok().flatten())
             .unwrap_or_default();
 
         // Same resolution path as the GUI, so the CLI reports what the app really uses.

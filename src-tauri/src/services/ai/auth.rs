@@ -14,7 +14,7 @@ pub fn detect_api_key() -> Option<String> {
             return Some(k.trim().to_string());
         }
     }
-    for env_var in ["AI_API_KEY", "OPENAI_API_KEY"] {
+    for env_var in ["LLM_API_KEY", "OPENAI_API_KEY", "AI_API_KEY"] {
         if let Ok(k) = std::env::var(env_var) {
             if !k.trim().is_empty() {
                 return Some(k.trim().to_string());

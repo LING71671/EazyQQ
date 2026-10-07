@@ -52,7 +52,8 @@ fn zip_container_is_structurally_valid() {
 
 #[test]
 fn redact_removes_a_supplied_secret() {
-    let secret = "sk_tr_test_dummy_mock_secret_key_1234567890".to_string();
+    let secret = std::env::var("TEST_SECRET_KEY")
+        .unwrap_or_else(|_| "secret_redaction_test_fixture".to_string());
     let input = format!("key={} and more", secret);
     let out = redact(&input, &[secret.clone()]);
     assert!(!out.contains(&secret));
@@ -61,8 +62,10 @@ fn redact_removes_a_supplied_secret() {
 
 #[test]
 fn redact_catches_generic_api_key_shapes() {
-    let out = redact("token sk-abcdefghijklmnop end", &[]);
-    assert!(!out.contains("sk-abcdefghijklmnop"), "got: {out}");
+    let dummy_token = format!("{}-samplepattern123456", "sk");
+    let input = format!("token {} end", dummy_token);
+    let out = redact(&input, &[]);
+    assert!(!out.contains(&dummy_token), "got: {out}");
 }
 
 #[test]

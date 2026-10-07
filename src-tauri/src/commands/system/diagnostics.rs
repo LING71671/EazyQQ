@@ -56,14 +56,17 @@ pub async fn check_dependencies(state: State<'_, AppState>) -> Result<ApiRespons
     };
 
     // 2. Local AI runtime: dynamic lookup without hardcoded paths
-    let has_key = state
-        .db
-        .get_setting("tokenrhythm_api_key")
-        .ok()
-        .flatten()
-        .map(|k| !k.trim().is_empty())
-        .unwrap_or(false)
-        || std::env::var("TOKENRHYTHM_API_KEY").is_ok();
+    let has_key = !state.ai.current().api_key.trim().is_empty()
+        || state
+            .db
+            .get_setting("ai_api_key")
+            .ok()
+            .flatten()
+            .map(|k| !k.trim().is_empty())
+            .unwrap_or(false)
+        || std::env::var("LLM_API_KEY").is_ok()
+        || std::env::var("OPENAI_API_KEY").is_ok()
+        || std::env::var("AI_API_KEY").is_ok();
 
     let opencode_found = detect_opencode_binary();
     let (ai_ready, ai_path) = match opencode_found {

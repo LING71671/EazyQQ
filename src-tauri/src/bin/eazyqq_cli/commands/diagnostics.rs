@@ -52,14 +52,17 @@ pub async fn cmd_health(svc: &Services, args: &Args) -> Result<(), String> {
         format!("{} 条规则 / {} 个简报白名单群", rule_count, summary_groups),
     ));
 
-    let api_key_present = svc
-        .db
-        .get_setting("tokenrhythm_api_key")
-        .ok()
-        .flatten()
-        .map(|k| !k.is_empty())
-        .unwrap_or(false)
-        || std::env::var("TOKENRHYTHM_API_KEY").is_ok();
+    let api_key_present = !svc.ai.current().api_key.trim().is_empty()
+        || svc
+            .db
+            .get_setting("ai_api_key")
+            .ok()
+            .flatten()
+            .map(|k| !k.is_empty())
+            .unwrap_or(false)
+        || std::env::var("LLM_API_KEY").is_ok()
+        || std::env::var("OPENAI_API_KEY").is_ok()
+        || std::env::var("AI_API_KEY").is_ok();
     items.push((
         "大模型 API Key".to_string(),
         api_key_present,
@@ -538,7 +541,8 @@ pub async fn cmd_selftest(svc_ctx: &Services, args: &Args) -> Result<(), String>
     }
 
     // 8. Redaction: a supplied secret must not survive.
-    let secret = "sk_tr_selftest_secret_value".to_string();
+    let secret = std::env::var("TEST_SECRET_KEY")
+        .unwrap_or_else(|_| "selftest_secret_redaction_fixture".to_string());
     let redacted = svc::diagnostics::redact(&format!("key={}", secret), &[secret.clone()]);
     check!("诊断脱敏移除已知密钥", !redacted.contains(&secret));
 

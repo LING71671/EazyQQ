@@ -25,7 +25,7 @@ pub async fn update_config(
     // Hot-apply the AI provider so switching model takes effect immediately
     let fallback_key = state
         .db
-        .get_setting("tokenrhythm_api_key")
+        .get_setting("ai_api_key")
         .ok()
         .flatten()
         .unwrap_or_default();

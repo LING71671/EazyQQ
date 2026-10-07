@@ -148,7 +148,7 @@ pub fn cmd_ai_set(svc: &Services, args: &Args) -> Result<(), String> {
     // Re-resolve so the user sees the effective endpoint (preset vs explicit).
     let fallback_key = svc
         .db
-        .get_setting("tokenrhythm_api_key")
+        .get_setting("ai_api_key")
         .ok()
         .flatten()
         .unwrap_or_default();

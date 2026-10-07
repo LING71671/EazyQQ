@@ -62,18 +62,18 @@ fn remote_custom_endpoints_do_require_a_key() {
 fn fallback_key_is_used_when_the_config_has_none() {
     let cfg = AiRuntimeConfig::from_app_config(
         Some(&json!({ "activeProvider": "custom", "apiKey": "   " })),
-        "sk-from-settings",
+        "fallback_test_key",
     );
-    assert_eq!(cfg.api_key, "sk-from-settings");
+    assert_eq!(cfg.api_key, "fallback_test_key");
 }
 
 #[test]
 fn config_api_key_wins_over_the_fallback() {
     let cfg = AiRuntimeConfig::from_app_config(
-        Some(&json!({ "activeProvider": "custom", "apiKey": "sk-explicit" })),
-        "sk-from-settings",
+        Some(&json!({ "activeProvider": "custom", "apiKey": "explicit_test_key" })),
+        "fallback_test_key",
     );
-    assert_eq!(cfg.api_key, "sk-explicit");
+    assert_eq!(cfg.api_key, "explicit_test_key");
 }
 
 #[test]
