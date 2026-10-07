@@ -65,6 +65,12 @@ fn workspace_root_from_exe() -> Option<PathBuf> {
         cur = parent;
     }
 
+    if let Some(parent) = dir.parent() {
+        if parent.join("napcat").exists() || parent.join("EazyQQ_Data").exists() {
+            return Some(parent.to_path_buf());
+        }
+    }
+
     Some(dir.to_path_buf())
 }
 
