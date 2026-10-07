@@ -32,15 +32,13 @@ fn qq_path_pointing_nowhere_is_rejected() {
 }
 
 #[test]
-fn restart_is_rate_limited() {
+fn boot_rate_limiting_and_repeated_failures() {
+    note_healthy();
     note_attempt();
     let blocked = may_attempt();
     assert!(blocked.is_err(), "a second immediate attempt must be refused");
     assert!(blocked.unwrap_err().contains("需等待"));
-}
 
-#[test]
-fn repeated_failures_stop_the_loop() {
     for _ in 0..3 {
         note_result(false);
     }

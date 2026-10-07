@@ -9,6 +9,26 @@ pub fn cmd_schema(_args: &Args) -> Result<(), String> {
         "description": "EazyQQ Headless Command Line Interface & AI Agent Controller",
         "commands": [
             {
+                "name": "start",
+                "description": "Start NapCat protocol process headlessly",
+                "flags": ["--json"]
+            },
+            {
+                "name": "stop",
+                "description": "Safely stop NapCat protocol process without killing host QQ",
+                "flags": []
+            },
+            {
+                "name": "restart",
+                "description": "Safely restart NapCat protocol process",
+                "flags": ["--json"]
+            },
+            {
+                "name": "qr",
+                "description": "Get login QR code (console ANSI text or auto browser popup)",
+                "flags": ["--browser", "--save <path>", "--json"]
+            },
+            {
                 "name": "status",
                 "description": "Show system and account status",
                 "flags": ["--json"]

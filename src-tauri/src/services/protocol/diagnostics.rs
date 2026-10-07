@@ -81,12 +81,10 @@ pub fn diagnose(napcat_dir: &Path, uin: Option<&str>) -> Vec<Step> {
     steps.push(if running.is_empty() {
         Step::ok("QQ 进程", "未在运行，NapCat 可以自行引导 QQ 启动")
     } else {
-        Step::fail(
+        Step::ok(
             "QQ 进程",
             format!(
-                "已有 {} 个 QQ 实例在运行。NapCat 会自行引导一个 QQ 实例启动，两者可能冲突。\
-                 实测中 NapCat 拉起的 4 个 QQ 进程约 3 秒后全部退出。若 NapCat 反复启动失败，\
-                 请先完全退出 QQ 再试。",
+                "检测到宿主机已有 {} 个 QQ 进程在运行，原生支持多账号并存。",
                 running.len()
             ),
         )

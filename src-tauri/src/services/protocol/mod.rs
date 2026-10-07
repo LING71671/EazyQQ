@@ -11,7 +11,7 @@ pub mod service;
 mod tests;
 
 pub use boot::{
-    consecutive_failures, note_healthy, note_unready, restart, start, BootOutcome,
+    consecutive_failures, note_healthy, note_unready, restart, start, stop, BootOutcome,
 };
 pub use diagnostics::{diagnose, first_blocker, Step};
 pub use events::{handle_onebot_event, MessageOutcome};
@@ -26,7 +26,7 @@ pub mod napcat {
 }
 
 pub mod napcat_boot {
-    pub use super::boot::{consecutive_failures, note_healthy, note_unready, restart, start, BootOutcome};
+    pub use super::boot::{consecutive_failures, note_healthy, note_unready, restart, start, stop, BootOutcome};
     pub use super::diagnostics::{diagnose, first_blocker, Step};
     pub use super::patch::{configured_qq_path, sync_qqnt_patch};
 }

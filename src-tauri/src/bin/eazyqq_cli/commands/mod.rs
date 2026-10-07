@@ -5,6 +5,7 @@ pub mod contacts;
 pub mod diagnostics;
 pub mod files;
 pub mod help;
+pub mod lifecycle;
 pub mod mcp;
 pub mod protocol;
 pub mod schema;

@@ -21,6 +21,7 @@ pub struct BootState {
     pub last_attempt: Option<Instant>,
     pub consecutive_failures: u32,
     pub awaiting_readiness: bool,
+    pub child_pid: Option<u32>,
 }
 
 pub fn state() -> &'static Mutex<BootState> {
@@ -160,18 +161,58 @@ pub fn consecutive_failures() -> u32 {
     state().lock().map(|s| s.consecutive_failures).unwrap_or(0)
 }
 
+pub fn stop() -> BootOutcome {
+    let mut killed_any = false;
+    let mut detail_msgs = Vec::new();
+
+    if let Ok(mut st) = state().lock() {
+        if let Some(pid) = st.child_pid.take() {
+            #[cfg(target_os = "windows")]
+            {
+                let output = std::process::Command::new("taskkill")
+                    .args(["/F", "/T", "/PID", &pid.to_string()])
+                    .output();
+                if let Ok(o) = output {
+                    if o.status.success() {
+                        killed_any = true;
+                        detail_msgs.push(format!("已清理 NapCat 进程树 (PID {})", pid));
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let output = std::process::Command::new("taskkill")
+            .args(["/F", "/IM", "NapCatWinBootMain.exe"])
+            .output();
+        if let Ok(o) = output {
+            if o.status.success() {
+                killed_any = true;
+                detail_msgs.push("已清理残留 NapCat 引导进程".to_string());
+            }
+        }
+    }
+
+    BootOutcome {
+        attempted: true,
+        ok: true,
+        detail: if killed_any {
+            detail_msgs.join("; ")
+        } else {
+            "未检测到运行中的 NapCat 专属进程".to_string()
+        },
+    }
+}
+
 pub fn restart(napcat_dir: &Path) -> BootOutcome {
     if let Ok(mut st) = state().lock() {
         st.consecutive_failures = 0;
         st.last_attempt = None;
         st.awaiting_readiness = false;
     }
-    #[cfg(target_os = "windows")]
-    {
-        let _ = std::process::Command::new("taskkill")
-            .args(["/F", "/IM", "QQ.exe"])
-            .output();
-    }
+    stop();
     start(napcat_dir)
 }
 
@@ -250,10 +291,14 @@ pub fn start(napcat_dir: &Path) -> BootOutcome {
 
     match spawn {
         Ok(child) => {
+            let pid = child.id();
+            if let Ok(mut st) = state().lock() {
+                st.child_pid = Some(pid);
+            }
             tracing::info!(
                 "napcat boot: launched {} (pid {}) with QQ {}",
                 files.launcher.display(),
-                child.id(),
+                pid,
                 files.qq_path.display()
             );
             note_launch_pending();

@@ -6,10 +6,13 @@ pub fn cmd_help() {
 
 协议与登录
   status                          协议进程、登录态、二维码可用性一览
+  start                           无头拉起 NapCat 协议进程
+  stop                            安全终止 NapCat 协议进程（定向清理，不误伤个人日常 QQ）
+  restart                         安全重启 NapCat 协议进程
   login-info                      当前登录 QQ 号与昵称
   quick-login-list                列出可免扫码快速登录的账号
   quick-login --uin <QQ号>        对指定账号执行快速登录（免扫码）
-  qr [--save <path>]              获取真实登录二维码（未登录时有效）
+  qr [--save <path>] [--browser]  获取真实登录二维码（终端 ANSI 字符 / 浏览器弹窗）
 
 联系人与规则（默认全部拒绝）
   contacts [--type friend|group]  同步真实好友/群列表并列出规则

@@ -123,25 +123,35 @@ impl NapCatService {
         resp.json::<Value>().await.map_err(|e| format!("解析响应失败: {}", e))
     }
 
-    pub async fn refresh_qrcode(&self) -> Result<String, String> {
-        let body = self.post_authed("/api/QQLogin/GetQQLoginQrcode", &serde_json::json!({ "refresh": true })).await?;
-        if let Some(qr) = body.get("data").and_then(|d| d.get("qrcode")).and_then(|v| v.as_str()) {
-            if !qr.is_empty() {
-                return Ok(qr.to_string());
+    pub async fn get_qrcode_info(&self) -> Result<(String, Option<String>), String> {
+        let fetch = |body: Value| -> Option<(String, Option<String>)> {
+            let data = body.get("data")?;
+            let qr = data.get("qrcode").and_then(|v| v.as_str())?.to_string();
+            if qr.is_empty() {
+                return None;
+            }
+            let url = data.get("url").and_then(|v| v.as_str()).map(|s| s.to_string());
+            Some((qr, url))
+        };
+
+        if let Ok(body) = self.post_authed("/api/QQLogin/GetQQLoginQrcode", &serde_json::json!({})).await {
+            if let Some(res) = fetch(body) {
+                return Ok(res);
             }
         }
-        Err("NapCat 未返回全新有效二维码".to_string())
+
+        let body = self.post_authed("/api/QQLogin/GetQQLoginQrcode", &serde_json::json!({ "refresh": true })).await?;
+        fetch(body).ok_or_else(|| "NapCat 未返回全新有效二维码".to_string())
+    }
+
+    pub async fn refresh_qrcode(&self) -> Result<String, String> {
+        let (qr, _) = self.get_qrcode_info().await?;
+        Ok(qr)
     }
 
     pub async fn get_qrcode(&self) -> Result<String, String> {
-        if let Ok(body) = self.post_authed("/api/QQLogin/GetQQLoginQrcode", &serde_json::json!({})).await {
-            if let Some(qr) = body.get("data").and_then(|d| d.get("qrcode")).and_then(|v| v.as_str()) {
-                if !qr.is_empty() {
-                    return Ok(qr.to_string());
-                }
-            }
-        }
-        self.refresh_qrcode().await
+        let (qr, _) = self.get_qrcode_info().await?;
+        Ok(qr)
     }
 
     pub async fn check_login(&self) -> Result<Value, String> {

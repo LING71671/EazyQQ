@@ -66,6 +66,7 @@ async fn main() -> ExitCode {
         }
         "log-path" => commands::diagnostics::cmd_log_path(),
         "log-tail" => commands::diagnostics::cmd_log_tail(&args),
+        "stop" => commands::lifecycle::cmd_stop(&args),
         _ => {
             let svc = match Services::build() {
                 Ok(s) => s,
@@ -75,6 +76,9 @@ async fn main() -> ExitCode {
                 }
             };
             match args.command.as_str() {
+                "start" => commands::lifecycle::cmd_start(&svc, &args).await,
+                "stop" => commands::lifecycle::cmd_stop(&args),
+                "restart" => commands::lifecycle::cmd_restart(&svc, &args).await,
                 "status" => commands::protocol::cmd_status(&svc, &args).await,
                 "login-info" => commands::protocol::cmd_login_info(&svc, &args).await,
                 "quick-login-list" => commands::protocol::cmd_quick_login_list(&svc, &args).await,
