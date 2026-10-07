@@ -13,7 +13,7 @@ pub fn read_window_behavior(db: &Database) -> (bool, bool) {
                 let minimize_to_tray = win
                     .get("minimizeToTray")
                     .and_then(|v| v.as_bool())
-                    .unwrap_or(true);
+                    .unwrap_or(false);
                 let close_to_tray = win
                     .get("closeToTray")
                     .and_then(|v| v.as_bool())
@@ -22,7 +22,7 @@ pub fn read_window_behavior(db: &Database) -> (bool, bool) {
             }
         }
     }
-    (true, true)
+    (false, true)
 }
 
 /// Restore the main window from tray / minimized state and pull it to the foreground.

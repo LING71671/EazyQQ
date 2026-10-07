@@ -59,7 +59,7 @@ export const App: React.FC = () => {
       customPrompt: '请提取群聊中的核心讨论议题、达成的共识决议、待办行动项及关联责任人，输出清晰简洁的结构化简报。',
     },
     window: {
-      minimizeToTray: true,
+      minimizeToTray: false,
       closeToTray: true,
     },
   });

@@ -18,6 +18,7 @@ import type {
   QuickLoginAccountDto,
   AppUpdateInfo,
   NapCatUpdateInfo,
+  ModelInfoDto,
 } from './contracts';
 
 export const api = {
@@ -143,7 +144,7 @@ export const api = {
   testAiConnection: async (provider: string, modelId?: string): Promise<ApiResponse<{ isSuccess: boolean; latencyMs: number }>> => {
     return invoke('test_ai_connection', { provider, modelId });
   },
-  fetchProviderModels: async (provider: string, baseUrl?: string, apiKey?: string): Promise<ApiResponse<string[]>> => {
+  fetchProviderModels: async (provider: string, baseUrl?: string, apiKey?: string): Promise<ApiResponse<ModelInfoDto[]>> => {
     return invoke('fetch_provider_models', { provider, baseUrl, apiKey });
   },
   checkDependencies: async (): Promise<ApiResponse<DependencyHealthReport>> => {
@@ -199,6 +200,9 @@ export const api = {
   // Remote Updater
   checkAppUpdate: async (): Promise<ApiResponse<AppUpdateInfo>> => {
     return invoke('check_app_update');
+  },
+  upgradeApp: async (downloadUrl?: string): Promise<ApiResponse<string>> => {
+    return invoke('upgrade_app', { downloadUrl });
   },
   getQqPath: async (): Promise<ApiResponse<string>> => {
     return invoke('get_qq_path');

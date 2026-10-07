@@ -7,6 +7,8 @@ export const AppUpdateCard: React.FC = () => {
   // EazyQQ App update
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [isUpgradingApp, setIsUpgradingApp] = useState(false);
+  const [appUpgradeNotice, setAppUpgradeNotice] = useState<string | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
 
   // NapCat Engine update
@@ -24,7 +26,7 @@ export const AppUpdateCard: React.FC = () => {
         setNapcatVersion(res.data);
       }
     } catch {
-      setNapcatVersion('2.7.3');
+      setNapcatVersion('4.18.33');
     }
   };
 
@@ -35,6 +37,7 @@ export const AppUpdateCard: React.FC = () => {
   const handleCheckUpdate = async () => {
     setIsCheckingUpdate(true);
     setUpdateError(null);
+    setAppUpgradeNotice(null);
     try {
       const res = await api.checkAppUpdate();
       if (res.success && res.data) {
@@ -46,6 +49,26 @@ export const AppUpdateCard: React.FC = () => {
       setUpdateError(e?.message || String(e));
     } finally {
       setIsCheckingUpdate(false);
+    }
+  };
+
+  const handleUpgradeApp = async () => {
+    setIsUpgradingApp(true);
+    setAppUpgradeNotice('正在后台高速下载最新客户端安装包，稍候将自动唤起安装向导并更新...');
+    setUpdateError(null);
+    try {
+      const res = await api.upgradeApp(updateInfo?.downloadUrl);
+      if (res.success) {
+        setAppUpgradeNotice(res.data || '安装程序已唤起，程序即将退出以完成覆盖更新。');
+      } else {
+        setUpdateError(res.error?.message || '自动更新启动失败');
+        setAppUpgradeNotice(null);
+      }
+    } catch (e: any) {
+      setUpdateError(e?.message || String(e));
+      setAppUpgradeNotice(null);
+    } finally {
+      setIsUpgradingApp(false);
     }
   };
 
@@ -98,7 +121,7 @@ export const AppUpdateCard: React.FC = () => {
             <div className="flex items-center gap-2">
               <h4 className="text-xs font-semibold text-slate-900">关于与版本更新</h4>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-sky-50 text-sky-700 border border-sky-200/60">
-                v0.3.0-beta
+                v{updateInfo?.currentVersion || '0.3.2-beta'}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
@@ -119,6 +142,13 @@ export const AppUpdateCard: React.FC = () => {
           <div className="p-2.5 rounded-xl bg-red-50 border border-red-100 text-[11px] text-red-600 flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{updateError}</span>
+          </div>
+        )}
+
+        {appUpgradeNotice && (
+          <div className="p-2.5 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-800 text-[11px] flex items-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin shrink-0 text-amber-600" />
+            <span>{appUpgradeNotice}</span>
           </div>
         )}
 
@@ -145,15 +175,24 @@ export const AppUpdateCard: React.FC = () => {
                 )}
               </div>
               {updateInfo.hasUpdate && (
-                <a
-                  href={updateInfo.downloadUrl || updateInfo.htmlUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-medium transition-colors shadow-2xs"
+                <button
+                  type="button"
+                  onClick={handleUpgradeApp}
+                  disabled={isUpgradingApp}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-medium transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
                 >
-                  <span>下载最新 Release</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+                  {isUpgradingApp ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span>正在自动下载安装...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3 h-3" />
+                      <span>一键自动升级</span>
+                    </>
+                  )}
+                </button>
               )}
             </div>
             {updateInfo.releaseNotes && (

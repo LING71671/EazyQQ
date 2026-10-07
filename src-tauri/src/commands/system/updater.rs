@@ -135,8 +135,84 @@ pub async fn check_app_update() -> Result<ApiResponse<AppUpdateInfo>, String> {
     }))
 }
 
+#[command]
+pub async fn upgrade_app(download_url: Option<String>) -> Result<ApiResponse<String>, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("EazyQQ-App-Updater")
+        .timeout(std::time::Duration::from_secs(180))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let target_url = match download_url {
+        Some(u) if !u.trim().is_empty() => u,
+        _ => {
+            let resp = client
+                .get("https://api.github.com/repos/LING71671/EazyQQ/releases?per_page=5")
+                .send()
+                .await
+                .map_err(|e| format!("获取 Release 列表失败: {}", e))?;
+            let releases: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+            releases
+                .as_array()
+                .and_then(|arr| {
+                    arr.iter().find_map(|r| {
+                        r.get("assets").and_then(|a| a.as_array()).and_then(|assets| {
+                            assets.iter().find_map(|item| {
+                                let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                                if name.ends_with(".exe") || name.ends_with(".msi") {
+                                    item.get("browser_download_url")
+                                        .and_then(|u| u.as_str())
+                                        .map(|s| s.to_string())
+                                } else {
+                                    None
+                                }
+                            })
+                        })
+                    })
+                })
+                .ok_or_else(|| "未找到适用的安装包下载链接".to_string())?
+        }
+    };
+
+    let resp = client.get(&target_url).send().await.map_err(|e| format!("下载安装包失败: {}", e))?;
+    let bytes = resp.bytes().await.map_err(|e| format!("读取安装包数据失败: {}", e))?;
+
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let temp_exe = std::env::temp_dir().join(format!("EazyQQ_Update_Setup_{}.exe", stamp));
+    std::fs::write(&temp_exe, &bytes).map_err(|e| format!("写入临时安装包失败: {}", e))?;
+
+    #[cfg(target_os = "windows")]
+    {
+        let launcher_bat = std::env::temp_dir().join(format!("eazyqq_installer_launcher_{}.bat", stamp));
+        let bat_content = format!(
+            "@echo off\r\ntimeout /t 2 /nobreak >nul\r\nstart \"\" \"{}\"\r\nexit\r\n",
+            temp_exe.to_string_lossy()
+        );
+        let _ = std::fs::write(&launcher_bat, bat_content);
+
+        use std::os::windows::process::CommandExt;
+        let _ = std::process::Command::new("cmd")
+            .args(["/c", &launcher_bat.to_string_lossy()])
+            .creation_flags(0x08000000)
+            .spawn();
+    }
+
+    Ok(ApiResponse::ok("安装包下载完成并已启动安装向导，程序即将退出以完成覆盖更新。".to_string()))
+}
+
 pub fn detect_local_napcat_version() -> String {
     let napcat_dir = crate::services::logging::workspace_root().join("napcat");
+    let ver_txt = napcat_dir.join("version.txt");
+    if let Ok(content) = std::fs::read_to_string(&ver_txt) {
+        let t = content.trim();
+        if !t.is_empty() {
+            return t.to_string();
+        }
+    }
     let pkg = napcat_dir.join("package.json");
     if let Ok(content) = std::fs::read_to_string(&pkg) {
         if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
@@ -147,14 +223,10 @@ pub fn detect_local_napcat_version() -> String {
             }
         }
     }
-    let ver_txt = napcat_dir.join("version.txt");
-    if let Ok(content) = std::fs::read_to_string(&ver_txt) {
-        let t = content.trim();
-        if !t.is_empty() {
-            return t.to_string();
-        }
+    if napcat_dir.join("napcat.mjs").exists() {
+        return "4.18.33".to_string();
     }
-    "2.7.3".to_string()
+    "4.18.33".to_string()
 }
 
 #[command]
@@ -306,6 +378,7 @@ pub async fn upgrade_napcat(download_url: Option<String>) -> Result<ApiResponse<
 
     match output {
         Ok(out) if out.status.success() => {
+            let _ = std::fs::write(napcat_dir.join("version.txt"), "v4.18.33");
             let _ = crate::services::napcat_boot::restart(&napcat_dir);
             Ok(ApiResponse::ok("NapCat 核心解压升级完成，已自动重启服务".to_string()))
         }

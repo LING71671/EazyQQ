@@ -4,7 +4,8 @@ import type {
   AiProviderId, 
   AppConfig, 
   DependencyHealthReport, 
-  SummaryIntervalType 
+  SummaryIntervalType,
+  ModelInfoDto,
 } from '@/api/contracts';
 import { api } from '@/api/client';
 import { WindowBehaviorCard } from '@/views/settings/WindowBehaviorCard';
@@ -43,7 +44,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   >(config.ai?.providers || {});
 
   // Dynamic model fetching
-  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [fetchedModels, setFetchedModels] = useState<ModelInfoDto[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelError, setFetchModelError] = useState<string | null>(null);
 
@@ -63,14 +64,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         if (autoSelectFirstIfEmpty) {
           setModel((cur) => {
             if (!cur.trim()) {
-              const preferred =
-                modelList.find(
-                  (m) =>
-                    m.toLowerCase().includes('free') ||
-                    m.toLowerCase().includes('flash') ||
-                    m.toLowerCase().includes('zen')
-                ) || modelList[0];
-              return preferred || '';
+              const preferred = modelList.find((m) => m.isFree) || modelList[0];
+              return preferred?.id || '';
             }
             return cur;
           });
@@ -131,7 +126,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Window Behavior
   const [minimizeToTray, setMinimizeToTray] = useState(
-    config.window?.minimizeToTray ?? true
+    config.window?.minimizeToTray ?? false
   );
   const [closeToTray, setCloseToTray] = useState(config.window?.closeToTray ?? true);
 
@@ -177,7 +172,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         '请提取群聊中的核心讨论议题、达成的共识决议、待办行动项及关联责任人，输出清晰简洁的结构化简报。'
     );
 
-    setMinimizeToTray(config.window?.minimizeToTray ?? true);
+    setMinimizeToTray(config.window?.minimizeToTray ?? false);
     setCloseToTray(config.window?.closeToTray ?? true);
   }, [config]);
 

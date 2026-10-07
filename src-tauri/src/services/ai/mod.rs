@@ -12,4 +12,4 @@ pub use config::{
     is_local_endpoint, known_providers, preset_base_url, preset_model, provider_preset,
     AiRuntimeConfig, DEFAULT_MODEL_OPENCODE, PRESET_OPENCODE,
 };
-pub use models::fetch_models_from_endpoint;
+pub use models::{fetch_models_with_metadata, ModelInfoDto};

@@ -217,3 +217,11 @@ export interface NapCatUpdateInfo {
   releaseNotes: string;
   downloadUrl?: string;
 }
+
+export interface ModelInfoDto {
+  id: string;
+  name: string;
+  isFree: boolean;
+  costInput?: number;
+  costOutput?: number;
+}

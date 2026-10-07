@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Sparkles, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
-import type { AiProviderId } from '@/api/contracts';
+import type { AiProviderId, ModelInfoDto } from '@/api/contracts';
 
 export const AI_PRESETS: Record<
   AiProviderId,
@@ -66,7 +66,7 @@ interface AiProviderCardProps {
   onChangeModel: (model: string) => void;
   apiKey: string;
   onChangeApiKey: (key: string) => void;
-  fetchedModels: string[];
+  fetchedModels: ModelInfoDto[];
   fetchingModels: boolean;
   fetchModelError: string | null;
   onRefreshModels: () => void;
@@ -86,6 +86,16 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
   fetchModelError,
   onRefreshModels,
 }) => {
+  const [onlyFreeFilter, setOnlyFreeFilter] = useState(false);
+  const isLocal = isLocalEndpoint(baseUrl);
+
+  const isModelFree = (m: ModelInfoDto) => {
+    return isLocal || m.isFree;
+  };
+
+  const freeModelsCount = fetchedModels.filter(isModelFree).length;
+  const modelsToDisplay = onlyFreeFilter ? fetchedModels.filter(isModelFree) : fetchedModels;
+
   return (
     <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-4">
       <div className="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -181,7 +191,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
               />
               <datalist id="dynamic-models-list">
                 {fetchedModels.map((m) => (
-                  <option key={m} value={m} />
+                  <option key={m.id} value={m.id} label={m.name !== m.id ? m.name : undefined} />
                 ))}
               </datalist>
             </div>
@@ -189,30 +199,40 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
 
           {/* Dynamic live models chips */}
           {fetchedModels.length > 0 && (
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-              <div className="flex items-center justify-between text-[11px]">
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
+              <div className="flex items-center justify-between text-[11px] gap-2 flex-wrap">
                 <span className="font-semibold text-slate-700 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  <span>接口实时可用模型 (共 {fetchedModels.length} 个 · 点击选用)：</span>
-                </span>
-                {provider === 'opencode' && (
-                  <span className="text-[10px] text-emerald-700 bg-emerald-100/70 font-medium px-1.5 py-0.5 rounded">
-                    已高亮 OpenCode 官方免费模型
+                  <span>
+                    接口实时可用模型 ({onlyFreeFilter ? `筛选 ${modelsToDisplay.length}/共 ${fetchedModels.length} 个` : `共 ${fetchedModels.length} 个`} · 点击选用)：
                   </span>
-                )}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {freeModelsCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setOnlyFreeFilter(!onlyFreeFilter)}
+                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full border transition-all cursor-pointer ${
+                        onlyFreeFilter
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                          : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                      }`}
+                    >
+                      {onlyFreeFilter ? '显示全部模型' : `只看免费通道 (${freeModelsCount})`}
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="max-h-32 overflow-y-auto pr-1 flex flex-wrap gap-1.5">
-                {fetchedModels.map((m, idx) => {
-                  const isFree =
-                    m.toLowerCase().includes('free') ||
-                    m.toLowerCase().includes('flash') ||
-                    m.toLowerCase().includes('zen');
-                  const isSelected = model === m;
+
+              <div className="max-h-36 overflow-y-auto pr-1 flex flex-wrap gap-1.5">
+                {modelsToDisplay.map((m, idx) => {
+                  const isFree = isModelFree(m);
+                  const isSelected = model === m.id || model === m.name;
                   return (
                     <button
-                      key={m}
+                      key={m.id}
                       type="button"
-                      onClick={() => onChangeModel(m)}
+                      onClick={() => onChangeModel(m.id)}
                       className={`px-2.5 py-1 rounded-lg text-[11px] font-mono transition-all flex items-center gap-1.5 cursor-pointer ${
                         isSelected
                           ? 'bg-sky-600 text-white font-semibold shadow-xs ring-1 ring-sky-600'
@@ -223,7 +243,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
                     >
                       {isFree && (
                         <span className="text-[9px] bg-emerald-600 text-white px-1 py-px rounded font-semibold">
-                          免费
+                          {isLocal ? '本地' : '免费'}
                         </span>
                       )}
                       {!isFree && idx === 0 && (
@@ -231,11 +251,17 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
                           推荐
                         </span>
                       )}
-                      <span>{m}</span>
+                      <span>{m.name || m.id}</span>
                     </button>
                   );
                 })}
               </div>
+
+              <p className="text-[10px] text-slate-400 leading-tight">
+                {isLocal
+                  ? '当前为本地推理服务，所有模型均在宿主机离线计算，不产生 token 费用。'
+                  : '提示：带「免费」徽章为平台公开免配额测试通道；其余商用模型（如 Claude, GPT, Gemini）需在供应方平台拥有调用额度。'}
+              </p>
             </div>
           )}
 

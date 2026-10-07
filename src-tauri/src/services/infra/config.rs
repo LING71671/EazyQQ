@@ -31,7 +31,7 @@ pub fn default_app_config() -> Value {
             "customPrompt": "请提炼群聊核心讨论要点、决策事项与待办行动项，结构清晰明了。"
         },
         "window": {
-            "minimizeToTray": true,
+            "minimizeToTray": false,
             "closeToTray": true
         }
     })

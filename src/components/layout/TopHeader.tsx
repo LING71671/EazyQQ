@@ -25,7 +25,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   chainHasFailure = false,
 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
-  const [minimizeToTray, setMinimizeToTray] = useState(true);
+  const [minimizeToTray, setMinimizeToTray] = useState(false);
   const [closeToTray, setCloseToTray] = useState(true);
 
   // Read the persisted window behavior so button tooltips match reality.

@@ -516,6 +516,7 @@ pub fn run() {
             get_napcat_version,
             check_napcat_update,
             upgrade_napcat,
+            upgrade_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EazyQQ application");

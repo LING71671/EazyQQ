@@ -37,7 +37,7 @@ pub async fn fetch_provider_models(
     provider: String,
     base_url: Option<String>,
     api_key: Option<String>,
-) -> Result<ApiResponse<Vec<String>>, String> {
+) -> Result<ApiResponse<Vec<crate::services::ai::ModelInfoDto>>, String> {
     let (preset_url, _) = crate::services::ai::provider_preset(&provider);
     let target_url = base_url
         .filter(|u| !u.trim().is_empty())
@@ -52,7 +52,7 @@ pub async fn fetch_provider_models(
         None
     };
 
-    match crate::services::ai::fetch_models_from_endpoint(&target_url, key.as_deref()).await {
+    match crate::services::ai::fetch_models_with_metadata(&provider, &target_url, key.as_deref()).await {
         Ok(models) => Ok(ApiResponse::ok(models)),
         Err(e) => Ok(ApiResponse::err(1003, format!("获取模型失败: {}", e), None)),
     }

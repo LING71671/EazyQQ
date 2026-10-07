@@ -4,7 +4,7 @@ use serde_json::Value;
 use super::auth::detect_api_key;
 
 pub const PRESET_OPENCODE: &str = "https://opencode.ai/zen/v1";
-pub const DEFAULT_MODEL_OPENCODE: &str = "qwen3.8-flash";
+pub const DEFAULT_MODEL_OPENCODE: &str = "fledge-alpha-free";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiRuntimeConfig {
