@@ -19,8 +19,14 @@ pub async fn cmd_send(svc: &Services, args: &Args) -> Result<(), String> {
         "auto"
     });
 
+    let client = if let Some(uin) = args.flag("account").or_else(|| args.flag("uin")) {
+        svc.instance_pool.get_client(uin).await
+    } else {
+        svc.onebot.clone()
+    };
+
     let resolved_type = if target_type == "auto" {
-        let groups = svc.onebot.get_group_list().await.unwrap_or_default();
+        let groups = client.get_group_list().await.unwrap_or_default();
         if groups.iter().any(|g| g.group_id.to_string() == target) {
             "group"
         } else {
@@ -30,7 +36,7 @@ pub async fn cmd_send(svc: &Services, args: &Args) -> Result<(), String> {
         target_type
     };
 
-    let resp = svc.onebot.send_msg(resolved_type, &target, &text).await?;
+    let resp = client.send_msg(resolved_type, &target, &text).await?;
     let ok = resp.get("status").and_then(|s| s.as_str()) == Some("ok");
     if !ok {
         return Err(format!("发送失败: {}", resp));

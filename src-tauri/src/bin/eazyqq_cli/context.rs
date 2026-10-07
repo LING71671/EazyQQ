@@ -13,6 +13,7 @@ pub struct Services {
     pub db: Arc<Database>,
     pub napcat: Arc<NapCatService>,
     pub onebot: Arc<OneBotClient>,
+    pub instance_pool: Arc<eazyqq_lib::services::protocol::InstancePool>,
     pub ai: Arc<AiService>,
 }
 
@@ -104,11 +105,13 @@ impl Services {
         };
         tracing::info!("active AI provider -> {}", ai_config.describe());
         let ai = Arc::new(AiService::new(ai_config));
+        let instance_pool = Arc::new(eazyqq_lib::services::protocol::InstancePool::new());
 
         Ok(Services {
             db,
             napcat,
             onebot,
+            instance_pool,
             ai,
         })
     }

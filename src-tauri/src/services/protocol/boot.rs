@@ -22,6 +22,7 @@ pub struct BootState {
     pub consecutive_failures: u32,
     pub awaiting_readiness: bool,
     pub child_pid: Option<u32>,
+    pub instance_pids: std::collections::HashMap<String, u32>,
 }
 
 pub fn state() -> &'static Mutex<BootState> {
@@ -206,6 +207,63 @@ pub fn stop() -> BootOutcome {
     }
 }
 
+pub fn stop_instance(uin: &str) -> BootOutcome {
+    let mut killed_any = false;
+    let mut detail_msgs = Vec::new();
+
+    let mut pid_to_kill = None;
+    if let Ok(mut st) = state().lock() {
+        if let Some(pid) = st.instance_pids.remove(uin) {
+            pid_to_kill = Some(pid);
+        }
+    }
+
+    if pid_to_kill.is_none() {
+        let reg = crate::services::identity::instances::load_registry();
+        if let Some(inst) = reg.instances.iter().find(|i| i.uin == uin) {
+            pid_to_kill = inst.child_pid;
+        }
+    }
+
+    if let Some(pid) = pid_to_kill {
+        #[cfg(target_os = "windows")]
+        {
+            let output = std::process::Command::new("taskkill")
+                .args(["/F", "/T", "/PID", &pid.to_string()])
+                .output();
+            if let Ok(o) = output {
+                if o.status.success() {
+                    killed_any = true;
+                    detail_msgs.push(format!("已停止账号 {} 进程树 (PID {})", uin, pid));
+                }
+            }
+        }
+    }
+
+    let _ = crate::services::identity::instances::update_instance_pid(uin, None);
+
+    BootOutcome {
+        attempted: true,
+        ok: true,
+        detail: if killed_any {
+            detail_msgs.join("; ")
+        } else {
+            format!("未找到账号 {} 的运行中专属进程", uin)
+        },
+    }
+}
+
+pub fn stop_all_instances() -> Vec<BootOutcome> {
+    let reg = crate::services::identity::instances::load_registry();
+    let mut outcomes = Vec::new();
+    for inst in &reg.instances {
+        outcomes.push(stop_instance(&inst.uin));
+    }
+    let default_stop = stop();
+    outcomes.push(default_stop);
+    outcomes
+}
+
 pub fn restart(napcat_dir: &Path) -> BootOutcome {
     if let Ok(mut st) = state().lock() {
         st.consecutive_failures = 0;
@@ -216,7 +274,22 @@ pub fn restart(napcat_dir: &Path) -> BootOutcome {
     start(napcat_dir)
 }
 
+pub fn start_instance(napcat_dir: &Path, uin: &str) -> BootOutcome {
+    let inst = match crate::services::identity::instances::get_or_register_instance(uin, None, napcat_dir) {
+        Ok(i) => i,
+        Err(e) => return BootOutcome { attempted: false, ok: false, detail: e },
+    };
+    start_with_args(napcat_dir, Some(&inst))
+}
+
 pub fn start(napcat_dir: &Path) -> BootOutcome {
+    start_with_args(napcat_dir, None)
+}
+
+pub fn start_with_args(
+    napcat_dir: &Path,
+    inst: Option<&crate::services::identity::instances::AccountInstance>,
+) -> BootOutcome {
     if let Err(reason) = may_attempt() {
         return BootOutcome {
             attempted: false,
@@ -253,8 +326,13 @@ pub fn start(napcat_dir: &Path) -> BootOutcome {
 
     let mut cmd = Command::new(&files.launcher);
     cmd.arg(&files.qq_path)
-        .arg(&files.hook_dll)
-        .current_dir(napcat_dir)
+        .arg(&files.hook_dll);
+
+    if let Some(i) = inst {
+        cmd.arg("-q").arg(&i.uin);
+    }
+
+    cmd.current_dir(napcat_dir)
         .env("NAPCAT_PATCH_PACKAGE", &files.patch_pkg)
         .env("NAPCAT_LOAD_PATH", &files.load_js)
         .env("NAPCAT_INJECT_PATH", &files.hook_dll)
@@ -294,6 +372,12 @@ pub fn start(napcat_dir: &Path) -> BootOutcome {
             let pid = child.id();
             if let Ok(mut st) = state().lock() {
                 st.child_pid = Some(pid);
+                if let Some(i) = inst {
+                    st.instance_pids.insert(i.uin.clone(), pid);
+                }
+            }
+            if let Some(i) = inst {
+                let _ = crate::services::identity::instances::update_instance_pid(&i.uin, Some(pid));
             }
             tracing::info!(
                 "napcat boot: launched {} (pid {}) with QQ {}",
@@ -305,13 +389,21 @@ pub fn start(napcat_dir: &Path) -> BootOutcome {
             BootOutcome {
                 attempted: true,
                 ok: true,
-                detail: match &output_log {
-                    Some(p) => format!(
+                detail: match (inst, &output_log) {
+                    (Some(i), Some(p)) => format!(
+                        "已拉起账号 {} (PID {}, HTTP 端口:{}, WS 端口:{})，日志写入 {}",
+                        i.uin, pid, i.http_port, i.ws_port, p.display()
+                    ),
+                    (Some(i), None) => format!(
+                        "已拉起账号 {} (PID {}, HTTP 端口:{}, WS 端口:{})",
+                        i.uin, pid, i.http_port, i.ws_port
+                    ),
+                    (None, Some(p)) => format!(
                         "已拉起 NapCat（QQ: {}），输出写入 {}",
                         files.qq_path.display(),
                         p.display()
                     ),
-                    None => format!("已拉起 NapCat（QQ: {}）", files.qq_path.display()),
+                    (None, None) => format!("已拉起 NapCat（QQ: {}）", files.qq_path.display()),
                 },
             }
         }

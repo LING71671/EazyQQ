@@ -12,11 +12,14 @@ pub mod workflows;
 
 pub use identity::accounts;
 pub use identity::contacts;
+pub use identity::instances;
 
 pub use infra::config;
 pub use infra::diagnostics;
 pub use infra::logging;
 
+pub use protocol::instance_pool;
+pub use protocol::instance_pool::InstancePool;
 pub use protocol::napcat;
 pub use protocol::napcat_boot;
 pub use protocol::onebot;

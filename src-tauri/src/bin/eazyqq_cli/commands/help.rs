@@ -9,6 +9,7 @@ pub fn cmd_help() {
   start                           无头拉起 NapCat 协议进程
   stop                            安全终止 NapCat 协议进程（定向清理，不误伤个人日常 QQ）
   restart                         安全重启 NapCat 协议进程
+  instances [list|start|stop|add] 原生多开分身管理 [--uin <QQ号>] [--all]
   login-info                      当前登录 QQ 号与昵称
   quick-login-list                列出可免扫码快速登录的账号
   quick-login --uin <QQ号>        对指定账号执行快速登录（免扫码）

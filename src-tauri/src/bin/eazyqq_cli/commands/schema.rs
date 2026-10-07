@@ -24,6 +24,11 @@ pub fn cmd_schema(_args: &Args) -> Result<(), String> {
                 "flags": ["--json"]
             },
             {
+                "name": "instances",
+                "description": "Manage native multi-instance QQ accounts without containerization",
+                "flags": ["list", "start", "stop", "add", "--uin <QQ>", "--all", "--json"]
+            },
+            {
                 "name": "qr",
                 "description": "Get login QR code (console ANSI text or auto browser popup)",
                 "flags": ["--browser", "--save <path>", "--json"]
