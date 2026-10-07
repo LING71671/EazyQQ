@@ -62,6 +62,20 @@ jobs:
           Write-Host "NapCat bundled into $resourceDir"
           Get-ChildItem $resourceDir | Select-Object Name, Length
 
+      - name: Build EazyQQ CLI
+        shell: pwsh
+        run: |
+          cd src-tauri
+          cargo build --release --bin eazyqq_cli
+          cd ..
+          $distDir = "eazyqq-cli-dist"
+          New-Item -ItemType Directory -Path "$distDir/bin" -Force | Out-Null
+          Copy-Item "src-tauri/target/release/eazyqq_cli.exe" "$distDir/bin/eazyqq_cli.exe" -Force
+          if (Test-Path "src-tauri/resources/napcat") {
+            Copy-Item "src-tauri/resources/napcat" "$distDir/napcat" -Recurse -Force
+          }
+          Compress-Archive -Path "$distDir/*" -DestinationPath "eazyqq-cli-windows-x64.zip" -Force
+
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
@@ -69,6 +83,16 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'EazyQQ ${{ github.ref_name }}'
-          releaseBody: '自动化构建发布的 EazyQQ 桌面客户端（内置 NapCat 协议，开箱即用）。'
+          releaseBody: '自动化构建发布的 EazyQQ 桌面客户端与独立无头 CLI 工具（内置 NapCat 协议，开箱即用）。'
           releaseDraft: false
           prerelease: false
+
+      - name: Upload CLI Release Assets
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: |
+            eazyqq-cli-windows-x64.zip
+            src-tauri/target/release/eazyqq_cli.exe
