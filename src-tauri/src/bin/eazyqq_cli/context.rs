@@ -18,6 +18,7 @@ pub struct Services {
 
 impl Services {
     pub fn build() -> Result<Self, String> {
+        logging::load_dotenv();
         let root = logging::workspace_root();
 
         // Resolve the account before touching any data path, exactly as the GUI does -

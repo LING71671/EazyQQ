@@ -45,6 +45,8 @@ mod single_instance {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    services::infra::logging::load_dotenv();
+
     #[cfg(target_os = "windows")]
     single_instance::check_or_exit();
 
