@@ -36,7 +36,7 @@ jobs:
           node-version: 22
 
       - name: Install pnpm from package metadata
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6.1.0
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
