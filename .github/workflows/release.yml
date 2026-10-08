@@ -24,6 +24,10 @@ jobs:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      - name: Use canonical source line endings
+        shell: pwsh
+        run: git config --global core.autocrlf false
+
       - name: Checkout release source
         uses: actions/checkout@v4
         with:

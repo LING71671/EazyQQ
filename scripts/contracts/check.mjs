@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+const read = file => fs.readFileSync(path.join(root, file), 'utf8').replaceAll('\r\n', '\n');
 const write = process.argv.includes('--write');
 const lib = read('src-tauri/src/lib.rs');
 const ipc = lib.match(/invoke_handler\(tauri::generate_handler!\[([\s\S]*?)\]\)/)[1].split(',').map(value => value.trim()).filter(Boolean).sort();
