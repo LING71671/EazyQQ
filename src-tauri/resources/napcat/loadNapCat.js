@@ -1,1 +1,1 @@
-(async () => {await import("file:///B:/EazyQQ/napcat/napcat.mjs")})()
+import("./napcat.mjs");

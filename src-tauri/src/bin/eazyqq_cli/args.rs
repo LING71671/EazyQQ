@@ -12,7 +12,11 @@ pub struct Args {
 
 impl Args {
     pub fn parse() -> Self {
-        let raw: Vec<String> = std::env::args().skip(1).collect();
+        Self::parse_from(std::env::args().skip(1))
+    }
+
+    pub fn parse_from(raw: impl IntoIterator<Item = String>) -> Self {
+        let raw: Vec<String> = raw.into_iter().collect();
         let mut command = String::new();
         let mut flags = HashMap::new();
         let mut switches = Vec::new();
@@ -25,6 +29,21 @@ impl Args {
                 // `--key=value` form
                 if let Some((k, v)) = name.split_once('=') {
                     flags.insert(k.to_string(), v.to_string());
+                } else if matches!(
+                    name,
+                    "json"
+                        | "all"
+                        | "help"
+                        | "deep"
+                        | "browser"
+                        | "whitelist"
+                        | "summary-only"
+                        | "dry-run"
+                        | "confirm"
+                        | "stream"
+                        | "refresh"
+                ) {
+                    switches.push(name.to_string());
                 } else if i + 1 < raw.len() && !raw[i + 1].starts_with("--") {
                     flags.insert(name.to_string(), raw[i + 1].clone());
                     i += 1;
@@ -57,5 +76,20 @@ impl Args {
 
     pub fn json(&self) -> bool {
         self.has("json")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn boolean_flags_do_not_consume_commands_or_subcommands() {
+        let args = Args::parse_from(["--json", "instances", "list"].map(str::to_string));
+        assert_eq!(args.command, "instances");
+        assert_eq!(args.positional, ["list"]);
+        assert!(args.json());
+        let args = Args::parse_from(["--account=10001", "status", "--json"].map(str::to_string));
+        assert_eq!(args.flag("account"), Some("10001"));
+        assert_eq!(args.command, "status");
     }
 }

@@ -55,7 +55,11 @@ pub fn load(db: &Database, target_id: &str) -> TargetPolicy {
     let rules = match db.get_all_rules() {
         Ok(r) => r,
         Err(e) => {
-            tracing::warn!("cannot load rules for {}: {}; using default-deny", target_id, e);
+            tracing::warn!(
+                "cannot load rules for {}: {}; using default-deny",
+                target_id,
+                e
+            );
             return TargetPolicy::default();
         }
     };
@@ -64,8 +68,7 @@ pub fn load(db: &Database, target_id: &str) -> TargetPolicy {
         return TargetPolicy::default();
     };
 
-    let keywords: Vec<String> = serde_json::from_str(&rule.keywords)
-        .unwrap_or_default();
+    let keywords: Vec<String> = serde_json::from_str(&rule.keywords).unwrap_or_default();
 
     TargetPolicy {
         exists: true,

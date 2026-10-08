@@ -25,7 +25,10 @@ mod win {
     const RRF_RT_REG_SZ: u32 = 0x0000_0002;
 
     fn wide(s: &str) -> Vec<u16> {
-        OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+        OsStr::new(s)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect()
     }
 
     /// `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid` - stable across reboots and
@@ -98,10 +101,7 @@ pub fn account_dir(uin: Option<&str>) -> PathBuf {
         Some(u) if !u.trim().is_empty() => sanitize_account(u),
         _ => UNBOUND.to_string(),
     };
-    data_root()
-        .join("accounts")
-        .join(machine_id())
-        .join(leaf)
+    data_root().join("accounts").join(machine_id()).join(leaf)
 }
 
 /// Account ids come from the protocol side, so treat them as untrusted input.
@@ -140,4 +140,15 @@ pub fn other_account_dirs(except_uin: &str) -> Vec<PathBuf> {
 
     dirs.sort_by(|a, b| b.0.cmp(&a.0));
     dirs.into_iter().map(|(_, p)| p).collect()
+}
+
+pub fn validate_uin(uin: &str) -> Result<(), String> {
+    if (5..=20).contains(&uin.len())
+        && uin.bytes().all(|c| c.is_ascii_digit())
+        && !uin.starts_with('0')
+    {
+        Ok(())
+    } else {
+        Err("QQ account must contain 5-20 digits and cannot start with zero".into())
+    }
 }

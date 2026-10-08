@@ -28,7 +28,7 @@ try {
     $Release = Invoke-RestMethod -Uri $ApiUrl -Headers @{ 'User-Agent' = 'EazyQQ-Installer' }
     $TagName = $Release.tag_name
 } catch {
-    $TagName = "v0.3.0-beta"
+    throw "Cannot resolve the current release: $($_.Exception.Message). Retry after restoring network access."
 }
 Write-Host "    目标版本: $TagName" -ForegroundColor Green
 

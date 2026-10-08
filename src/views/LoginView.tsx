@@ -1,9 +1,13 @@
+import { AccountLoginQr } from '@/components/accounts/AccountLoginQr';
+import { AccountManager } from '@/components/accounts/AccountManager';
 import React, { useState, useEffect } from 'react';
-import { QrCode, RefreshCw, Smartphone, CheckCircle, ShieldCheck, Loader2, Sparkles, UserCheck, Activity } from 'lucide-react';
+import { QrCode, RefreshCw, Smartphone, CheckCircle, ShieldCheck, Loader2, Sparkles, UserCheck, Activity, LogOut, ArrowRightLeft } from 'lucide-react';
 import QRCode from 'qrcode';
 import type { ProtocolStatusDto, QuickLoginAccountDto } from '@/api/contracts';
 
 interface LoginViewProps {
+  pendingLogin?: { uin: string; qrcodeBase64: string } | null;
+  onCancelPendingLogin?: () => void;
   status: ProtocolStatusDto;
   onRefreshQr: () => void;
   isLoading: boolean;
@@ -12,54 +16,46 @@ interface LoginViewProps {
   onQuickLogin?: (uin: string) => void;
   isQuickLoggingIn?: string | null;
   onOpenHealth?: () => void;
+  onLogout?: () => void;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({
   status,
+  pendingLogin,
+  onCancelPendingLogin,
   onRefreshQr,
   isLoading,
   error,
   onQuickLogin,
   isQuickLoggingIn,
   onOpenHealth,
+  onLogout,
 }) => {
   const isLoggedIn = status.loginStatus === 'logged_in';
   const [generatedQr, setGeneratedQr] = useState<string | null>(null);
   const [refreshedNotice, setRefreshedNotice] = useState(false);
 
   useEffect(() => {
-    if (isLoggedIn) {
-      setGeneratedQr(null);
-      return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    setGeneratedQr(null);
+    if (!isLoggedIn && status.qrcodeBase64) {
+      const raw = status.qrcodeBase64;
+      const image = raw.startsWith('http://') || raw.startsWith('https://')
+        ? QRCode.toDataURL(raw, { width: 256, margin: 2 })
+        : Promise.resolve(raw.startsWith('data:') ? raw : `data:image/png;base64,${raw}`);
+      image.then(url => {
+        if (cancelled) return;
+        setGeneratedQr(url); setRefreshedNotice(true);
+        timer = setTimeout(() => setRefreshedNotice(false), 3000);
+      }).catch(() => { if (!cancelled) setGeneratedQr(null); });
     }
-    if (status.qrcodeBase64) {
-      if (status.qrcodeBase64.startsWith('http://') || status.qrcodeBase64.startsWith('https://')) {
-        QRCode.toDataURL(status.qrcodeBase64, { width: 256, margin: 2 })
-          .then((url) => {
-            setGeneratedQr(url);
-            setRefreshedNotice(true);
-            const timer = setTimeout(() => setRefreshedNotice(false), 3000);
-            return () => clearTimeout(timer);
-          })
-          .catch((err) => {
-            console.error('Failed to generate QR from URL:', err);
-          });
-      } else if (status.qrcodeBase64.startsWith('data:')) {
-        setGeneratedQr(status.qrcodeBase64);
-        setRefreshedNotice(true);
-        const timer = setTimeout(() => setRefreshedNotice(false), 3000);
-        return () => clearTimeout(timer);
-      } else {
-        setGeneratedQr(`data:image/png;base64,${status.qrcodeBase64}`);
-        setRefreshedNotice(true);
-        const timer = setTimeout(() => setRefreshedNotice(false), 3000);
-        return () => clearTimeout(timer);
-      }
-    }
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [status.qrcodeBase64, isLoggedIn]);
 
   const currentQrImage = generatedQr;
   const quickAccounts: QuickLoginAccountDto[] = status.quickLoginAccounts || [];
+  const otherQuickAccounts = quickAccounts.filter((acc) => acc.uin !== status.qqNumber);
 
   // Determine if the current notice is a normal loading/startup state
   const isStartupNotice =
@@ -67,8 +63,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
     (error && (error.includes('启动') || error.includes('加载') || error.includes('准备') || error.includes('NapCat') || error.includes('凭据')));
 
   return (
-    <div className="flex-1 h-full p-8 flex flex-col items-center justify-center select-none bg-slate-50/50 overflow-y-auto">
-      <div className="max-w-lg w-full bg-white rounded-3xl p-8 border border-slate-200/80 shadow-sm flex flex-col items-center text-center transition-all">
+    <div className="flex-1 h-full p-8 flex flex-col items-center select-none bg-slate-50/50 overflow-y-auto">
+      <div className="max-w-lg w-full bg-white rounded-3xl p-8 shrink-0 border border-slate-200/80 shadow-sm flex flex-col items-center text-center transition-all">
         {/* Header Icon */}
         <div className="w-12 h-12 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center mb-4 border border-sky-100 shadow-2xs">
           {isLoggedIn ? <CheckCircle className="w-6 h-6 text-emerald-600" /> : <QrCode className="w-6 h-6" />}
@@ -87,24 +83,101 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
         {/* Logged in state */}
         {isLoggedIn ? (
-          <div className="flex flex-col items-center gap-3 py-6">
-            <div className="w-20 h-20 rounded-full border-2 border-emerald-500/40 p-1 bg-emerald-50 flex items-center justify-center shadow-xs">
-              {status.avatarUrl ? (
-                <img src={status.avatarUrl} alt="Avatar" className="w-full h-full rounded-full object-cover" />
-              ) : (
-                <CheckCircle className="w-10 h-10 text-emerald-600" />
+          <div className="w-full flex flex-col items-center gap-4 py-4">
+            <div className="flex flex-col items-center gap-2.5">
+              <div className="w-20 h-20 rounded-full border-2 border-emerald-500/40 p-1 bg-emerald-50 flex items-center justify-center shadow-xs">
+                {status.avatarUrl ? (
+                  <img src={status.avatarUrl} alt="Avatar" className="w-full h-full rounded-full object-cover" />
+                ) : (
+                  <CheckCircle className="w-10 h-10 text-emerald-600" />
+                )}
+              </div>
+              <div className="text-sm font-semibold text-slate-900">
+                {status.nickname || 'QQ 账号'}
+              </div>
+              <span className="text-xs text-slate-400 font-mono">
+                QQ: {status.qqNumber || '已连接'}
+              </span>
+              <div className="mt-1 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200/80 text-emerald-700 text-xs font-medium">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>QQ 会话已登录</span>
+              </div>
+              {error && (
+                <div className="mt-2 w-full p-2.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 text-center animate-in fade-in">
+                  {error}
+                </div>
               )}
             </div>
-            <div className="text-sm font-semibold text-slate-900">
-              {status.nickname || 'QQ 账号'}
-            </div>
-            <span className="text-xs text-slate-400 font-mono">
-              QQ: {status.qqNumber || '已连接'}
-            </span>
-            <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200/80 text-emerald-700 text-xs font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>链路畅通，服务已就绪</span>
-            </div>
+
+            {/* Other quick login accounts available for switching */}
+            {otherQuickAccounts.length > 0 && (
+              <div className="w-full mt-3 p-4 rounded-2xl bg-sky-50/50 border border-sky-100/90 text-left">
+                <div className="flex items-center gap-2 mb-2.5 text-xs font-semibold text-sky-900">
+                  <ArrowRightLeft className="w-3.5 h-3.5 text-sky-600" />
+                  <span>切换至本机其他已记忆账号</span>
+                </div>
+                <div className="space-y-2">
+                  {otherQuickAccounts.map((acc) => {
+                    const isLoggingThis = isQuickLoggingIn === acc.uin;
+                    return (
+                      <div
+                        key={acc.uin}
+                        className="flex items-center justify-between p-2.5 rounded-xl border bg-white border-slate-200/80 hover:border-sky-200 transition-all"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <img
+                            src={acc.faceUrl || `https://q1.qlogo.cn/g?b=qq&nk=${acc.uin}&s=100`}
+                            alt={acc.nickname}
+                            className="w-8 h-8 rounded-full border border-slate-100 object-cover shrink-0"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = 'none';
+                            }}
+                          />
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-xs font-semibold text-slate-800 truncate">
+                              {acc.nickname}
+                            </span>
+                            <span className="text-[11px] text-slate-400 font-mono">
+                              {acc.uin}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => onQuickLogin && onQuickLogin(acc.uin)}
+                          disabled={!!isQuickLoggingIn}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white text-xs font-medium shadow-2xs transition-all cursor-pointer disabled:opacity-60"
+                        >
+                          {isLoggingThis ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>切换中…</span>
+                            </>
+                          ) : (
+                            <>
+                              <ArrowRightLeft className="w-3 h-3" />
+                              <span>切换登录</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Logout / Switch action */}
+            {onLogout && (
+              <button
+                type="button"
+                onClick={onLogout}
+                className="mt-2 flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 hover:border-rose-300 hover:bg-rose-50/50 text-rose-700 hover:text-rose-700 text-xs font-medium transition-all cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>退出当前账号 / 重新扫码登录</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="w-full flex flex-col items-center">
@@ -118,15 +191,10 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 <div className="space-y-2">
                   {quickAccounts.map((acc) => {
                     const isLoggingThis = isQuickLoggingIn === acc.uin;
-                    const isTargetUser = acc.uin === '462564834';
                     return (
                       <div
                         key={acc.uin}
-                        className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
-                          isTargetUser
-                            ? 'bg-white border-sky-200/90 shadow-2xs'
-                            : 'bg-white/80 border-slate-200/60 hover:border-sky-200'
-                        }`}
+                        className="flex items-center justify-between p-2.5 rounded-xl border bg-white border-slate-200/80 hover:border-sky-200 transition-all shadow-2xs"
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           <img
@@ -257,6 +325,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
           <span>本地优先存储，账号凭证与规则安全保存在本机</span>
         </div>
       </div>
+      {pendingLogin && <AccountLoginQr pending={pendingLogin} onConfirmed={uin => onQuickLogin?.(uin)} onCancel={() => onCancelPendingLogin?.()} />}
+      <AccountManager onSelect={onQuickLogin} switching={isQuickLoggingIn} />
     </div>
   );
 };

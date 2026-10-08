@@ -52,3 +52,8 @@ Thumbs.db
 
 # AI agent workspace data (logs, memory, scratch diagnostics)
 .workbuddy-ai/
+
+# Isolated validation fixtures and browser artifacts
+.test-runtime/
+.playwright-cli/
+output/

@@ -1,53 +1,53 @@
-# EazyQQ Full Technical Specification & Machine Interface Guide
+# EazyQQ 智能体操作指南
 
-## Architecture Overview
-EazyQQ consists of:
-1. **Frontend**: React 19 + TypeScript + TailwindCSS bundled via Vite into a Tauri v2 Webview2 shell.
-2. **Backend Library (`eazyqq_lib`)**:
-   - `services::identity`: Machine-account path derivation, bootstrap state, and pre-isolation data migration.
-   - `services::protocol`: NapCat process supervision, OneBot v11 HTTP/WebSocket client, and patch verification.
-   - `services::security`: Default-deny rule evaluation, rate limiters, cooldowns, and mention detection.
-   - `services::workflows`: Message pipeline, noise filters, group chat summarization, and Office/PDF text extraction.
-   - `services::ai`: OpenAI-compatible HTTP client, local endpoint detection, and runtime configuration.
-   - `services::storage`: SQLite database manager with WAL mode, busy timeout, and contact rule persistence.
-   - `services::infra`: Pure-Rust ZIP container, desensitization/redaction, and persistent file logging.
-3. **CLI Binary (`eazyqq_cli`)**: Modular CLI offering all GUI backend capabilities headlessly, including a native MCP server (`eazyqq_cli mcp`).
+适用于 0.5.0。修改前阅读 AGENTS.md、docs/ARCHITECTURE.md 和最新中文开发记录。接口以 docs/api/IPC.md、docs/api/CLI.md 和生成的 cli.schema.json 为准。运行 `eazyqq_cli schema --json` 获取当前构建的命令参数；MCP 使用 tools/list 获取实际工具定义，不根据历史示例猜参数。
 
-## CLI Commands
-- `eazyqq_cli status [--json]`: Shows current account, NapCat status, and active AI model.
-- `eazyqq_cli health [--json] [--deep]`: Runs diagnostics on NapCat, OneBot, SQLite, and AI endpoints.
-- `eazyqq_cli selftest [--json]`: Runs internal end-to-end selftests (ZIP, redaction, migrations).
-- `eazyqq_cli contacts [--type friend|group] [--json]`: Lists all known contacts with unread badges.
-- `eazyqq_cli chat --target <ID> --message <TEXT>`: Sends a private or group message.
-- `eazyqq_cli history --target <ID> [--limit <N>]`: Retrieves latest messages from the local SQLite store.
-- `eazyqq_cli summary --target <ID> [--hours <N>] [--prompt <TEXT>]`: Generates a group chat summary.
-- `eazyqq_cli extract-file --path <PATH>`: Extracts readable text from .docx, .pptx, .xlsx, or .txt files.
-- `eazyqq_cli rule-set --target <ID> [--ai-mode on|off|auto] [--summary-whitelist true|false]`: Updates dispatch rules.
-- `eazyqq_cli mcp`: Runs the Model Context Protocol (stdio) server for external AI agents.
-- `eazyqq_cli schema [--json]`: Exports full JSON schemas for CLI commands and MCP tools.
+## 运行约束
 
-## Model Context Protocol (MCP) Interface
-Run `eazyqq_cli mcp` over stdio with JSON-RPC 2.0 messages:
-- `initialize`: Returns server capabilities and metadata.
-- `tools/list`: Lists all available tools and parameter schemas.
-- `tools/call`: Executes a tool with the provided arguments.
+登录探测只读。只有确认目标身份后才提交选择；桌面重新建立应用上下文，执行中的数据库/模型任务保持原账号归属。
 
-### Exposed Tools
-1. `send_message`: `target_type` ("private" | "group"), `target_id` (string), `message` (string).
-2. `get_chat_history`: `target_id` (string), `limit` (integer, default 20).
-3. `list_contacts`: `target_type` ("friend" | "group" | "all", default "all").
-4. `trigger_group_summary`: `target_id` (string), `sliding_window_hours` (integer, default 6), `custom_prompt` (string, optional).
-5. `extract_document`: `file_path` (string).
-6. `simulate_rule_match`: `sender_id` (string), `target_id` (string), `content` (string), `is_group` (boolean).
-7. `update_target_rule`: `target_id` (string), `ai_mode` ("on" | "off" | "auto", optional), `is_summary_whitelist` (boolean, optional).
-8. `get_system_health`: Deep health check of NapCat, OneBot, SQLite, and AI inference endpoints.
-9. `restart_napcat`: Gracefully restarts the NapCat supervisor process.
+每个账号拥有三个独立端点、配置、数据库、AI 会话和 WebView 数据目录。只共享不可变协议资源。系统工作租约防止重复消费；JSON 修改持有文件锁并原子替换，损坏文件不静默覆盖。
 
-## Environment Variables
-- `LLM_API_KEY`: API key for OpenAI-compatible cloud inference.
-- `OPENAI_API_KEY`: Fallback alias for `LLM_API_KEY`.
-- `AI_API_KEY`: Fallback alias for `LLM_API_KEY`.
-- `TEST_SECRET_KEY`: Custom secret token for redaction and unit test fixtures.
-- `NAPCAT_WEBUI_PORT`: Default 6099.
-- `ONEBOT_HTTP_PORT`: Default 3000.
-- `ONEBOT_WS_PORT`: Default 3001.
+Windows Job 收据只授权本次创建的协议进程树。独立监督进程保持控制能力；禁止按 QQ.exe 名或未验证 PID 清理。恢复保留已登录、外部管理和正在运行的会话。安装不会批量结束 QQ。
+
+未知健康表示尚无当前验证，不等于失败。普通监控不发起模型推理。health --deep 与 ai-test 是显式调用。免费 OpenCode 使用原生运行时、私有会话和非交互工具权限；兼容服务使用 HTTP。目录 metadata 不等于推理可用性。
+
+## 入口示例
+
+eazyqq_cli accounts add --uin 10001 --json
+eazyqq_cli accounts start --uins 10001,10002 --dry-run --json
+eazyqq_cli accounts qr --uin 10001 --json
+eazyqq_cli accounts status --uin 10001 --json
+eazyqq_cli accounts select --uin 10001 --json
+eazyqq_cli --account 10001 status --json
+eazyqq_cli --account 10001 run
+eazyqq_cli run --all
+eazyqq_cli ai-models --json
+eazyqq_cli ai-set --provider opencode --model big-pickle --json
+eazyqq_cli ai-test --prompt "Reply only OK" --json
+eazyqq_cli repair --json
+eazyqq_cli mcp
+
+accounts login 不改变选择，accounts select 提交已验证身份；批量按账号返回结果，forget 保留数据。消息发送、草稿审核与自动回复会影响真实联系人，必须遵循用户授权。测试默认使用模拟协议，真实账号不启用自动回复规则。
+
+## 环境与分发
+
+EAZYQQ_ROOT 指定隔离安装/数据根目录。EAZYQQ_OPENCODE_BIN 指定原生 OpenCode。普通云服务的 LLM_API_KEY、OPENAI_API_KEY、AI_API_KEY 不自动作为免费 OpenCode 凭据。
+
+桌面安装包包含 eazyqq_cli.exe；CLI ZIP 提供 bin/eazyqq_cli.exe、bin/ezq.exe、协议资源和中文文档。窗口命令需要运行中的桌面。MCP stdout 只含 JSON-RPC，通知不回复。
+
+## 开发与验收
+
+pnpm version:check
+pnpm contracts:check
+pnpm typecheck
+pnpm test
+pnpm test:rust
+pnpm build
+pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli
+pnpm test:smoke
+pnpm test:native
+pnpm tauri:build
+pnpm release:package
+
+使用 pnpm 和本项目 MSVC 包装脚本；Python 环境遵循 AGENTS.md。单元测试目录必须隔离。接口变更同步生成契约与中文文档，开发记录只写已观察证据。发布过程见 docs/release/RELEASING.md。

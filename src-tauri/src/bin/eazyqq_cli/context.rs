@@ -6,9 +6,6 @@ use eazyqq_lib::services::logging;
 use eazyqq_lib::services::napcat::NapCatService;
 use eazyqq_lib::services::onebot::OneBotClient;
 
-pub const NAPCAT_WEBUI: &str = "http://127.0.0.1:6099";
-pub const ONEBOT_HTTP: &str = "http://127.0.0.1:3000";
-
 pub struct Services {
     pub db: Arc<Database>,
     pub napcat: Arc<NapCatService>,
@@ -20,12 +17,11 @@ pub struct Services {
 impl Services {
     pub fn build() -> Result<Self, String> {
         logging::load_dotenv();
-        let root = logging::workspace_root();
 
         // Resolve the account before touching any data path, exactly as the GUI does -
         // otherwise the CLI would read a different directory than the app writes to.
         let bootstrap = eazyqq_lib::services::accounts::read_bootstrap();
-        eazyqq_lib::services::accounts::set_active(bootstrap.last_account.clone());
+        let primary_account = bootstrap.last_account;
 
         let data_dir = logging::data_dir();
         logging::ensure_dir(&data_dir);
@@ -33,20 +29,13 @@ impl Services {
         // Relocate pre-isolation data BEFORE creating a database: once an empty
         // `eazyqq.db` exists in the account directory the migration is skipped by design,
         // and the user would appear to have lost all their rules and drafts.
-        if let Some(uin) = eazyqq_lib::services::accounts::active() {
+        if let Some(uin) = eazyqq_lib::services::accounts::active()
+            .filter(|uin| primary_account.as_ref() == Some(uin))
+        {
             if let Err(e) = eazyqq_lib::services::accounts::migrate_legacy_if_needed(&uin) {
                 tracing::warn!("account data migration failed: {}", e);
             }
             eazyqq_lib::services::accounts::migrate_unbound_if_needed(&uin);
-            // NapCat's own logs contain message text and live in the shared `napcat/`
-            // directory; sweep them under the account like the GUI does.
-            let swept = eazyqq_lib::services::accounts::sweep_napcat_artifacts(
-                &root.join("napcat"),
-                &uin,
-            );
-            if !swept.is_empty() {
-                tracing::info!("swept shared NapCat artefacts: {}", swept.join(", "));
-            }
         }
 
         let db = Arc::new(
@@ -72,18 +61,23 @@ impl Services {
             ),
         }
 
-        let napcat_dir = root.join("napcat");
+        let source = eazyqq_lib::services::napcat_boot::locate_napcat_dir();
+        let (napcat_dir, http_port, _, webui_port) =
+            eazyqq_lib::services::protocol::layout::selected(&source);
 
         // No fallback token: it is read from `napcat/config/webui.json`. A token is
         // generated per installation, so a hardcoded one would fail on any other machine
         // and would ship a credential in the source tree.
         let napcat = Arc::new(NapCatService::new(
-            NAPCAT_WEBUI.to_string(),
+            format!("http://127.0.0.1:{}", webui_port),
             String::new(),
             napcat_dir.to_string_lossy().to_string(),
         ));
 
-        let onebot = Arc::new(OneBotClient::new(ONEBOT_HTTP.to_string()));
+        let onebot = Arc::new(OneBotClient::for_account(
+            format!("http://127.0.0.1:{}", http_port),
+            eazyqq_lib::services::accounts::active(),
+        ));
 
         let api_key = std::env::var("LLM_API_KEY")
             .or_else(|_| std::env::var("OPENAI_API_KEY"))

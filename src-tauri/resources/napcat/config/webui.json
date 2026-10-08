@@ -1,7 +1,6 @@
 {
-  "host": "0.0.0.0",
+  "host": "127.0.0.1",
   "port": 6099,
-  "token": "f7376db3d59d",
-  "loginRate": 10,
+  "token": "",
   "autoLoginAccount": ""
 }

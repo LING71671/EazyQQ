@@ -42,7 +42,10 @@ pub fn truncate(s: &str, width: usize) -> String {
     if chars.len() <= width {
         s.to_string()
     } else {
-        format!("{}…", chars[..width.saturating_sub(1)].iter().collect::<String>())
+        format!(
+            "{}…",
+            chars[..width.saturating_sub(1)].iter().collect::<String>()
+        )
     }
 }
 

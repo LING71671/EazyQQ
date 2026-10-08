@@ -1,6 +1,6 @@
 [package]
 name = "eazyqq"
-version = "0.3.3-beta"
+version = "0.5.0"
 description = "EazyQQ Desktop Application"
 authors = ["EazyQQ Team"]
 edition = "2021"
@@ -11,10 +11,6 @@ default-run = "eazyqq"
 [[bin]]
 name = "eazyqq"
 path = "src/main.rs"
-
-[[bin]]
-name = "ezq"
-path = "src/bin/eazyqq_cli/main.rs"
 
 [[bin]]
 name = "eazyqq_cli"
@@ -32,6 +28,10 @@ crate-type = ["rlib"]
 tauri-build = { version = "2.2", features = [] }
 
 [dependencies]
+fs2 = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+semver = "1.0"
+getrandom = "0.3"
 tauri = { version = "2.2", features = ["tray-icon"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"

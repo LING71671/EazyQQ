@@ -1,9 +1,12 @@
+import { getVersion } from '@tauri-apps/api/app';
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, AlertCircle, Sparkles, CheckCircle2, ExternalLink, Cpu, Download, Loader2, ArrowUpCircle } from 'lucide-react';
 import type { AppUpdateInfo, NapCatUpdateInfo } from '@/api/contracts';
 import { api } from '@/api/client';
 
 export const AppUpdateCard: React.FC = () => {
+  const [currentVersion, setCurrentVersion] = useState('');
+  useEffect(() => { let active = true; getVersion().then(version => { if (active) setCurrentVersion(version); }).catch(() => {}); return () => { active = false; }; }, []);
   // EazyQQ App update
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
@@ -26,7 +29,7 @@ export const AppUpdateCard: React.FC = () => {
         setNapcatVersion(res.data);
       }
     } catch {
-      setNapcatVersion('4.18.33');
+      setNapcatVersion('unknown');
     }
   };
 
@@ -121,7 +124,7 @@ export const AppUpdateCard: React.FC = () => {
             <div className="flex items-center gap-2">
               <h4 className="text-xs font-semibold text-slate-900">关于与版本更新</h4>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-sky-50 text-sky-700 border border-sky-200/60">
-                v{updateInfo?.currentVersion || '0.3.2-beta'}
+                v{currentVersion || updateInfo?.currentVersion || '读取中'}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">

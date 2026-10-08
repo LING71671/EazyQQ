@@ -2,6 +2,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import type {
   ApiResponse,
+  AccountReport,
+  AccountInfoDto,
+  BatchAccountOutcome,
+  RepairReport,
   ProtocolStatusDto,
   ContactItemDto,
   RoutingRuleDto,
@@ -22,6 +26,13 @@ import type {
 } from './contracts';
 
 export const api = {
+  getAccountStatus: (uin: string): Promise<ApiResponse<AccountReport>> => invoke('get_account_status', { uin }),
+  listAccounts: (): Promise<ApiResponse<AccountReport[]>> => invoke('list_accounts'),
+  registerAccount: (uin: string): Promise<ApiResponse<AccountInfoDto>> => invoke('register_account', { uin }),
+  configureAccount: (uin: string, autoStart: boolean): Promise<ApiResponse<void>> => invoke('configure_account', { uin, autoStart }),
+  batchAccounts: (operation: string, uins: string[]): Promise<ApiResponse<BatchAccountOutcome[]>> => invoke('batch_accounts', { operation, uins }),
+  accountQrCode: (uin: string, refresh = false): Promise<ApiResponse<{ uin: string; qrcodeBase64?: string; loggedIn?: boolean }>> => invoke('account_qrcode', { uin, refresh }),
+  repairChain: (): Promise<ApiResponse<RepairReport>> => invoke('repair_chain'),
   // Protocol & Auth
   getProtocolStatus: async (): Promise<ApiResponse<ProtocolStatusDto>> => {
     return invoke('get_protocol_status');
@@ -141,8 +152,38 @@ export const api = {
   updateConfig: async (config: Partial<AppConfig>): Promise<ApiResponse<AppConfig>> => {
     return invoke('update_config', { config });
   },
-  testAiConnection: async (provider: string, modelId?: string): Promise<ApiResponse<{ isSuccess: boolean; latencyMs: number }>> => {
-    return invoke('test_ai_connection', { provider, modelId });
+  testAiConnection: async (
+    options?: {
+      provider?: string;
+      modelId?: string;
+      baseUrl?: string;
+      apiKey?: string;
+      prompt?: string;
+    } | string,
+    modelIdLegacy?: string
+  ): Promise<ApiResponse<{
+    isSuccess: boolean;
+    latencyMs: number;
+    provider?: string;
+    model?: string;
+    endpoint?: string;
+    prompt?: string;
+    reply?: string;
+    reasoning?: string;
+  }>> => {
+    let payload = {};
+    if (typeof options === 'string') {
+      payload = { provider: options, modelId: modelIdLegacy };
+    } else if (options) {
+      payload = {
+        provider: options.provider,
+        modelId: options.modelId,
+        baseUrl: options.baseUrl,
+        apiKey: options.apiKey,
+        prompt: options.prompt,
+      };
+    }
+    return invoke('test_ai_connection', payload);
   },
   fetchProviderModels: async (provider: string, baseUrl?: string, apiKey?: string): Promise<ApiResponse<ModelInfoDto[]>> => {
     return invoke('fetch_provider_models', { provider, baseUrl, apiKey });
@@ -179,19 +220,19 @@ export const api = {
   // Routed through native Rust commands on purpose: custom commands are not gated by
   // the capability ACL, so window control keeps working even if a capability file is
   // missing or stale (that regression is what broke minimize / drag before).
-  minimizeWindow: async (): Promise<ApiResponse<boolean>> => {
+  minimizeWindow: async (): Promise<boolean> => {
     return invoke('app_minimize_window');
   },
-  toggleMaximizeWindow: async (): Promise<ApiResponse<boolean>> => {
+  toggleMaximizeWindow: async (): Promise<boolean> => {
     return invoke('app_toggle_maximize_window');
   },
-  closeWindow: async (): Promise<ApiResponse<boolean>> => {
+  closeWindow: async (): Promise<boolean> => {
     return invoke('app_close_window');
   },
-  startDragWindow: async (): Promise<ApiResponse<void>> => {
+  startDragWindow: async (): Promise<void> => {
     return invoke('app_start_drag_window');
   },
-  showWindow: async (): Promise<ApiResponse<void>> => {
+  showWindow: async (): Promise<void> => {
     return invoke('app_show_window');
   },
   getWindowBehavior: async (): Promise<ApiResponse<WindowBehaviorDto>> => {

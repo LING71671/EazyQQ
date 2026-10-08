@@ -249,12 +249,21 @@ export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
                 一键启动/重启
               </button>
             ) : chainFirstBreak.label.includes('大模型') ? (
-              <button
-                onClick={onQuickSwitchOpenCode}
-                className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-medium text-xs shrink-0 shadow-xs transition-colors cursor-pointer"
-              >
-                切至官方免费通道
-              </button>
+              chainFirstBreak.detail.includes('@ opencode') ? (
+                <button
+                  onClick={onCheckHealth}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-medium text-xs shrink-0 shadow-xs transition-colors cursor-pointer"
+                >
+                  重新嗅探连通性
+                </button>
+              ) : (
+                <button
+                  onClick={onQuickSwitchOpenCode}
+                  className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-medium text-xs shrink-0 shadow-xs transition-colors cursor-pointer"
+                >
+                  切至官方免费通道
+                </button>
+              )
             ) : null}
           </div>
         ) : chainLinks.length > 0 ? (
@@ -305,12 +314,21 @@ export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
                     </button>
                   )}
                   {link.link.includes('ai_provider') && (
-                    <button
-                      onClick={onQuickSwitchOpenCode}
-                      className="px-2.5 py-1 text-[11px] rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 font-medium transition-colors cursor-pointer"
-                    >
-                      切免费通道
-                    </button>
+                    link.detail.includes('@ opencode') ? (
+                      <button
+                        onClick={onCheckHealth}
+                        className="px-2.5 py-1 text-[11px] rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 font-medium transition-colors cursor-pointer"
+                      >
+                        重新检测
+                      </button>
+                    ) : (
+                      <button
+                        onClick={onQuickSwitchOpenCode}
+                        className="px-2.5 py-1 text-[11px] rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 font-medium transition-colors cursor-pointer"
+                      >
+                        切免费通道
+                      </button>
+                    )
                   )}
                 </div>
               )}

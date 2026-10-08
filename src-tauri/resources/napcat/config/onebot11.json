@@ -2,37 +2,29 @@
   "network": {
     "httpServers": [
       {
-        "name": "http-server",
+        "name": "eazyqq-http",
         "enable": true,
-        "port": 3000,
         "host": "127.0.0.1",
-        "enableCors": true,
-        "enableWebsocket": false,
-        "messagePostFormat": "array",
+        "port": 3000,
         "token": "",
-        "debug": false
+        "messagePostFormat": "array"
       }
     ],
-    "httpSseServers": [],
-    "httpClients": [],
     "websocketServers": [
       {
-        "name": "websocket-server",
+        "name": "eazyqq-ws",
         "enable": true,
         "host": "127.0.0.1",
         "port": 3001,
+        "token": "",
         "messagePostFormat": "array",
         "reportSelfMessage": false,
-        "token": "",
-        "enableForcePushEvent": true,
-        "debug": false,
         "heartInterval": 30000
       }
     ],
+    "httpClients": [],
+    "httpSseServers": [],
     "websocketClients": [],
     "plugins": []
-  },
-  "musicSignUrl": "",
-  "enableLocalFile2Url": false,
-  "parseMultMsg": false
+  }
 }

@@ -1,9 +1,6 @@
 {
   "fileLog": true,
   "consoleLog": true,
-  "fileLogLevel": "debug",
-  "consoleLogLevel": "info",
-  "packetBackend": "auto",
-  "packetServer": "",
-  "o3HookMode": 1
+  "fileLogLevel": "info",
+  "consoleLogLevel": "info"
 }

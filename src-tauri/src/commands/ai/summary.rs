@@ -1,6 +1,6 @@
-use tauri::{command, State};
 use crate::commands::AppState;
 use crate::models::{ApiResponse, GroupSummaryDto};
+use tauri::{command, State};
 
 #[command]
 pub async fn generate_summary(
@@ -18,7 +18,11 @@ pub async fn generate_summary(
         .unwrap_or(settings.sliding_window_hours)
         .clamp(1, 720);
 
-    tracing::info!("manual summary requested for {} ({}h window)", target_id, window);
+    tracing::info!(
+        "manual summary requested for {} ({}h window)",
+        target_id,
+        window
+    );
 
     let req = crate::services::summarizer::SummaryRequest {
         target_id,
@@ -49,7 +53,11 @@ pub async fn generate_summary_stream(
         .unwrap_or(settings.sliding_window_hours)
         .clamp(1, 720);
 
-    tracing::info!("streaming summary requested for {} ({}h window)", target_id, window_hours);
+    tracing::info!(
+        "streaming summary requested for {} ({}h window)",
+        target_id,
+        window_hours
+    );
 
     let req = crate::services::summarizer::SummaryRequest {
         target_id: target_id.clone(),
@@ -60,17 +68,16 @@ pub async fn generate_summary_stream(
     };
 
     let w = window.clone();
-    let outcome = crate::services::summarizer::generate_stream(
-        &state.db,
-        &state.ai,
-        &req,
-        move |chunk| {
+    let outcome =
+        crate::services::summarizer::generate_stream(&state.db, &state.ai, &req, move |chunk| {
             let _ = w.emit("summary-chunk", serde_json::json!({ "chunk": chunk }));
-        },
-    )
-    .await?;
+        })
+        .await?;
 
-    let _ = window.emit("summary-end", serde_json::json!({ "summary": &outcome.summary }));
+    let _ = window.emit(
+        "summary-end",
+        serde_json::json!({ "summary": &outcome.summary }),
+    );
     Ok(ApiResponse::ok(outcome.summary))
 }
 
@@ -79,7 +86,10 @@ pub async fn get_summary_history(
     state: State<'_, AppState>,
     target_id: Option<String>,
 ) -> Result<ApiResponse<Vec<GroupSummaryDto>>, String> {
-    let summaries = state.db.get_summaries(target_id.as_deref()).map_err(|e| e.to_string())?;
+    let summaries = state
+        .db
+        .get_summaries(target_id.as_deref())
+        .map_err(|e| e.to_string())?;
     Ok(ApiResponse::ok(summaries))
 }
 

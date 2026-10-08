@@ -33,17 +33,18 @@ pub fn try_acquire(target_id: &str, cooldown_seconds: i32) -> Result<(), i64> {
         return Ok(());
     }
 
-    let wait = remaining_seconds(target_id, cooldown_seconds);
-    if wait > 0 {
-        return Err(wait);
-    }
-
     match registry().lock() {
         Ok(mut map) => {
+            if let Some(last) = map.get(target_id) {
+                let window = Duration::from_secs(cooldown_seconds as u64);
+                if last.elapsed() < window {
+                    return Err((window - last.elapsed()).as_secs().max(1) as i64);
+                }
+            }
             map.insert(target_id.to_string(), Instant::now());
             Ok(())
         }
-        Err(_) => Ok(()),
+        Err(_) => Err(1),
     }
 }
 

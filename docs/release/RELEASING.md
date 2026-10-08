@@ -1,0 +1,58 @@
+# EazyQQ 发布流程
+
+当前版本 0.5.0。公开发布须对应完整验收的 Git 标签；本地安装包生成不等于已经发布。
+
+## 版本与文档
+
+统一更新 package.json、Cargo.toml、Cargo.lock 和 tauri.conf.json；运行 `pnpm contracts:write` 更新生成 schema。`pnpm version:check` 校验清单，`pnpm contracts:check` 校验接口覆盖。
+
+同步 README、CHANGELOG、产品、交互、架构、IPC、CLI、智能体指南及中文开发记录。二进制版本由清单提供；不要在界面或更新失败分支添加旧版本兜底。
+
+## 必须通过的检查
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm test
+pnpm test:rust
+pnpm contracts:check
+pnpm tauri:build
+$env:EAZYQQ_TEST_CLI = (Resolve-Path src-tauri/target/release/eazyqq_cli.exe).Path
+pnpm test:smoke
+pnpm test:native
+pnpm release:package
+git diff --check
+```
+
+原生验收使用真实桌面和模拟协议，验证账号往返、浏览器缓存及窗口还原；不触碰真实 QQ，不需要手机登录。首次构建在本机或 CI 可能需要下载依赖。
+
+## 发布资产
+
+`output/release/<version>/` 包含：
+
+| 资产 | 用途 |
+| --- | --- |
+| `EazyQQ_<version>_x64-setup.exe` | 桌面安装包，包含 CLI |
+| `eazyqq-cli-windows-x64.zip` | CLI、兼容别名、协议资源及中文文档 |
+| `eazyqq_cli.exe`、`ezq.exe` | 独立可执行文件，协议资源需另行准备 |
+| `SHA256SUMS.txt` | 各分发文件的 SHA256 |
+| `latest.json` | 版本、来源修订、资产 URL、大小及散列 |
+
+`latest.json` 是本项目的分发清单；应用现有版本检查读取 GitHub Releases API。协议资源检查拒绝个人配置、账号、凭据、日志、缓存、数据库与符号链接。不得把本机 napcat 的个人登录文件复制进 ZIP。
+
+## GitHub 自动发布
+
+发布工作流由 `v*` 标签或带标签参数的手动触发启动。它确认标签与清单版本相同，准备官方协议资源，执行类型/单元/CLI/原生测试，构建及打包后才建立并发布 Release。
+
+```powershell
+git tag -a v0.5.0 -m "Release 0.5.0"
+git push origin main
+git push origin v0.5.0
+gh run list --workflow release.yml
+```
+
+使用已审查的提交，不强制覆盖远端标签。失败时定位真实日志，修复原因并更新开发记录，不将失败的构建当成已发布。发布说明来自 `docs/release/v<version>.md`，上传内容来自版本目录。
+
+## 发布后验证
+
+核对 Release 为目标标签、资产齐全、公开下载可用；下载 CLI ZIP 到独立目录核验校验和与 `version --json`。检查该标签的工作流结果和来源修订，记录发布链接及证据。

@@ -2,155 +2,100 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/api/client';
 import type { ProtocolStatusDto } from '@/api/contracts';
 
-interface UseProtocolStateOptions {
-  onLoginSuccess?: () => void;
-}
-
-export function useProtocolState(options?: UseProtocolStateOptions) {
-  const [protocolStatus, setProtocolStatus] = useState<ProtocolStatusDto>({
-    isConnected: false,
-    loginStatus: 'waiting_scan',
-    qqNumber: '',
-    nickname: '',
-  });
-
+export function useProtocolState(options?: { onLoginSuccess?: () => void }) {
+  const [protocolStatus, setProtocolStatus] = useState<ProtocolStatusDto>({ isConnected: false, loginStatus: 'unlogged' });
+  const [pendingLogin, setPendingLogin] = useState<{ uin: string; qrcodeBase64: string } | null>(null);
   const [isRefreshingQr, setIsRefreshingQr] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
   const [isQuickLoggingIn, setIsQuickLoggingIn] = useState<string | null>(null);
   const [chainHasFailure, setChainHasFailure] = useState(false);
-
-  const prevLoginStatusRef = useRef(protocolStatus.loginStatus);
-  const onLoginSuccessRef = useRef(options?.onLoginSuccess);
-
-  useEffect(() => {
-    onLoginSuccessRef.current = options?.onLoginSuccess;
-  }, [options?.onLoginSuccess]);
+  const generation = useRef(0);
+  const busy = useRef(false);
+  const polling = useRef(false);
+  const mounted = useRef(true);
+  const previous = useRef('unlogged');
+  const onSuccess = useRef(options?.onLoginSuccess);
+  onSuccess.current = options?.onLoginSuccess;
 
   const refreshChainStatus = useCallback(async () => {
+    const epoch = generation.current;
     try {
       const res = await api.getChainStatus();
-      if (res.success && res.data) {
-        setChainHasFailure(res.data.hasFailure);
-      }
-    } catch {
-      // Non-blocking chain probe
-    }
+      if (mounted.current && epoch === generation.current && res.success && res.data) setChainHasFailure(res.data.hasFailure);
+    } catch { /* A protocol refresh reports actionable errors. */ }
   }, []);
 
   const refreshProtocolStatus = useCallback(async () => {
+    if (busy.current || polling.current) return;
+    polling.current = true;
+    const epoch = generation.current;
     try {
       const res = await api.getProtocolStatus();
-      if (res.success && res.data) {
-        const nextStatus = res.data;
-        setProtocolStatus((prev) => {
-          const effectiveQr =
-            nextStatus.loginStatus === 'logged_in'
-              ? undefined
-              : nextStatus.qrcodeBase64 || prev.qrcodeBase64;
-
-          const mergedStatus: ProtocolStatusDto = {
-            ...nextStatus,
-            qrcodeBase64: effectiveQr,
-          };
-
-          if (
-            nextStatus.loginStatus === 'logged_in' &&
-            prevLoginStatusRef.current !== 'logged_in'
-          ) {
-            onLoginSuccessRef.current?.();
-          }
-          prevLoginStatusRef.current = nextStatus.loginStatus;
-
-          if (
-            prev.loginStatus !== mergedStatus.loginStatus ||
-            prev.qqNumber !== mergedStatus.qqNumber ||
-            prev.qrcodeBase64 !== mergedStatus.qrcodeBase64 ||
-            prev.nickname !== mergedStatus.nickname
-          ) {
-            return mergedStatus;
-          }
-          return prev;
-        });
-      }
-    } catch {
-      // Protocol offline or starting up
-    }
+      if (!mounted.current || epoch !== generation.current || !res.success || !res.data) return;
+      const next = res.data;
+      setProtocolStatus(next);
+      if (next.loginStatus === 'logged_in' && previous.current !== 'logged_in') onSuccess.current?.();
+      previous.current = next.loginStatus;
+    } catch (e) {
+      if (mounted.current && epoch === generation.current) setQrError(e instanceof Error ? e.message : String(e));
+    } finally { polling.current = false; }
   }, []);
 
-  const handleRefreshQr = useCallback(async () => {
+  const mutate = useCallback(async (operation: () => Promise<void>) => {
+    if (busy.current) return;
+    busy.current = true; generation.current++; setQrError(null);
+    try { await operation(); }
+    catch (e) { if (mounted.current) setQrError(e instanceof Error ? e.message : String(e)); }
+    finally {
+      busy.current = false;
+      if (mounted.current) { setIsRefreshingQr(false); setIsQuickLoggingIn(null); }
+      await refreshProtocolStatus();
+    }
+  }, [refreshProtocolStatus]);
+
+  const handleRefreshQr = useCallback(() => mutate(async () => {
     setIsRefreshingQr(true);
-    setQrError(null);
-    try {
-      const res = await api.refreshQrCode();
-      if (res.success && res.data) {
-        const qr = res.data;
-        setProtocolStatus((prev) => ({
-          ...prev,
-          qrcodeBase64: qr.qrcodeBase64,
-          loginStatus: 'waiting_scan',
-        }));
-      } else {
-        setQrError(res.error?.message || '获取全新二维码失败，请稍后重试');
-      }
-    } catch (e) {
-      setQrError(e instanceof Error ? e.message : String(e));
-      console.error('Failed to refresh QR code', e);
-    } finally {
-      setIsRefreshingQr(false);
-    }
-  }, []);
+    const res = await api.refreshQrCode();
+    if (!res.success || !res.data) throw new Error(res.error?.message || '二维码刷新失败');
+    if (mounted.current) setProtocolStatus(prev => ({ ...prev, qrcodeBase64: res.data!.qrcodeBase64, loginStatus: 'waiting_scan' }));
+  }), [mutate]);
 
-  const handleQuickLogin = useCallback(async (uin: string) => {
+  const handleQuickLogin = useCallback((uin: string) => mutate(async () => {
     setIsQuickLoggingIn(uin);
-    setQrError(null);
-    try {
-      const res = await api.quickLogin(uin);
-      if (res.success) {
-        const sRes = await api.getProtocolStatus();
-        if (sRes.success && sRes.data) {
-          setProtocolStatus(sRes.data);
-          if (sRes.data.loginStatus === 'logged_in') {
-            onLoginSuccessRef.current?.();
-          }
+    const res = await api.quickLogin(uin);
+    if (!res.success) {
+      if (res.error?.code === 1005) {
+        const qr = await api.accountQrCode(uin);
+        if (qr.success && qr.data?.qrcodeBase64 && mounted.current) {
+          setPendingLogin({ uin, qrcodeBase64: qr.data.qrcodeBase64 });
         }
-      } else {
-        setQrError(res.error?.message || '快速登录未成功，请稍候重试');
       }
-    } catch (e) {
-      setQrError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setIsQuickLoggingIn(null);
+      throw new Error(res.error?.message || '目标账号登录未确认');
     }
-  }, []);
+    if (mounted.current) setPendingLogin(null);
+  }), [mutate]);
 
-  // Periodic polling for scan/login and chain status
+  const handleLogout = useCallback(() => mutate(async () => {
+    const res = await api.logout();
+    if (!res.success) throw new Error(res.error?.message || '退出登录失败');
+    if (mounted.current) setProtocolStatus({ isConnected: false, loginStatus: 'unlogged' });
+    previous.current = 'unlogged';
+  }), [mutate]);
+
   useEffect(() => {
-    // Initial fetch
-    refreshChainStatus();
-    refreshProtocolStatus();
+    mounted.current = true;
+    let timer: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+    let tick = 0;
+    const poll = async () => {
+      await refreshProtocolStatus();
+      if (tick++ % 4 === 0) await refreshChainStatus();
+      if (!cancelled) timer = setTimeout(poll, 2000);
+    };
+    void poll();
+    return () => { cancelled = true; mounted.current = false; generation.current++; clearTimeout(timer); };
+  }, [refreshProtocolStatus, refreshChainStatus]);
 
-    let pollTick = 0;
-    const interval = setInterval(() => {
-      pollTick++;
-      if (pollTick % 4 === 0) {
-        refreshChainStatus();
-      }
-      refreshProtocolStatus();
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [refreshChainStatus, refreshProtocolStatus]);
-
-  return {
-    protocolStatus,
-    setProtocolStatus,
-    isRefreshingQr,
-    qrError,
-    isQuickLoggingIn,
-    chainHasFailure,
-    handleRefreshQr,
-    handleQuickLogin,
-    refreshProtocolStatus,
-    refreshChainStatus,
-  };
+  return { pendingLogin, setPendingLogin, protocolStatus, setProtocolStatus, isRefreshingQr, qrError, isQuickLoggingIn, chainHasFailure,
+    handleRefreshQr, handleQuickLogin, handleLogout, refreshProtocolStatus, refreshChainStatus };
 }

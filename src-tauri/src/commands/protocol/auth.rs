@@ -1,9 +1,6 @@
-use std::sync::atomic::{AtomicI64, Ordering};
-use tauri::{command, State};
 use crate::commands::AppState;
 use crate::models::{ApiResponse, ProtocolStatusDto, QuickLoginAccountDto};
-
-static LAST_AUTO_QUICK_LOGIN_TIME: AtomicI64 = AtomicI64::new(0);
+use tauri::{command, State};
 
 /// QQ exposes avatars by account number; NapCat's login payload does not include one, so
 /// derive it here to satisfy the Phase 1 "avatar + nickname echo" acceptance item.
@@ -29,31 +26,19 @@ pub fn reconcile_account(app: &tauri::AppHandle, observed: &str) {
 
     match crate::services::accounts::active() {
         Some(current) if current == observed => {}
-        Some(current) => {
-            tracing::warn!(
-                "account switched from {} to {}; restarting so each account keeps its own \
-                 data directory",
-                current,
-                observed
-            );
-            if let Err(e) = crate::services::accounts::adopt(observed) {
-                tracing::error!("could not record the new account: {} - not restarting", e);
-                return;
-            }
-            app.restart();
-        }
-        None => {
-            // First time the account is known: a fresh install, or data written before
-            // accounts were separated. Restarting now means the very first session already
-            // writes into the right directory instead of the unbound one.
+        _ => {
             tracing::info!(
-                "adopting account {} so its data is isolated from other accounts",
+                "adopting account {} so its data is isolated from other accounts (hot reloading webview)",
                 observed
             );
             if let Err(e) = crate::services::accounts::adopt(observed) {
                 tracing::warn!("could not record the account: {}", e);
                 return;
             }
+            // Restart the application context only after authentication is confirmed.
+            // Immutable per-process database/AI/workflow handles prevent in-flight work
+            // from crossing account boundaries during a selection change.
+            std::env::set_var("EAZYQQ_ACCOUNT_RESTART", "1");
             app.restart();
         }
     }
@@ -64,179 +49,86 @@ pub async fn get_protocol_status(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<ApiResponse<ProtocolStatusDto>, String> {
-    // 1. First probe OneBot HTTP for active session
-    if let Ok(info) = state.onebot.get_login_info().await {
-        if let Some(data) = info.get("data") {
-            let uin = data.get("user_id").and_then(|v| v.as_i64()).map(|n| n.to_string());
-            let nickname = data.get("nickname").and_then(|v| v.as_str()).map(|s| s.to_string());
-            if let Some(observed) = &uin {
-                reconcile_account(&app, observed);
-            }
-            if uin.is_some() {
-                let avatar_url = qq_avatar(uin.as_ref());
-                return Ok(ApiResponse::ok(ProtocolStatusDto {
-                    is_connected: true,
-                    login_status: "logged_in".to_string(),
-                    qrcode_base64: None,
-                    qrcode_error: None,
-                    qq_number: uin,
-                    nickname,
-                    avatar_url,
-                    quick_login_accounts: None,
-                }));
-            }
+    let evidence = crate::services::protocol::session::probe(&state.napcat, &state.onebot).await;
+    if evidence.logged_in {
+        crate::services::chain::record_ok(
+            crate::services::chain::Link::QqLogin,
+            format!("Login confirmed by {}", evidence.source),
+        );
+        if let Some(uin) = &evidence.uin {
+            let _ = crate::services::protocol::accounts::remember_observed(
+                std::path::Path::new(state.napcat.napcat_dir()),
+                uin,
+                evidence.nickname.as_deref(),
+            );
+            reconcile_account(&app, uin);
         }
     }
-
-    // 2. Check NapCat WebUI login status
-    let is_alive = state.napcat.is_alive().await;
-    if !is_alive {
-        return Ok(ApiResponse::ok(ProtocolStatusDto {
-            is_connected: false,
-            login_status: "unlogged".to_string(),
-            qrcode_base64: None,
-            qrcode_error: Some(
-                "NapCat 协议端启动加载中，正在准备本地运行环境...".to_string(),
-            ),
-            qq_number: None,
-            nickname: None,
-            avatar_url: None,
-            quick_login_accounts: None,
-        }));
-    }
-
-    // 3. Probe available remembered quick-login accounts
-    let mut quick_login_accounts: Vec<QuickLoginAccountDto> = Vec::new();
+    let connected = evidence.logged_in || state.napcat.is_alive().await;
+    let mut quick_accounts = Vec::new();
     if let Ok(res) = state.napcat.get_quick_login_list().await {
-        if let Some(arr) = res.get("data").and_then(|d| d.as_array()) {
+        if let Some(arr) = res["data"].as_array() {
             for item in arr {
-                if let Some(u) = item.get("uin").and_then(|v| v.as_str()) {
-                    let nick = item.get("nickName").and_then(|v| v.as_str()).unwrap_or(u);
-                    let face = item.get("faceUrl").and_then(|v| v.as_str()).map(|s| s.to_string())
-                        .or_else(|| qq_avatar(Some(&u.to_string())));
-                    quick_login_accounts.push(QuickLoginAccountDto {
-                        uin: u.to_string(),
-                        nickname: nick.to_string(),
-                        face_url: face,
+                if let Some(uin) = crate::services::protocol::session::account_id(&item["uin"]) {
+                    quick_accounts.push(QuickLoginAccountDto {
+                        nickname: item["nickName"].as_str().unwrap_or(&uin).into(),
+                        face_url: qq_avatar(Some(&uin)),
+                        uin,
                     });
                 }
             }
         }
     }
-
-    if let Ok(status) = state.napcat.check_login().await {
-        if let Some(data) = status.get("data") {
-            let is_login = data.get("isLogin").and_then(|v| v.as_bool()).unwrap_or(false);
-            let uin = data.get("uin").and_then(|v| v.as_str()).map(|s| s.to_string());
-            if is_login {
-                let avatar_url = qq_avatar(uin.as_ref());
-                return Ok(ApiResponse::ok(ProtocolStatusDto {
-                    is_connected: true,
-                    login_status: "logged_in".to_string(),
-                    qrcode_base64: None,
-                    qrcode_error: None,
-                    qq_number: uin,
-                    nickname: None,
-                    avatar_url,
-                    quick_login_accounts: if quick_login_accounts.is_empty() { None } else { Some(quick_login_accounts) },
-                }));
-            }
-        }
-    }
-
-    // 4. Auto-trigger quick login at most ONCE upon startup if remembered accounts exist
-    if !quick_login_accounts.is_empty() {
-        let last_attempt = LAST_AUTO_QUICK_LOGIN_TIME.load(Ordering::Relaxed);
-
-        if last_attempt == 0 {
-            let now_sec = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i64;
-            LAST_AUTO_QUICK_LOGIN_TIME.store(now_sec, Ordering::Relaxed);
-
-            let last_acc = crate::services::accounts::read_bootstrap().last_account;
-            let candidate = last_acc
-                .as_deref()
-                .and_then(|target| quick_login_accounts.iter().find(|a| a.uin == target))
-                .unwrap_or(&quick_login_accounts[0]);
-
-            tracing::info!(
-                "get_protocol_status: initial attempt quick login for {} ({})",
-                candidate.nickname,
-                candidate.uin
-            );
-            if let Ok(ql_res) = state.napcat.set_quick_login(&candidate.uin).await {
-                if ql_res.get("code").and_then(|c| c.as_i64()) == Some(0) {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
-                    if let Ok(info) = state.onebot.get_login_info().await {
-                        if let Some(data) = info.get("data") {
-                            let uin = data.get("user_id").and_then(|v| v.as_i64()).map(|n| n.to_string());
-                            let nickname = data.get("nickname").and_then(|v| v.as_str()).map(|s| s.to_string());
-                            if let Some(observed) = &uin {
-                                reconcile_account(&app, observed);
-                            }
-                            if uin.is_some() {
-                                let avatar_url = qq_avatar(uin.as_ref());
-                                return Ok(ApiResponse::ok(ProtocolStatusDto {
-                                    is_connected: true,
-                                    login_status: "logged_in".to_string(),
-                                    qrcode_base64: None,
-                                    qrcode_error: None,
-                                    qq_number: uin,
-                                    nickname,
-                                    avatar_url,
-                                    quick_login_accounts: Some(quick_login_accounts),
-                                }));
-                            }
-                        }
-                    }
-                }
-            }
-            tracing::info!("initial quick login attempt did not immediately succeed; proceeding with QR code");
-        }
-    }
-
-    let (qrcode_base64, qrcode_error) = match state.napcat.get_qrcode().await {
-        Ok(qr) => (Some(qr), None),
-        Err(e) => match state.napcat.refresh_qrcode().await {
+    let (qr, error) = if !evidence.logged_in && connected {
+        match state.napcat.get_qrcode().await {
             Ok(qr) => (Some(qr), None),
-            Err(_) => (
-                None,
-                Some(format!("NapCat 协议端启动加载中，正在准备登录二维码与凭据... ({})", e)),
-            ),
-        },
+            Err(e) => (None, Some(e)),
+        }
+    } else {
+        (None, None)
     };
-
     Ok(ApiResponse::ok(ProtocolStatusDto {
-        is_connected: true,
-        login_status: "waiting_scan".to_string(),
-        qrcode_base64,
-        qrcode_error,
-        qq_number: None,
-        nickname: None,
-        avatar_url: None,
-        quick_login_accounts: if quick_login_accounts.is_empty() { None } else { Some(quick_login_accounts) },
+        is_connected: connected,
+        login_status: if evidence.logged_in {
+            "logged_in"
+        } else if connected {
+            "waiting_scan"
+        } else {
+            "unlogged"
+        }
+        .into(),
+        avatar_url: qq_avatar(evidence.uin.as_ref()),
+        qq_number: evidence.uin,
+        nickname: evidence.nickname,
+        qrcode_base64: qr,
+        qrcode_error: error,
+        quick_login_accounts: Some(quick_accounts),
     }))
 }
 
 #[command]
-pub async fn quick_login(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-    uin: String,
-) -> Result<ApiResponse<()>, String> {
-    tracing::info!("quick_login requested for {}", uin);
-    let res = state.napcat.set_quick_login(&uin).await.map_err(|e| e.to_string())?;
-    let code = res.get("code").and_then(|c| c.as_i64()).unwrap_or(-1);
-    if code != 0 {
-        let msg = res.get("message").and_then(|m| m.as_str()).unwrap_or("快速登录失败");
-        return Ok(ApiResponse::err(1002, msg, Some("请确认手机 QQ 或该账号仍有效".to_string())));
+pub async fn quick_login(app: tauri::AppHandle, uin: String) -> Result<ApiResponse<()>, String> {
+    let source = crate::services::napcat_boot::locate_napcat_dir();
+    match crate::services::protocol::accounts::login(&source, &uin).await {
+        Ok(_) => {
+            reconcile_account(&app, &uin);
+            Ok(ApiResponse::ok(()))
+        }
+        Err(e) => {
+            let code = if e.starts_with("QR_REQUIRED:") {
+                1005
+            } else {
+                1002
+            };
+            Ok(ApiResponse::err(
+                code,
+                e.trim_start_matches("QR_REQUIRED: "),
+                Some(
+                    "Open the selected account's QR login; the current account is preserved".into(),
+                ),
+            ))
+        }
     }
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
-    reconcile_account(&app, &uin);
-    Ok(ApiResponse::ok(()))
 }
 
 #[command]
@@ -249,7 +141,10 @@ pub async fn get_quick_login_accounts(
             for item in arr {
                 if let Some(u) = item.get("uin").and_then(|v| v.as_str()) {
                     let nick = item.get("nickName").and_then(|v| v.as_str()).unwrap_or(u);
-                    let face = item.get("faceUrl").and_then(|v| v.as_str()).map(|s| s.to_string())
+                    let face = item
+                        .get("faceUrl")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
                         .or_else(|| qq_avatar(Some(&u.to_string())));
                     list.push(QuickLoginAccountDto {
                         uin: u.to_string(),
@@ -264,8 +159,11 @@ pub async fn get_quick_login_accounts(
 }
 
 #[command]
-pub async fn refresh_qrcode(state: State<'_, AppState>) -> Result<ApiResponse<serde_json::Value>, String> {
+pub async fn refresh_qrcode(
+    state: State<'_, AppState>,
+) -> Result<ApiResponse<serde_json::Value>, String> {
     // 1. Make sure the protocol side is up, and keep the reason if it will not start.
+    crate::services::protocol::boot::set_auto_start(true);
     let mut launch_error: Option<String> = None;
     if !state.napcat.is_alive().await {
         if let Err(e) = state.napcat.launch_if_needed() {
@@ -307,18 +205,17 @@ pub async fn refresh_qrcode(state: State<'_, AppState>) -> Result<ApiResponse<se
 }
 
 #[command]
-pub async fn logout() -> Result<ApiResponse<()>, String> {
-    tracing::info!("logout requested: terminating QQ and resetting active account session");
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        let mut kill_cmd = std::process::Command::new("taskkill");
-        kill_cmd.args(["/F", "/IM", "QQ.exe"]);
-        kill_cmd.creation_flags(0x08000000);
-        let _ = kill_cmd.output();
+pub async fn logout(state: State<'_, AppState>) -> Result<ApiResponse<()>, String> {
+    tracing::info!("logout requested: stopping NapCat protocol session");
+    crate::services::protocol::boot::set_auto_start(false);
+    let outcome = crate::services::protocol::boot::stop();
+    if !outcome.ok || (!outcome.attempted && state.napcat.is_alive().await) {
+        return Ok(ApiResponse::err(
+            1003,
+            "Cannot stop an unowned protocol session; close it from QQ or NapCat",
+            None,
+        ));
     }
-    let _ = crate::services::accounts::clear_active();
-    LAST_AUTO_QUICK_LOGIN_TIME.store(i64::MAX, Ordering::Relaxed);
     crate::services::chain::record_unknown(
         crate::services::chain::Link::QqLogin,
         "已主动退出登录，等待重新扫码或选择账号",
@@ -327,9 +224,16 @@ pub async fn logout() -> Result<ApiResponse<()>, String> {
 }
 
 #[command]
-pub async fn restart_napcat() -> Result<ApiResponse<crate::services::napcat_boot::BootOutcome>, String> {
-    let root = crate::services::logging::workspace_root();
-    let napcat_dir = root.join("napcat");
-    let outcome = crate::services::napcat_boot::restart(&napcat_dir);
+pub async fn restart_napcat(
+) -> Result<ApiResponse<crate::services::napcat_boot::BootOutcome>, String> {
+    let napcat_dir = crate::services::napcat_boot::locate_napcat_dir();
+    crate::services::protocol::boot::set_auto_start(true);
+    let (dir, _, _, _) = crate::services::protocol::layout::selected(&napcat_dir);
+    let outcome = tokio::task::spawn_blocking(move || crate::services::napcat_boot::restart(&dir))
+        .await
+        .map_err(|e| e.to_string())?;
+    if !outcome.ok {
+        return Ok(ApiResponse::err(1004, outcome.detail, None));
+    }
     Ok(ApiResponse::ok(outcome))
 }

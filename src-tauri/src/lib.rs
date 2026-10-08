@@ -1,23 +1,28 @@
-pub mod models;
 pub mod commands;
+pub mod models;
 pub mod services;
 
-use std::sync::Arc;
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, WindowEvent};
 use commands::*;
 use services::db::Database;
 use services::napcat::NapCatService;
 use services::onebot::OneBotClient;
+use std::sync::Arc;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{Manager, WindowEvent};
 
 #[cfg(target_os = "windows")]
 mod single_instance {
     use std::ffi::c_void;
 
     extern "system" {
-        fn CreateMutexW(lpMutexAttributes: *mut c_void, bInitialOwner: i32, lpName: *const u16) -> *mut c_void;
+        fn CreateMutexW(
+            lpMutexAttributes: *mut c_void,
+            bInitialOwner: i32,
+            lpName: *const u16,
+        ) -> *mut c_void;
         fn GetLastError() -> u32;
+        fn WaitForSingleObject(handle: *mut c_void, milliseconds: u32) -> u32;
         fn FindWindowW(lpClassName: *const u16, lpWindowName: *const u16) -> *mut c_void;
         fn ShowWindow(hWnd: *mut c_void, nCmdShow: i32) -> i32;
         fn SetForegroundWindow(hWnd: *mut c_void) -> i32;
@@ -28,9 +33,16 @@ mod single_instance {
 
     pub fn check_or_exit() {
         unsafe {
-            let mutex_name: Vec<u16> = "Global\\EazyQQ_App_SingleInstance_Mutex\0".encode_utf16().collect();
-            let handle = CreateMutexW(std::ptr::null_mut(), 0, mutex_name.as_ptr());
+            let mutex_name: Vec<u16> = "Global\\EazyQQ_App_SingleInstance_Mutex\0"
+                .encode_utf16()
+                .collect();
+            let restart = std::env::var_os("EAZYQQ_ACCOUNT_RESTART").is_some();
+            std::env::remove_var("EAZYQQ_ACCOUNT_RESTART");
+            let handle = CreateMutexW(std::ptr::null_mut(), 1, mutex_name.as_ptr());
             if !handle.is_null() && GetLastError() == ERROR_ALREADY_EXISTS {
+                if restart && matches!(WaitForSingleObject(handle, 5000), 0 | 0x80) {
+                    return;
+                }
                 let win_title: Vec<u16> = "EazyQQ - 个人专属智能助手\0".encode_utf16().collect();
                 let hwnd = FindWindowW(std::ptr::null(), win_title.as_ptr());
                 if !hwnd.is_null() {
@@ -100,7 +112,9 @@ pub fn run() {
         .find(|p| p.join("NapCatWinBootMain.exe").exists() || p.join("napcat.mjs").exists())
         .cloned()
         .unwrap_or_else(|| root_dir.join("napcat"));
-    let napcat_dir_str = napcat_dir.to_string_lossy().to_string();
+    let (selected_dir, http_port, ws_port, webui_port) =
+        services::protocol::layout::selected(&napcat_dir);
+    let napcat_dir_str = selected_dir.to_string_lossy().to_string();
     if napcat_dir.exists() {
         tracing::info!("NapCat directory resolved to: {}", napcat_dir.display());
     } else {
@@ -120,12 +134,6 @@ pub fn run() {
             // Data written before the account was known would otherwise be stranded in
             // the unbound directory forever.
             services::accounts::migrate_unbound_if_needed(&uin);
-            // NapCat keeps its own logs and cache in the shared `napcat/` directory, and
-            // those logs contain message text. Sweep them into this account's directory.
-            let swept = services::accounts::sweep_napcat_artifacts(&napcat_dir, &uin);
-            if !swept.is_empty() {
-                tracing::info!("swept shared NapCat artefacts: {}", swept.join(", "));
-            }
         }
         None => tracing::warn!(
             "no QQ account recorded yet; using {} until the protocol side reports one",
@@ -138,7 +146,11 @@ pub fn run() {
 
     let db_path = data_dir.join("eazyqq.db");
     let db = Arc::new(Database::init(&db_path).unwrap_or_else(|e| {
-        tracing::error!("cannot open SQLite database at {}: {}", db_path.display(), e);
+        tracing::error!(
+            "cannot open SQLite database at {}: {}",
+            db_path.display(),
+            e
+        );
         panic!("Failed to init SQLite database: {}", e)
     }));
     tracing::info!("SQLite ready at {}", db_path.display());
@@ -181,7 +193,15 @@ pub fn run() {
         );
         // WebView2 reads this when its environment is created, which happens when the
         // Tauri builder below creates the window - so it has to be set before that.
-        std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--no-sandbox");
+        let mut arguments =
+            std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").unwrap_or_default();
+        if !arguments
+            .split_whitespace()
+            .any(|argument| argument == "--no-sandbox")
+        {
+            arguments.push_str(" --no-sandbox");
+        }
+        std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", arguments.trim());
     }
 
     // All runtime components are self-contained in the current workspace
@@ -191,11 +211,14 @@ pub fn run() {
     // hardcoded one would both fail on any other machine and ship a credential in the
     // source tree.
     let napcat = Arc::new(NapCatService::new(
-        "http://127.0.0.1:6099".to_string(),
+        format!("http://127.0.0.1:{}", webui_port),
         String::new(),
         napcat_dir_str,
     ));
-    let onebot = Arc::new(OneBotClient::new("http://127.0.0.1:3000".to_string()));
+    let onebot = Arc::new(OneBotClient::for_account(
+        format!("http://127.0.0.1:{}", http_port),
+        services::accounts::active(),
+    ));
     let api_key = std::env::var("LLM_API_KEY")
         .or_else(|_| std::env::var("OPENAI_API_KEY"))
         .or_else(|_| std::env::var("AI_API_KEY"))
@@ -220,7 +243,15 @@ pub fn run() {
 
     // The OneBot WebSocket port comes from `napcat.wsPort`; 3001 is NapCat's default. Read
     // from config rather than hardcoded so a non-default setup works without a rebuild.
-    let onebot_ws_port = {
+    let registered = services::accounts::active().is_some_and(|uin| {
+        services::instances::load_registry()
+            .instances
+            .iter()
+            .any(|i| i.uin == uin)
+    });
+    let onebot_ws_port = if registered {
+        ws_port as u64
+    } else {
         let raw = db.get_setting("app_config").ok().flatten();
         raw.as_deref()
             .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
@@ -230,11 +261,16 @@ pub fn run() {
                     .and_then(|p| p.as_u64())
             })
             .filter(|p| *p > 0 && *p < 65536)
-            .unwrap_or(3001)
+            .unwrap_or(ws_port as u64)
     };
     tracing::info!("OneBot WebSocket port -> {}", onebot_ws_port);
 
+    let worker_lease =
+        services::infra::persistence::FileLock::try_acquire(&data_dir.join("message-worker.lock"))
+            .ok()
+            .map(Arc::new);
     let app_state = AppState {
+        worker_lease: worker_lease.clone(),
         db: db.clone(),
         // Cloned rather than moved so the chain monitor can keep probing it.
         napcat: napcat.clone(),
@@ -242,12 +278,33 @@ pub fn run() {
         ai: ai.clone(),
     };
 
+    // Keep localStorage, cached summaries and browser state private to this account.
+    let mut context = tauri::generate_context!();
+    let windows: Vec<_> = context
+        .config()
+        .app
+        .windows
+        .iter()
+        .filter(|window| window.create)
+        .cloned()
+        .collect();
+    for window in &mut context.config_mut().app.windows {
+        window.create = false;
+    }
+    let webview_data_dir = data_dir.join("webview");
+
     tauri::Builder::default()
         .manage(app_state)
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(move |app| {
+            for config in &windows {
+                // Absolute private paths must use the builder, not dataDirectory config.
+                tauri::WebviewWindowBuilder::from_config(app, config)?
+                    .data_directory(webview_data_dir.join(&config.label))
+                    .build()?;
+            }
             tracing::info!("Tauri setup: creating main window and system tray");
 
             // The window is created hidden (see tauri.conf.json) so the user never sees
@@ -279,10 +336,11 @@ pub fn run() {
                 let compat_already_on = webview_compat_mode;
 
                 tauri::async_runtime::spawn(async move {
-                    let frontend_mounted = |h: &tauri::AppHandle| {
-                        h.get_webview_window("main")
-                            .map(|w| w.is_visible().unwrap_or(false))
-                            .unwrap_or(false)
+                    let frontend_mounted = |_h: &tauri::AppHandle| {
+                        services::chain::snapshot().iter().any(|report| {
+                            report.link == services::chain::Link::Frontend
+                                && report.last_ok_secs_ago.is_some()
+                        })
                     };
 
                     tokio::time::sleep(std::time::Duration::from_secs(9)).await;
@@ -321,6 +379,7 @@ pub fn run() {
                             );
                         }
                         // Does not return: the process is replaced.
+                        std::env::set_var("EAZYQQ_ACCOUNT_RESTART", "1");
                         handle.restart();
                     }
 
@@ -422,14 +481,21 @@ pub fn run() {
             }
 
             let handle = app.handle().clone();
-            services::ws_listener::start_onebot_ws_listener(
-                handle.clone(),
-                format!("ws://127.0.0.1:{}", onebot_ws_port),
-                db.clone(),
-                // Cloned: the chain monitor also needs it.
-                onebot.clone(),
-                ai.clone(),
-            );
+            if worker_lease.is_some() {
+                services::ws_listener::start_onebot_ws_listener(
+                    handle.clone(),
+                    format!("ws://127.0.0.1:{}", onebot_ws_port),
+                    db.clone(),
+                    // Cloned: the chain monitor also needs it.
+                    onebot.clone(),
+                    ai.clone(),
+                );
+            } else {
+                services::chain::record_unknown(
+                    services::chain::Link::OneBotWs,
+                    "Another process owns this account message worker",
+                );
+            }
             tracing::info!(
                 "OneBot WebSocket listener task spawned (ws://127.0.0.1:{})",
                 onebot_ws_port
@@ -452,7 +518,10 @@ pub fn run() {
 
             // Background summarizer: honours the summary whitelist, per-group interval,
             // sliding window and custom prompt straight from SQLite.
-            services::scheduler::start_summary_scheduler(handle, db, ai, onebot.clone());
+            services::protocol::workers::start_other_accounts(handle.clone(), napcat_dir.clone());
+            if worker_lease.is_some() {
+                services::scheduler::start_summary_scheduler(handle, db, ai, onebot.clone());
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -475,10 +544,18 @@ pub fn run() {
             get_protocol_status,
             refresh_qrcode,
             quick_login,
+            list_accounts,
+            get_account_status,
+            register_account,
+            batch_accounts,
+            account_qrcode,
+            configure_account,
+            forget_account,
             get_quick_login_accounts,
             logout,
             get_contacts,
             get_chain_status,
+            repair_chain,
             mark_read,
             update_rule,
             batch_update_mode,
@@ -518,6 +595,6 @@ pub fn run() {
             upgrade_napcat,
             upgrade_app,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running EazyQQ application");
 }

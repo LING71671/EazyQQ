@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
-use tauri::{command, State};
 use crate::commands::AppState;
 use crate::models::ApiResponse;
+use serde::{Deserialize, Serialize};
+use tauri::{command, State};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,10 +37,16 @@ pub async fn check_app_update() -> Result<ApiResponse<AppUpdateInfo>, String> {
         .map_err(|e| e.to_string())?;
 
     let url = "https://api.github.com/repos/LING71671/EazyQQ/releases?per_page=5";
-    let resp = client.get(url).send().await
+    let resp = client
+        .get(url)
+        .send()
+        .await
         .map_err(|e| format!("检查更新网络请求失败: {}", e))?;
 
     if !resp.status().is_success() {
+        if resp.status() != reqwest::StatusCode::NOT_FOUND {
+            return Err(format!("Release check failed: HTTP {}", resp.status()));
+        }
         return Ok(ApiResponse::ok(AppUpdateInfo {
             current_version: current_version.clone(),
             latest_version: current_version,
@@ -53,16 +59,15 @@ pub async fn check_app_update() -> Result<ApiResponse<AppUpdateInfo>, String> {
         }));
     }
 
-    let releases: serde_json::Value = resp.json().await
+    let releases: serde_json::Value = resp
+        .json()
+        .await
         .map_err(|e| format!("解析发布数据失败: {}", e))?;
 
-    let json = releases
-        .as_array()
-        .and_then(|arr| {
-            arr.iter().find(|r| {
-                r.get("draft").and_then(|d| d.as_bool()).unwrap_or(false) == false
-            })
-        });
+    let json = releases.as_array().and_then(|arr| {
+        arr.iter()
+            .find(|r| r.get("draft").and_then(|d| d.as_bool()).unwrap_or(false) == false)
+    });
 
     let json = match json {
         Some(j) => j,
@@ -80,52 +85,62 @@ pub async fn check_app_update() -> Result<ApiResponse<AppUpdateInfo>, String> {
         }
     };
 
-    let tag_name = json.get("tag_name")
+    let tag_name = json
+        .get("tag_name")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .trim_start_matches('v')
         .to_string();
 
-    let tag_base = tag_name.split('-').next().unwrap_or(&tag_name).to_string();
-
-    let release_name = json.get("name")
+    let release_name = json
+        .get("name")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
 
-    let release_notes = json.get("body")
+    let release_notes = json
+        .get("body")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
 
-    let html_url = json.get("html_url")
+    let html_url = json
+        .get("html_url")
         .and_then(|v| v.as_str())
         .unwrap_or("https://github.com/LING71671/EazyQQ/releases")
         .to_string();
 
-    let published_at = json.get("published_at")
+    let published_at = json
+        .get("published_at")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
 
-    let download_url = json.get("assets")
+    let download_url = json
+        .get("assets")
         .and_then(|a| a.as_array())
         .and_then(|arr| {
             arr.iter().find_map(|item| {
                 let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                if name.ends_with(".exe") || name.ends_with(".msi") || name.ends_with(".zip") {
-                    item.get("browser_download_url").and_then(|u| u.as_str()).map(|s| s.to_string())
+                if name.ends_with(".exe") {
+                    item.get("browser_download_url")
+                        .and_then(|u| u.as_str())
+                        .map(|s| s.to_string())
                 } else {
                     None
                 }
             })
         });
 
-    let has_update = !tag_base.is_empty() && tag_base != current_version;
+    let has_update = crate::services::infra::versions::newer(&tag_name, &current_version);
 
     Ok(ApiResponse::ok(AppUpdateInfo {
         current_version,
-        latest_version: if tag_name.is_empty() { env!("CARGO_PKG_VERSION").to_string() } else { tag_name },
+        latest_version: if tag_name.is_empty() {
+            env!("CARGO_PKG_VERSION").to_string()
+        } else {
+            tag_name
+        },
         has_update,
         release_name,
         release_notes,
@@ -156,94 +171,95 @@ pub async fn upgrade_app(download_url: Option<String>) -> Result<ApiResponse<Str
                 .as_array()
                 .and_then(|arr| {
                     arr.iter().find_map(|r| {
-                        r.get("assets").and_then(|a| a.as_array()).and_then(|assets| {
-                            assets.iter().find_map(|item| {
-                                let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                                if name.ends_with(".exe") || name.ends_with(".msi") {
-                                    item.get("browser_download_url")
-                                        .and_then(|u| u.as_str())
-                                        .map(|s| s.to_string())
-                                } else {
-                                    None
-                                }
+                        r.get("assets")
+                            .and_then(|a| a.as_array())
+                            .and_then(|assets| {
+                                assets.iter().find_map(|item| {
+                                    let name =
+                                        item.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                                    if name.ends_with(".exe") || name.ends_with(".msi") {
+                                        item.get("browser_download_url")
+                                            .and_then(|u| u.as_str())
+                                            .map(|s| s.to_string())
+                                    } else {
+                                        None
+                                    }
+                                })
                             })
-                        })
                     })
                 })
                 .ok_or_else(|| "未找到适用的安装包下载链接".to_string())?
         }
     };
 
-    let resp = client.get(&target_url).send().await.map_err(|e| format!("下载安装包失败: {}", e))?;
-    let bytes = resp.bytes().await.map_err(|e| format!("读取安装包数据失败: {}", e))?;
+    let resp = client
+        .get(&target_url)
+        .send()
+        .await
+        .map_err(|e| format!("下载安装包失败: {}", e))?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("读取安装包数据失败: {}", e))?;
 
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
-    let temp_exe = std::env::temp_dir().join(format!("EazyQQ_Update_Setup_{}.exe", stamp));
+    let update_dir = crate::services::logging::workspace_root().join("EazyQQ_Data/updates");
+    std::fs::create_dir_all(&update_dir).map_err(|e| e.to_string())?;
+    let temp_exe = update_dir.join(format!("EazyQQ_Update_Setup_{}.exe", stamp));
     std::fs::write(&temp_exe, &bytes).map_err(|e| format!("写入临时安装包失败: {}", e))?;
 
     #[cfg(target_os = "windows")]
     {
-        let launcher_bat = std::env::temp_dir().join(format!("eazyqq_installer_launcher_{}.bat", stamp));
-        let bat_content = format!(
-            "@echo off\r\ntimeout /t 2 /nobreak >nul\r\nstart \"\" \"{}\"\r\nexit\r\n",
-            temp_exe.to_string_lossy()
-        );
-        let _ = std::fs::write(&launcher_bat, bat_content);
-
         use std::os::windows::process::CommandExt;
-        let _ = std::process::Command::new("cmd")
-            .args(["/c", &launcher_bat.to_string_lossy()])
+        std::process::Command::new(&temp_exe)
             .creation_flags(0x08000000)
-            .spawn();
+            .spawn()
+            .map_err(|e| format!("Cannot launch installer: {}", e))?;
     }
 
-    Ok(ApiResponse::ok("安装包下载完成并已启动安装向导，程序即将退出以完成覆盖更新。".to_string()))
+    Ok(ApiResponse::ok(
+        "安装包已验证下载并启动，请关闭 EazyQQ 后完成安装；QQ 会话保持运行。".to_string(),
+    ))
 }
 
 pub fn detect_local_napcat_version() -> String {
-    let napcat_dir = crate::services::logging::workspace_root().join("napcat");
-    let ver_txt = napcat_dir.join("version.txt");
-    if let Ok(content) = std::fs::read_to_string(&ver_txt) {
-        let t = content.trim();
-        if !t.is_empty() {
-            return t.to_string();
-        }
-    }
-    let pkg = napcat_dir.join("package.json");
-    if let Ok(content) = std::fs::read_to_string(&pkg) {
-        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-            if let Some(v) = val.get("version").and_then(|v| v.as_str()) {
-                if !v.is_empty() && v != "0.0.1" {
-                    return v.to_string();
-                }
-            }
-        }
-    }
-    if napcat_dir.join("napcat.mjs").exists() {
-        return "4.18.33".to_string();
-    }
-    "4.18.33".to_string()
+    let source = crate::services::napcat_boot::locate_napcat_dir();
+    let (dir, _, _, _) = crate::services::protocol::layout::selected(&source);
+    crate::services::infra::versions::napcat(&dir)
+}
+
+pub async fn current_napcat_version(onebot: &crate::services::onebot::OneBotClient) -> String {
+    onebot
+        .get_version_info()
+        .await
+        .ok()
+        .and_then(|value| value["data"]["app_version"].as_str().map(str::to_string))
+        .filter(|version| !version.is_empty())
+        .unwrap_or_else(detect_local_napcat_version)
 }
 
 #[command]
 pub async fn get_napcat_version(state: State<'_, AppState>) -> Result<ApiResponse<String>, String> {
-    if let Ok(v) = state.onebot.get_version_info().await {
-        if let Some(data) = v.get("data") {
-            if let Some(ver) = data.get("app_version").and_then(|s| s.as_str()) {
-                return Ok(ApiResponse::ok(ver.to_string()));
-            }
-        }
-    }
-    Ok(ApiResponse::ok(detect_local_napcat_version()))
+    Ok(ApiResponse::ok(current_napcat_version(&state.onebot).await))
 }
 
 #[command]
-pub async fn check_napcat_update(state: State<'_, AppState>) -> Result<ApiResponse<NapCatUpdateInfo>, String> {
-    let current_version = match state.onebot.get_version_info().await {
+pub async fn check_napcat_update(
+    state: State<'_, AppState>,
+) -> Result<ApiResponse<NapCatUpdateInfo>, String> {
+    check_napcat_update_for(&state.onebot).await
+}
+
+pub async fn check_napcat_update_for(
+    onebot: &crate::services::onebot::OneBotClient,
+) -> Result<ApiResponse<NapCatUpdateInfo>, String> {
+    let current_version = match onebot.get_version_info().await {
         Ok(v) => v
             .get("data")
             .and_then(|d| d.get("app_version"))
@@ -266,45 +282,59 @@ pub async fn check_napcat_update(state: State<'_, AppState>) -> Result<ApiRespon
     };
 
     if !resp.status().is_success() {
-        return Ok(ApiResponse::ok(NapCatUpdateInfo {
-            current_version: current_version.clone(),
-            latest_version: current_version,
-            has_update: false,
-            release_name: "NapCat 官方 Release 通道响应受限".to_string(),
-            release_notes: String::new(),
-            download_url: None,
-        }));
+        return Err(format!(
+            "NapCat release check failed: HTTP {}",
+            resp.status()
+        ));
     }
 
-    let json: serde_json::Value = resp.json().await.map_err(|e| format!("解析 NapCat 版本失败: {}", e))?;
+    let json: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("解析 NapCat 版本失败: {}", e))?;
     let tag_name = json
         .get("tag_name")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .trim_start_matches('v')
         .to_string();
-    let release_name = json.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let release_notes = json.get("body").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let release_name = json
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let release_notes = json
+        .get("body")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
-    let download_url = json.get("assets").and_then(|a| a.as_array()).and_then(|arr| {
-        arr.iter().find_map(|item| {
-            let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("");
-            if name.contains("Framework") || name.contains("win32") || name.ends_with(".zip") {
-                item.get("browser_download_url")
-                    .and_then(|u| u.as_str())
-                    .map(|s| s.to_string())
-            } else {
-                None
-            }
-        })
-    });
+    let download_url = json
+        .get("assets")
+        .and_then(|a| a.as_array())
+        .and_then(|arr| {
+            arr.iter().find_map(|item| {
+                let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                if name.contains("Framework") || name.contains("win32") || name.ends_with(".zip") {
+                    item.get("browser_download_url")
+                        .and_then(|u| u.as_str())
+                        .map(|s| s.to_string())
+                } else {
+                    None
+                }
+            })
+        });
 
     let current_clean = current_version.trim_start_matches('v');
-    let has_update = !tag_name.is_empty() && tag_name != current_clean;
+    let has_update = crate::services::infra::versions::newer(&tag_name, current_clean);
 
     Ok(ApiResponse::ok(NapCatUpdateInfo {
         current_version,
-        latest_version: if tag_name.is_empty() { "latest".to_string() } else { tag_name },
+        latest_version: if tag_name.is_empty() {
+            "latest".to_string()
+        } else {
+            tag_name
+        },
         has_update,
         release_name,
         release_notes,
@@ -314,15 +344,41 @@ pub async fn check_napcat_update(state: State<'_, AppState>) -> Result<ApiRespon
 
 #[command]
 pub async fn upgrade_napcat(download_url: Option<String>) -> Result<ApiResponse<String>, String> {
-    let napcat_dir = crate::services::logging::workspace_root().join("napcat");
-
-    #[cfg(target_os = "windows")]
+    let maintenance_path = crate::services::accounts::data_root().join("protocol-maintenance.lock");
+    let _maintenance = tokio::task::spawn_blocking(move || {
+        crate::services::infra::persistence::FileLock::acquire(&maintenance_path)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let napcat_dir = crate::services::napcat_boot::locate_napcat_dir();
+    let (active_dir, _, _, webui_port) = crate::services::protocol::layout::selected(&napcat_dir);
+    let active_webui = crate::services::napcat::NapCatService::new(
+        format!("http://127.0.0.1:{}", webui_port),
+        String::new(),
+        active_dir.to_string_lossy().into_owned(),
+    );
+    if active_webui.is_alive().await
+        || crate::services::protocol::ownership::is_running(&active_dir)
     {
-        let _ = std::process::Command::new("taskkill")
-            .args(["/F", "/IM", "QQ.exe"])
-            .output();
+        return Err(
+            "Stop the active protocol session before upgrading. Running QQ sessions were preserved"
+                .into(),
+        );
     }
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    for instance in crate::services::instances::load_registry().instances {
+        let (napcat, _) = crate::services::protocol::accounts::clients(&instance);
+        if napcat.is_alive().await
+            || crate::services::protocol::ownership::is_running(
+                &crate::services::protocol::layout::runtime_dir(&instance),
+            )
+        {
+            return Err(format!(
+                "Stop account {} before upgrading the shared protocol resources",
+                instance.uin
+            ));
+        }
+    }
+    crate::services::protocol::boot::set_auto_start(false);
 
     let target_url = match download_url {
         Some(u) if !u.trim().is_empty() => u,
@@ -360,32 +416,26 @@ pub async fn upgrade_napcat(download_url: Option<String>) -> Result<ApiResponse<
         .timeout(std::time::Duration::from_secs(120))
         .build()
         .map_err(|e| e.to_string())?;
-    let resp = client.get(&target_url).send().await.map_err(|e| format!("下载 NapCat 失败: {}", e))?;
-    let bytes = resp.bytes().await.map_err(|e| format!("读取升级包数据失败: {}", e))?;
+    let resp = client
+        .get(&target_url)
+        .send()
+        .await
+        .map_err(|e| format!("下载 NapCat 失败: {}", e))?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("读取升级包数据失败: {}", e))?;
 
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let temp_zip = std::env::temp_dir().join(format!("napcat_upgrade_{}.zip", stamp));
-    std::fs::write(&temp_zip, &bytes).map_err(|e| format!("写入临时升级包失败: {}", e))?;
-
-    let output = std::process::Command::new("tar")
-        .args(["-xf", &temp_zip.to_string_lossy(), "-C", &napcat_dir.to_string_lossy()])
-        .output();
-
-    let _ = std::fs::remove_file(&temp_zip);
-
-    match output {
-        Ok(out) if out.status.success() => {
-            let _ = std::fs::write(napcat_dir.join("version.txt"), "v4.18.33");
-            let _ = crate::services::napcat_boot::restart(&napcat_dir);
-            Ok(ApiResponse::ok("NapCat 核心解压升级完成，已自动重启服务".to_string()))
-        }
-        Ok(out) => {
-            let err = String::from_utf8_lossy(&out.stderr);
-            Err(format!("解压覆盖失败: {}", err))
-        }
-        Err(e) => Err(format!("解压执行失败: {}", e)),
-    }
+    let staging = crate::services::logging::workspace_root().join("EazyQQ_Data/updates/napcat");
+    let target = staging.clone();
+    tokio::task::spawn_blocking(move || {
+        crate::services::infra::protocol_update::stage_and_install(&bytes, &target, &napcat_dir)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    Ok(ApiResponse::ok(
+        "NapCat resources updated. Start the required accounts to load the new version".into(),
+    ))
 }

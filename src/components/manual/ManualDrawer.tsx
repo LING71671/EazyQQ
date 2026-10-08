@@ -13,7 +13,7 @@ export const ManualDrawer: React.FC<ManualDrawerProps> = ({ isOpen, onClose }) =
 
   const chapters = [
     { id: 'routing', label: '1. 四象限策略说明', icon: ShieldCheck },
-    { id: 'opencode', label: '2. 本地 OpenCode 零配置', icon: Cpu },
+    { id: 'opencode', label: '2. OpenCode 模型调用', icon: Cpu },
     { id: 'files', label: '3. 群文件与本地知识库', icon: FolderSync },
     { id: 'shortcuts', label: '4. 快捷键与常用技巧', icon: Keyboard },
     { id: 'faq', label: '5. 故障排查与一键自检', icon: HelpCircle },
@@ -36,6 +36,7 @@ export const ManualDrawer: React.FC<ManualDrawerProps> = ({ isOpen, onClose }) =
             <span className="font-semibold text-slate-900 text-sm">EazyQQ 使用说明书</span>
           </div>
           <button
+            aria-label="关闭使用说明书"
             onClick={onClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
           >
@@ -101,15 +102,15 @@ export const ManualDrawer: React.FC<ManualDrawerProps> = ({ isOpen, onClose }) =
 
             {activeTab === 'opencode' && (
               <div className="space-y-4">
-                <h3 className="text-base font-semibold text-slate-900">本地 OpenCode 零配置互联</h3>
+                <h3 className="text-base font-semibold text-slate-900">使用原生 OpenCode 模型</h3>
                 <p>
-                  如果您已在当前电脑上安装了 OpenCode，EazyQQ 将自动通过本地端口直连 OpenCode 运行时。
+                  安装原生 OpenCode 后，在系统设置中刷新模型目录，选择模型并执行测试。免费模型通过本机运行时调用，账号会话独立保存。
                 </p>
                 <div className="p-3 rounded-lg bg-sky-50 border border-sky-100 font-mono text-xs text-sky-800">
-                  opencode serve --port 4096
+                  eazyqq_cli ai-models --json
                 </div>
                 <p className="text-xs text-slate-500">
-                  无需在客户端内输入任何大模型 API Key，直接复用您在 OpenCode 中已配置好的优质模型与上下文推理能力。
+                  免费模型通常无需密钥；付费模型按对应服务要求配置凭据。无需启动 4096 端口服务，模型目录也不代表推理已经通过。
                 </p>
               </div>
             )}
@@ -118,12 +119,12 @@ export const ManualDrawer: React.FC<ManualDrawerProps> = ({ isOpen, onClose }) =
               <div className="space-y-4">
                 <h3 className="text-base font-semibold text-slate-900">群文件同步与知识库</h3>
                 <p>
-                  所有群文件均可一键自动同步至本地标准工作区目录 <code className="px-1.5 py-0.5 rounded bg-sky-50 border border-sky-100 font-mono text-xs text-sky-800">EazyQQ_Data/</code>。
+                  群文件按当前账号索引和下载，保存在 <code className="px-1.5 py-0.5 rounded bg-sky-50 border border-sky-100 font-mono text-xs text-sky-800">EazyQQ_Data/accounts/机器标识/QQ号/group_files/</code>。
                 </p>
                 <ul className="list-disc list-inside space-y-1 text-xs text-slate-600">
-                  <li>自动保持文件夹原始层级；</li>
-                  <li>原生提取 PDF、DOCX、TXT 文档内容；</li>
-                  <li>一键生成文档摘要、核心要点与行动项。</li>
+                  <li>下载受文件大小上限与自动同步设置约束；</li>
+                  <li>支持文档提取；扫描 PDF 可能没有可提取文字；</li>
+                  <li>文档综述会调用当前配置的模型。</li>
                 </ul>
               </div>
             )}
@@ -137,16 +138,12 @@ export const ManualDrawer: React.FC<ManualDrawerProps> = ({ isOpen, onClose }) =
                     <kbd className="px-1.5 py-0.5 rounded bg-sky-50 border border-sky-100 text-sky-700 font-mono">F1</kbd>
                   </div>
                   <div className="p-3 rounded-xl border border-slate-200 flex justify-between items-center bg-white">
-                    <span>发送选中的草稿</span>
-                    <kbd className="px-1.5 py-0.5 rounded bg-sky-50 border border-sky-100 text-sky-700 font-mono">Ctrl + Enter</kbd>
+                    <span>聊天输入框发送</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-sky-50 border border-sky-100 text-sky-700 font-mono">Enter</kbd>
                   </div>
                   <div className="p-3 rounded-xl border border-slate-200 flex justify-between items-center bg-white">
-                    <span>刷新扫码登录</span>
-                    <kbd className="px-1.5 py-0.5 rounded bg-sky-50 border border-sky-100 text-sky-700 font-mono">F5</kbd>
-                  </div>
-                  <div className="p-3 rounded-xl border border-slate-200 flex justify-between items-center bg-white">
-                    <span>快速切换深浅主题</span>
-                    <kbd className="px-1.5 py-0.5 rounded bg-sky-50 border border-sky-100 text-sky-700 font-mono">Ctrl + T</kbd>
+                    <span>聊天输入框换行</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-sky-50 border border-sky-100 text-sky-700 font-mono">Shift + Enter</kbd>
                   </div>
                 </div>
               </div>
@@ -158,6 +155,7 @@ export const ManualDrawer: React.FC<ManualDrawerProps> = ({ isOpen, onClose }) =
                 <p>
                   如遇任何使用问题，可在「系统设置」页面点击「一键导出诊断日志包」。系统将自动打包脱敏日志生成 ZIP 文件，可直接发送给开发者查阅定位。
                 </p>
+                <p>待扫码或未测试的模型显示“未知”。修复按具体故障处理，保留已登录及外部管理的 QQ 会话。</p>
               </div>
             )}
           </div>

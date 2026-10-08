@@ -142,11 +142,8 @@ export interface DependencyHealthReport {
 }
 
 /**
- * Providers with a built-in default endpoint, mirroring `services/ai.rs`.
- *
- * Any other string is treated as a custom provider and requires an explicit `baseUrl`
- * and `model`. OpenCode is deliberately absent: its `serve` port answers `/v1/*` with
- * its HTML web UI, so it is not an OpenAI-compatible endpoint.
+ * Provider choices shared with the backend runtime configuration.
+ * OpenCode uses its native executable; other providers use compatible HTTP endpoints.
  */
 export type AiProviderId =
   | 'opencode'
@@ -225,3 +222,12 @@ export interface ModelInfoDto {
   costInput?: number;
   costOutput?: number;
 }
+
+export interface AccountInfoDto { uin: string; nickname?: string | null; httpPort: number; wsPort: number; webuiPort: number; autoStart: boolean; processManaged: boolean }
+export interface AccountReport {
+  instance: AccountInfoDto;
+  login: { loggedIn: boolean; uin?: string | null; nickname?: string | null; source: string };
+  selected: boolean;
+}
+export interface BatchAccountOutcome { uin: string; ok: boolean; detail: string }
+export interface RepairReport { action: string; attempted: boolean; ok: boolean; detail: string }

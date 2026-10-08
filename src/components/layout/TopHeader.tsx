@@ -80,9 +80,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   const handleToggleMaximize = useCallback(async () => {
     try {
       const res = await api.toggleMaximizeWindow();
-      if (res.success && typeof res.data === 'boolean') {
-        setIsMaximized(res.data);
-      }
+      setIsMaximized(res);
     } catch (e) {
       console.error('Failed to toggle maximize window', e);
     }

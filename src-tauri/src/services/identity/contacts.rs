@@ -91,7 +91,10 @@ pub async fn sync_roster(db: &Database, onebot: &OneBotClient) -> RosterSyncRepo
 
     let offline = !friends_ok && !groups_ok;
     if offline {
-        tracing::warn!("roster sync: OneBot unreachable, serving {} cached rules", rules.len());
+        tracing::warn!(
+            "roster sync: OneBot unreachable, serving {} cached rules",
+            rules.len()
+        );
         return RosterSyncReport {
             friends: 0,
             groups: 0,
@@ -103,13 +106,13 @@ pub async fn sync_roster(db: &Database, onebot: &OneBotClient) -> RosterSyncRepo
     }
 
     let apply = |target_id: String,
-                     target_type: &str,
-                     name: String,
-                     avatar: String,
-                     rules: &mut Vec<ContactRuleRecord>,
-                     index: &mut HashMap<String, usize>,
-                     created: &mut usize,
-                     refreshed: &mut usize| {
+                 target_type: &str,
+                 name: String,
+                 avatar: String,
+                 rules: &mut Vec<ContactRuleRecord>,
+                 index: &mut HashMap<String, usize>,
+                 created: &mut usize,
+                 refreshed: &mut usize| {
         if let Some(&pos) = index.get(&target_id) {
             let existing = &mut rules[pos];
             let mut dirty = false;
@@ -129,7 +132,11 @@ pub async fn sync_roster(db: &Database, onebot: &OneBotClient) -> RosterSyncRepo
         } else {
             let rule = default_rule(&target_id, target_type, &name);
             if let Err(e) = db.upsert_rule(&rule) {
-                tracing::error!("roster sync: cannot persist default rule for {}: {}", target_id, e);
+                tracing::error!(
+                    "roster sync: cannot persist default rule for {}: {}",
+                    target_id,
+                    e
+                );
             } else {
                 tracing::info!(
                     "roster sync: new {} {} ({}) inserted as default-deny",

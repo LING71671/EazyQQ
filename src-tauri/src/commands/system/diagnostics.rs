@@ -1,10 +1,13 @@
-use tauri::{command, State};
 use crate::commands::AppState;
 use crate::models::{ApiResponse, DependencyHealthReport, ReadyPath, StorageReady};
+use tauri::{command, State};
 
 /// Full end-to-end link report for the frontend.
 #[command]
-pub async fn get_chain_status() -> Result<ApiResponse<serde_json::Value>, String> {
+pub async fn get_chain_status(
+    state: State<'_, AppState>,
+) -> Result<ApiResponse<serde_json::Value>, String> {
+    crate::services::protocol::health::refresh(&state.napcat, &state.onebot).await;
     crate::services::chain::record_ok(crate::services::chain::Link::Frontend, "界面交互连接正常");
     let links = crate::services::chain::snapshot();
     let first = crate::services::chain::first_break();
@@ -17,43 +20,17 @@ pub async fn get_chain_status() -> Result<ApiResponse<serde_json::Value>, String
     })))
 }
 
-/// Dynamically probe for opencode binary from PATH or standard Node global installation.
-fn detect_opencode_binary() -> Option<String> {
-    // 1. Search PATH environment variable
-    if let Ok(path_var) = std::env::var("PATH") {
-        for dir in std::env::split_paths(&path_var) {
-            for ext in ["opencode.cmd", "opencode.exe", "opencode"] {
-                let candidate = dir.join(ext);
-                if candidate.is_file() {
-                    return Some(candidate.to_string_lossy().to_string());
-                }
-            }
-        }
-    }
-    // 2. Search standard user profile APPDATA
-    if let Ok(app_data) = std::env::var("APPDATA") {
-        let p = std::path::PathBuf::from(app_data).join("npm").join("opencode.cmd");
-        if p.is_file() {
-            return Some(p.to_string_lossy().to_string());
-        }
-    }
-    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-        let p = std::path::PathBuf::from(local_app_data).join("npm").join("opencode.cmd");
-        if p.is_file() {
-            return Some(p.to_string_lossy().to_string());
-        }
-    }
-    None
-}
-
 #[command]
-pub async fn check_dependencies(state: State<'_, AppState>) -> Result<ApiResponse<DependencyHealthReport>, String> {
+pub async fn check_dependencies(
+    state: State<'_, AppState>,
+) -> Result<ApiResponse<DependencyHealthReport>, String> {
     // 1. QQNT client: probe dynamically via configured_qq_path
-    let napcat_dir = crate::services::logging::workspace_root().join("napcat");
-    let (qq_ready, qq_path) = match crate::services::protocol::patch::configured_qq_path(&napcat_dir) {
-        Ok(p) => (true, p.to_string_lossy().to_string()),
-        Err(e) => (false, e),
-    };
+    let napcat_dir = crate::services::napcat_boot::locate_napcat_dir();
+    let (qq_ready, qq_path) =
+        match crate::services::protocol::patch::configured_qq_path(&napcat_dir) {
+            Ok(p) => (true, p.to_string_lossy().to_string()),
+            Err(e) => (false, e),
+        };
 
     // 2. Local AI runtime: dynamic lookup without hardcoded paths
     let has_key = !state.ai.current().api_key.trim().is_empty()
@@ -69,28 +46,30 @@ pub async fn check_dependencies(state: State<'_, AppState>) -> Result<ApiRespons
         || std::env::var("AI_API_KEY").is_ok();
 
     let ai_cfg = state.ai.current();
-    let has_valid_key = !ai_cfg.api_key.trim().is_empty() || crate::services::ai::detect_api_key().is_some() || has_key;
+    let has_valid_key = !ai_cfg.api_key.trim().is_empty()
+        || crate::services::ai::detect_api_key().is_some()
+        || has_key;
     let is_local_llm = crate::services::ai::is_local_endpoint(&ai_cfg.base_url);
 
-    let opencode_found = detect_opencode_binary();
-    let (ai_ready, ai_path) = match opencode_found {
-        Some(p) if is_local_llm || has_valid_key => (
-            true,
-            format!("本地 OpenCode CLI ({})，推理端点已就绪", p),
-        ),
-        Some(p) => (
-            false,
-            format!("检测到 OpenCode CLI ({})，但未配置推理凭证 (API Key)", p),
-        ),
-        None if is_local_llm => (
-            true,
-            format!("本地端点 ({}, 无需 Key)", state.ai.model()),
-        ),
-        None if has_valid_key => (
-            true,
-            format!("云端模型 (API Key 已就绪, {})", state.ai.model()),
-        ),
-        None => (false, "未检测到本地推理服务，且未配置 API Key".to_string()),
+    let (ai_ready, ai_path) = if ai_cfg.uses_opencode_runtime() {
+        match crate::services::ai::opencode::binary() {
+            Some(path) => (
+                true,
+                format!(
+                    "OpenCode runtime: {} (inference not yet tested)",
+                    path.display()
+                ),
+            ),
+            None => (
+                false,
+                "OpenCode native runtime was not found on PATH".into(),
+            ),
+        }
+    } else {
+        (
+            is_local_llm || has_valid_key,
+            format!("Configured endpoint: {}", ai_cfg.base_url),
+        )
     };
 
     // 3. Storage: check writable status and free disk space
@@ -147,4 +126,13 @@ pub async fn export_diagnostics_bundle(
         "entries": result.entries,
         "bytes": result.bytes,
     })))
+}
+
+#[command]
+pub async fn repair_chain(
+    state: State<'_, AppState>,
+) -> Result<ApiResponse<crate::services::protocol::health::RepairReport>, String> {
+    Ok(ApiResponse::ok(
+        crate::services::protocol::health::repair(&state.napcat, &state.onebot).await,
+    ))
 }

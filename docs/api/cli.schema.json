@@ -1,0 +1,1441 @@
+{
+  "name": "eazyqq_cli",
+  "version": "0.5.0",
+  "globalFlags": {
+    "account": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{4,19}$"
+    },
+    "json": {
+      "type": "boolean"
+    }
+  },
+  "commands": [
+    {
+      "name": "accounts",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "uin": {
+            "type": "string"
+          },
+          "nick": {
+            "type": "string"
+          },
+          "auto-start": {
+            "type": "string"
+          },
+          "uins": {
+            "type": "string"
+          },
+          "refresh": {
+            "type": "boolean"
+          },
+          "all": {
+            "type": "boolean"
+          },
+          "dry-run": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ai-config",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ai-detect",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ai-models",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ai-set",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "base-url": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "temperature": {
+            "type": "string"
+          },
+          "max-context": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ai-test",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "model": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ask",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "target": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "batch-mode",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "targets": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "chain-status",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "config",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "config-audit",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "contacts",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "type": {
+            "type": "string"
+          },
+          "search": {
+            "type": "string"
+          },
+          "whitelist": {
+            "type": "boolean"
+          },
+          "summary-only": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "draft-dismiss",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "draft-regenerate",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "instruction": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "draft-send",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "drafts",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "export",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "file-download",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "target": {
+            "type": "string"
+          },
+          "file-id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "file-summarize",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "files",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "folder",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "friends",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "groups",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "health",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "deep": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "help",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "history",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "target": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "instances",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "uin": {
+            "type": "string"
+          },
+          "nick": {
+            "type": "string"
+          },
+          "auto-start": {
+            "type": "string"
+          },
+          "uins": {
+            "type": "string"
+          },
+          "refresh": {
+            "type": "boolean"
+          },
+          "all": {
+            "type": "boolean"
+          },
+          "dry-run": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "log-path",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "log-tail",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "lines": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "login-info",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "logout",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "mark-read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "target": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "mcp",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "napcat-doctor",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "qq-path",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "set": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "qr",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "save": {
+            "type": "string"
+          },
+          "refresh": {
+            "type": "boolean"
+          },
+          "browser": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "quick-login",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "uin": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "quick-login-list",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "repair",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "restart",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "run",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "all": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "rule",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "target": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "cooldown-seconds": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "interval-hours": {
+            "type": "string"
+          },
+          "trigger": {
+            "type": "string"
+          },
+          "keywords": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "scheduler-tick",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "schema",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "selftest",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "send",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "target": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "uin": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "set-config",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "simulate",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "target": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "sender-name": {
+            "type": "string"
+          },
+          "sender-id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "repeat": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "start",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "status",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "stop",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "summaries",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "summarize",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "target": {
+            "type": "string"
+          },
+          "hours": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "stream": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "summary-delete",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "updates",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string"
+          },
+          "confirm": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "version",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "whitelist-groups",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "window",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "x": {
+            "type": "string"
+          },
+          "y": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  ],
+  "ipcCoverage": [
+    {
+      "ipc": "account_qrcode",
+      "cli": "accounts qr"
+    },
+    {
+      "ipc": "app_close_window",
+      "cli": "window close"
+    },
+    {
+      "ipc": "app_get_window_behavior",
+      "cli": "config"
+    },
+    {
+      "ipc": "app_minimize_window",
+      "cli": "window minimize"
+    },
+    {
+      "ipc": "app_show_window",
+      "cli": "window show"
+    },
+    {
+      "ipc": "app_start_drag_window",
+      "cli": "window drag"
+    },
+    {
+      "ipc": "app_toggle_maximize_window",
+      "cli": "window toggle-maximize"
+    },
+    {
+      "ipc": "batch_accounts",
+      "cli": "accounts start|stop|login"
+    },
+    {
+      "ipc": "batch_update_mode",
+      "cli": "batch-mode"
+    },
+    {
+      "ipc": "check_app_update",
+      "cli": "updates check-app"
+    },
+    {
+      "ipc": "check_dependencies",
+      "cli": "health"
+    },
+    {
+      "ipc": "check_napcat_update",
+      "cli": "updates check-napcat"
+    },
+    {
+      "ipc": "configure_account",
+      "cli": "accounts configure"
+    },
+    {
+      "ipc": "delete_summary",
+      "cli": "summary-delete"
+    },
+    {
+      "ipc": "dismiss_draft",
+      "cli": "draft-dismiss"
+    },
+    {
+      "ipc": "download_file",
+      "cli": "file-download"
+    },
+    {
+      "ipc": "export_diagnostics_bundle",
+      "cli": "export"
+    },
+    {
+      "ipc": "fetch_provider_models",
+      "cli": "ai-models"
+    },
+    {
+      "ipc": "forget_account",
+      "cli": "accounts forget"
+    },
+    {
+      "ipc": "generate_summary",
+      "cli": "summarize"
+    },
+    {
+      "ipc": "generate_summary_stream",
+      "cli": "summarize --stream"
+    },
+    {
+      "ipc": "get_account_status",
+      "cli": "accounts status"
+    },
+    {
+      "ipc": "get_chain_status",
+      "cli": "chain-status"
+    },
+    {
+      "ipc": "get_config",
+      "cli": "config"
+    },
+    {
+      "ipc": "get_contacts",
+      "cli": "contacts"
+    },
+    {
+      "ipc": "get_group_files",
+      "cli": "files"
+    },
+    {
+      "ipc": "get_messages",
+      "cli": "history"
+    },
+    {
+      "ipc": "get_napcat_version",
+      "cli": "updates versions"
+    },
+    {
+      "ipc": "get_pending_drafts",
+      "cli": "drafts"
+    },
+    {
+      "ipc": "get_protocol_status",
+      "cli": "status"
+    },
+    {
+      "ipc": "get_qq_path",
+      "cli": "qq-path"
+    },
+    {
+      "ipc": "get_quick_login_accounts",
+      "cli": "quick-login-list"
+    },
+    {
+      "ipc": "get_summary_history",
+      "cli": "summaries"
+    },
+    {
+      "ipc": "list_accounts",
+      "cli": "accounts list"
+    },
+    {
+      "ipc": "logout",
+      "cli": "logout"
+    },
+    {
+      "ipc": "mark_read",
+      "cli": "mark-read"
+    },
+    {
+      "ipc": "open_folder",
+      "cli": "folder"
+    },
+    {
+      "ipc": "quick_login",
+      "cli": "quick-login"
+    },
+    {
+      "ipc": "refresh_qrcode",
+      "cli": "qr --refresh"
+    },
+    {
+      "ipc": "regenerate_draft",
+      "cli": "draft-regenerate"
+    },
+    {
+      "ipc": "register_account",
+      "cli": "accounts add"
+    },
+    {
+      "ipc": "repair_chain",
+      "cli": "repair"
+    },
+    {
+      "ipc": "restart_napcat",
+      "cli": "restart"
+    },
+    {
+      "ipc": "send_draft",
+      "cli": "draft-send"
+    },
+    {
+      "ipc": "send_message",
+      "cli": "send"
+    },
+    {
+      "ipc": "set_qq_path",
+      "cli": "qq-path --set"
+    },
+    {
+      "ipc": "summarize_file",
+      "cli": "file-summarize"
+    },
+    {
+      "ipc": "test_ai_connection",
+      "cli": "ai-test"
+    },
+    {
+      "ipc": "trigger_ai_reply",
+      "cli": "ask"
+    },
+    {
+      "ipc": "update_config",
+      "cli": "set-config"
+    },
+    {
+      "ipc": "update_rule",
+      "cli": "rule"
+    },
+    {
+      "ipc": "upgrade_app",
+      "cli": "updates install-app"
+    },
+    {
+      "ipc": "upgrade_napcat",
+      "cli": "updates install-napcat"
+    }
+  ],
+  "accounts": {
+    "operations": [
+      "list",
+      "status",
+      "add",
+      "select",
+      "qr",
+      "configure",
+      "forget",
+      "start",
+      "stop",
+      "login"
+    ],
+    "batchFlags": [
+      "--uin",
+      "--uins",
+      "--all",
+      "--dry-run"
+    ],
+    "dataDeletion": false
+  },
+  "updates": {
+    "operations": [
+      "versions",
+      "check-app",
+      "check-napcat",
+      "install-app",
+      "install-napcat"
+    ],
+    "installRequires": "--confirm"
+  },
+  "mcp": {
+    "transport": "stdio",
+    "discovery": "tools/list"
+  },
+  "documentation": "docs/api/CLI.md"
+}

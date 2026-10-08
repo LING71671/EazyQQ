@@ -20,15 +20,29 @@ use context::Services;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> ExitCode {
+    if let Some(code) = eazyqq_lib::services::protocol::ownership::run_supervisor_if_requested() {
+        return ExitCode::from(code as u8);
+    }
     let args = Args::parse();
 
     if args.command.is_empty() || args.command == "help" || args.has("help") {
-        commands::help::cmd_help();
+        if args.json() {
+            let _ = commands::schema::cmd_schema(&args);
+        } else {
+            commands::help::cmd_help();
+        }
         return ExitCode::SUCCESS;
     }
 
     if args.command == "version" {
-        println!("eazyqq-cli {}", env!("CARGO_PKG_VERSION"));
+        if args.json() {
+            println!(
+                "{}",
+                serde_json::json!({"name":"eazyqq_cli","version":env!("CARGO_PKG_VERSION")})
+            );
+        } else {
+            println!("eazyqq_cli {}", env!("CARGO_PKG_VERSION"));
+        }
         return ExitCode::SUCCESS;
     }
 
@@ -37,7 +51,11 @@ async fn main() -> ExitCode {
     // account's directory - or the unbound one.
     {
         let bootstrap = eazyqq_lib::services::accounts::read_bootstrap();
-        eazyqq_lib::services::accounts::set_active(bootstrap.last_account.clone());
+        eazyqq_lib::services::accounts::set_active(
+            args.flag("account")
+                .map(str::to_string)
+                .or(bootstrap.last_account),
+        );
     }
 
     if args.command == "schema" {
@@ -50,8 +68,19 @@ async fn main() -> ExitCode {
         };
     }
 
+    if let Some(uin) = args.flag("account") {
+        if eazyqq_lib::services::protocol::session::validate_uin(uin).is_err()
+            || !eazyqq_lib::services::instances::load_registry()
+                .instances
+                .iter()
+                .any(|i| i.uin == uin)
+        {
+            eprintln!("Unknown or invalid --account; register it using accounts add --uin <QQ>");
+            return ExitCode::FAILURE;
+        }
+    }
     let is_mcp = args.command == "mcp";
-    eazyqq_lib::services::logging::init(!is_mcp);
+    eazyqq_lib::services::logging::init(!is_mcp && !args.json());
 
     let result = match args.command.as_str() {
         "mcp" => {
@@ -64,6 +93,7 @@ async fn main() -> ExitCode {
             };
             commands::mcp::run_mcp_server(svc).await
         }
+        "window" => commands::window::control(&args),
         "log-path" => commands::diagnostics::cmd_log_path(),
         "log-tail" => commands::diagnostics::cmd_log_tail(&args),
         "stop" => commands::lifecycle::cmd_stop(&args),
@@ -76,9 +106,31 @@ async fn main() -> ExitCode {
                 }
             };
             match args.command.as_str() {
+                "run" => commands::daemon::run(svc, &args).await,
                 "start" => commands::lifecycle::cmd_start(&svc, &args).await,
                 "stop" => commands::lifecycle::cmd_stop(&args),
                 "restart" => commands::lifecycle::cmd_restart(&svc, &args).await,
+                "accounts" => commands::instances::cmd_instances(&svc, &args).await,
+                "repair" => commands::system::cmd_repair(&svc, &args).await,
+                "ai-models" => commands::system::cmd_models(&svc, &args).await,
+                "folder" => {
+                    let response = eazyqq_lib::commands::chat::open_folder(
+                        args.flag("path").unwrap_or(".").into(),
+                    )
+                    .await;
+                    match response {
+                        Ok(value) => {
+                            format::print_json(&serde_json::to_value(value).unwrap());
+                            Ok(())
+                        }
+                        Err(e) => Err(e),
+                    }
+                }
+                "updates" => commands::system::cmd_updates(&svc, &args).await,
+                "logout" => commands::lifecycle::cmd_stop(&args),
+                "summary-delete" => commands::system::cmd_delete_summary(&svc, &args),
+                "batch-mode" => commands::system::cmd_batch_mode(&svc, &args),
+                "qq-path" => commands::system::cmd_qq_path(&args),
                 "instances" => commands::instances::cmd_instances(&svc, &args).await,
                 "status" => commands::protocol::cmd_status(&svc, &args).await,
                 "login-info" => commands::protocol::cmd_login_info(&svc, &args).await,

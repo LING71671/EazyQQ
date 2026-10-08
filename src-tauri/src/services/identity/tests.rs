@@ -22,7 +22,10 @@ fn unbound_data_moves_into_the_adopted_account() {
     assert!(!moved.is_empty(), "pre-login data must be moved");
     assert!(dest.join("eazyqq.db").exists());
     assert!(dest.join("logs").join("eazyqq.log").exists());
-    assert!(!unbound.exists(), "an emptied unbound directory should be removed");
+    assert!(
+        !unbound.exists(),
+        "an emptied unbound directory should be removed"
+    );
 
     let _ = std::fs::remove_dir_all(&dest);
 }
@@ -108,14 +111,24 @@ fn merge_moves_files_and_renames_collisions() {
     let moved = merge_dir(&src, &dst).unwrap();
     assert_eq!(moved, 2, "both files must leave the shared directory");
 
-    assert_eq!(std::fs::read_to_string(dst.join("eazyqq.log")).unwrap(), "live");
-    assert_eq!(std::fs::read_to_string(dst.join("other.log")).unwrap(), "other");
+    assert_eq!(
+        std::fs::read_to_string(dst.join("eazyqq.log")).unwrap(),
+        "live"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dst.join("other.log")).unwrap(),
+        "other"
+    );
     let legacy: Vec<_> = std::fs::read_dir(&dst)
         .unwrap()
         .flatten()
         .filter(|e| e.file_name().to_string_lossy().contains("legacy"))
         .collect();
-    assert_eq!(legacy.len(), 1, "the colliding file must be preserved under a new name");
+    assert_eq!(
+        legacy.len(),
+        1,
+        "the colliding file must be preserved under a new name"
+    );
 
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -130,7 +143,10 @@ fn merge_leaves_nothing_behind_when_the_source_empties() {
     std::fs::write(src.join("a.txt"), "x").unwrap();
 
     merge_dir(&src, &dst).unwrap();
-    assert!(!src.exists(), "an emptied source directory should be removed");
+    assert!(
+        !src.exists(),
+        "an emptied source directory should be removed"
+    );
 
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -200,16 +216,24 @@ fn different_machines_would_produce_different_directories() {
 
 #[test]
 fn account_change_is_detected() {
+    let _guard = TEST_LOCK.lock().unwrap();
     set_active(Some("111".to_string()));
     assert!(!account_changed("111"));
-    assert!(account_changed("222"), "a different account must be reported");
+    assert!(
+        account_changed("222"),
+        "a different account must be reported"
+    );
 
     set_active(None);
-    assert!(!account_changed("222"), "unknown active account cannot 'change'");
+    assert!(
+        !account_changed("222"),
+        "unknown active account cannot 'change'"
+    );
 }
 
 #[test]
 fn active_account_round_trips() {
+    let _guard = TEST_LOCK.lock().unwrap();
     set_active(Some("999".to_string()));
     assert_eq!(active().as_deref(), Some("999"));
     assert!(active_data_dir().ends_with("999"));
@@ -217,4 +241,28 @@ fn active_account_round_trips() {
     set_active(None);
     assert!(active().is_none());
     assert!(active_data_dir().ends_with(UNBOUND));
+}
+
+#[test]
+fn existing_database_never_adopts_another_databases_wal() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    let unbound = account_dir(None);
+    let dest = account_dir(Some("555000113"));
+    std::fs::create_dir_all(&unbound).unwrap();
+    std::fs::create_dir_all(&dest).unwrap();
+    std::fs::write(unbound.join("eazyqq.db"), b"source").unwrap();
+    std::fs::write(unbound.join("eazyqq.db-wal"), b"source-wal").unwrap();
+    std::fs::write(dest.join("eazyqq.db"), b"destination").unwrap();
+    migrate_unbound_if_needed("555000113");
+    assert!(!dest.join("eazyqq.db-wal").exists());
+    assert_eq!(
+        std::fs::read(dest.join("eazyqq.db")).unwrap(),
+        b"destination"
+    );
+    assert_eq!(
+        std::fs::read(unbound.join("eazyqq.db-wal")).unwrap(),
+        b"source-wal"
+    );
+    std::fs::remove_dir_all(&unbound).unwrap();
+    std::fs::remove_dir_all(&dest).unwrap();
 }

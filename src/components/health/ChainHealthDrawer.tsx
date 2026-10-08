@@ -92,14 +92,14 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
 
   const handleRestartNapCat = async () => {
     setIsRestarting(true);
-    setRepairNotice('正在唤醒与重启协议服务，请稍候 15~30 秒…');
+    setRepairNotice('正在检查故障类型…');
     try {
-      const res = await api.restartNapCat();
+      const res = await api.repairChain();
       if (res.success) {
-        setRepairNotice(`协议服务唤醒指令已发送：${res.data?.detail || '正在重启'}`);
+        setRepairNotice(res.data?.detail || '诊断完成');
         setTimeout(() => {
           fetchStatus();
-          setRepairNotice(null);
+
         }, 4000);
       } else {
         setRepairNotice(`重启失败：${res.error?.message || '未知错误'}`);
@@ -222,14 +222,14 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
 
               {/* 1-Click Action for this break */}
               <div className="pt-2 border-t border-amber-200/60 flex items-center justify-between">
-                <span className="text-[11px] font-medium text-amber-800">小白一键自愈：</span>
+                <span className="text-[11px] font-medium text-amber-800">故障处理：</span>
                 <button
                   onClick={handleRestartNapCat}
                   disabled={isRestarting}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-medium shadow-xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                 >
                   <Wrench className={`w-3.5 h-3.5 ${isRestarting ? 'animate-spin' : ''}`} />
-                  <span>{isRestarting ? '正在自愈...' : '一键重启服务'}</span>
+                  <span>{isRestarting ? '正在自愈...' : '检查并修复'}</span>
                 </button>
               </div>
 
@@ -245,9 +245,9 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
                 <CheckCircle2 className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="font-bold text-emerald-900 text-xs">全链路畅通无阻</h3>
+                <h3 className="font-bold text-emerald-900 text-xs">{links.length > 0 && links.every(link => link.health === 'ok') ? '全链路已验证' : '等待完成链路检测'}</h3>
                 <p className="text-[11px] text-emerald-700 mt-0.5">
-                  QQ 协议端、OneBot11、本地数据库与大模型服务均处于健康状态。
+                  查看各项检测结果；未就绪表示尚未验证。
                 </p>
               </div>
             </div>
@@ -256,7 +256,7 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
           {/* 2. Chain Link Detail Cards */}
           <div className="space-y-2">
             <h4 className="font-bold text-slate-800 text-xs tracking-tight flex items-center justify-between">
-              <span>全链路 5 大节点状态</span>
+              <span>全链路 {links.length} 项状态</span>
               <span className="text-[10px] text-slate-400 font-normal">自动每 5 秒嗅探</span>
             </h4>
 

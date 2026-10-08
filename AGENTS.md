@@ -1,18 +1,33 @@
-# EazyQQ Agent Directives
+# EazyQQ 开发代理指引
 
-Strictly adhere to C:/Users/www17/AGENT.md.
+首先遵循 [本机全局指引](C:/Users/www17/AGENT.md)。用户当前指令优先：项目文档使用中文，代码、标识符和代码注释保持英文。
 
-## Output Style (ADHD-First)
-The reader has ADHD. Shape every response so it can be acted on:
-1. Lead with the answer or next action: command, path, or snippet first.
-2. Number multi-step work; one bounded action per step.
-3. End with one next action doable in under two minutes.
-4. Finish the current issue before raising a new one.
-5. Restate progress each turn ("step X of Y done").
-6. Give time estimates in concrete units, never "a bit".
-7. After a change, show what now works.
-8. Errors: state location, cause, and fix. No drama, zero apologies.
-9. Cap lists to 5 items.
-10. No preamble, no recaps, no closers ("太好啦", "好的", "Hope this helps").
+## 协作输出
 
-Response constraint: strictly 3-5 bullet lines per reply.
+每次回复严格 3–5 个要点，先给结果或下一动作。多步工作使用编号，每项只含一个有限动作。说明当前进度与具体分钟数，错误交代位置、原因和修复方式；不添加开场白、空泛回顾或客套收尾。需要用户动作时只给一个可在两分钟内完成的动作；已有授权不重复确认。
+
+## 修改前阅读
+
+阅读 `docs/ARCHITECTURE.md`、`docs/api/IPC.md`、`docs/api/CLI.md`、`docs/release/RELEASING.md` 和 `docs/development/` 最新记录。源码重构后以当前目录和生成契约为准，不能根据历史开发记录恢复已移除的行为。
+
+## 必须保持的边界
+
+- 验证目标身份后才提交账号选择；状态探测只读，不触发快速登录。
+- 数据库、AI、工作进程和浏览器缓存绑定固定账号；保持跨进程消费租约。
+- Windows Job 只管理本次启动的进程树；禁止按 QQ 进程名或陈旧 PID 终止。
+- 恢复按故障执行，不重启健康会话、外部管理进程或等待扫码的账号。
+- 协议只共享不可变资源；个人配置、缓存、日志、SQLite、加载器、修补清单和进程收据不能成为共享可写文件。
+
+## 工具、目录与验收
+
+Node 使用 pnpm；Windows Rust/Tauri 使用 `scripts/cargo.ps1`、`scripts/tauri.ps1`。新 Python 环境通过 uv 创建于 `A:/DevEnv/Envs/`，不修改基础环境。新增实现文件归入对应领域子目录。
+
+修改接口后运行 `pnpm contracts:write`，再运行 `pnpm contracts:check`。执行类型、前端、Rust 与 CLI 验收；界面行为还需真实渲染。`pnpm test:native` 使用模拟协议验证真实 Tauri 的账号、缓存和窗口，不需要手机，不触碰真实 QQ。
+
+单元测试根目录必须保持每进程 `.test-runtime` 隔离，不得删除或迁移用户安装目录。真实消息发送和自动回复规则必须有用户明确授权。
+
+## 发布与记录
+
+发布前统一 package、Cargo、Tauri 和生成 schema 的版本。运行 `pnpm tauri:build`、`pnpm release:package`，校对安装包、CLI ZIP 和 SHA256。GitHub 发布流程完成验证后才上传公开资产。
+
+开发记录使用中文，注明起始状态、原因、决策、兼容边界、具体证据和未完成项。用户原有未提交修改必须保留。遇到工具拒绝时如实记录行动和实际返回原因，不能用“测试通过”替代未完成的验证。

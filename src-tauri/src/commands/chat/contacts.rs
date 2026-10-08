@@ -1,7 +1,7 @@
-use tauri::{command, State};
 use crate::commands::AppState;
 use crate::models::{ApiResponse, ContactItemDto, RoutingRuleDto};
 use crate::services::db::ContactRuleRecord;
+use tauri::{command, State};
 
 /// Mark a conversation as read, clearing its unread badge.
 ///
@@ -30,7 +30,9 @@ pub async fn mark_read(
 }
 
 #[command]
-pub async fn get_contacts(state: State<'_, AppState>) -> Result<ApiResponse<serde_json::Value>, String> {
+pub async fn get_contacts(
+    state: State<'_, AppState>,
+) -> Result<ApiResponse<serde_json::Value>, String> {
     // Proof of life for the frontend: if the UI is up at all, it calls this on mount.
     // Recorded into the chain monitor because a blank window and a working window are
     // indistinguishable from the outside - this is the only reliable signal that the
@@ -58,7 +60,7 @@ pub async fn get_contacts(state: State<'_, AppState>) -> Result<ApiResponse<serd
     for f in friends {
         let target_id = f.user_id.to_string();
         let name = f.remark.filter(|r| !r.is_empty()).unwrap_or(f.nickname);
-        
+
         // Whitelist invariant: Default to ignore / not enabled if new
         let rule = if let Some(r) = rule_map.remove(&target_id) {
             r
@@ -185,39 +187,110 @@ pub async fn get_contacts(state: State<'_, AppState>) -> Result<ApiResponse<serd
 }
 
 #[command]
-pub async fn update_rule(state: State<'_, AppState>, rule: serde_json::Value) -> Result<ApiResponse<serde_json::Value>, String> {
-    let target_id = rule.get("targetId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+pub async fn update_rule(
+    state: State<'_, AppState>,
+    rule: serde_json::Value,
+) -> Result<ApiResponse<serde_json::Value>, String> {
+    let target_id = rule
+        .get("targetId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     if target_id.is_empty() {
         return Ok(ApiResponse::err(1002, "目标 ID 不能为空", None));
     }
 
     // Find existing rule if present to preserve contact details
-    let existing = state.db.get_all_rules().map_err(|e| e.to_string())?
+    let existing = state
+        .db
+        .get_all_rules()
+        .map_err(|e| e.to_string())?
         .into_iter()
         .find(|r| r.target_id == target_id);
 
-    let mode = rule.get("mode").and_then(|v| v.as_str()).map(|s| s.to_string())
-        .unwrap_or_else(|| existing.as_ref().map(|e| e.mode.clone()).unwrap_or_else(|| "ignore".to_string()));
-    let trigger_condition = rule.get("triggerCondition").and_then(|v| v.as_str()).map(|s| s.to_string())
-        .unwrap_or_else(|| existing.as_ref().map(|e| e.trigger_condition.clone()).unwrap_or_else(|| "at_me".to_string()));
-    let keywords = rule.get("keywords").map(|k| k.to_string())
-        .unwrap_or_else(|| existing.as_ref().map(|e| e.keywords.clone()).unwrap_or_else(|| "[]".to_string()));
-    let cooldown = rule.get("cooldownSeconds").and_then(|v| v.as_i64())
-        .map(|v| v as i32)
+    let mode = rule
+        .get("mode")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            existing
+                .as_ref()
+                .map(|e| e.mode.clone())
+                .unwrap_or_else(|| "ignore".to_string())
+        });
+    if !["ignore", "auto_reply", "copilot", "summary_only"].contains(&mode.as_str()) {
+        return Ok(ApiResponse::err(1002, "Invalid rule mode", None));
+    }
+    let trigger_condition = rule
+        .get("triggerCondition")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            existing
+                .as_ref()
+                .map(|e| e.trigger_condition.clone())
+                .unwrap_or_else(|| "at_me".to_string())
+        });
+    if !["all", "at_me", "keyword"].contains(&trigger_condition.as_str()) {
+        return Ok(ApiResponse::err(1002, "Invalid trigger condition", None));
+    }
+    let keywords = rule
+        .get("keywords")
+        .map(|k| k.to_string())
+        .unwrap_or_else(|| {
+            existing
+                .as_ref()
+                .map(|e| e.keywords.clone())
+                .unwrap_or_else(|| "[]".to_string())
+        });
+    let cooldown = rule
+        .get("cooldownSeconds")
+        .and_then(|v| v.as_i64())
+        .map(|v| v.clamp(0, 86400) as i32)
         .unwrap_or_else(|| existing.as_ref().map(|e| e.cooldown_seconds).unwrap_or(5));
-    let enabled = rule.get("enabled").and_then(|v| v.as_bool())
-        .unwrap_or_else(|| existing.as_ref().map(|e| e.enabled).unwrap_or(mode != "ignore"));
-    let is_summary_whitelist = rule.get("isSummaryWhitelist").and_then(|v| v.as_bool())
-        .unwrap_or_else(|| existing.as_ref().map(|e| e.is_summary_whitelist).unwrap_or(false));
-    let summary_interval = rule.get("summaryIntervalHours").and_then(|v| v.as_i64())
+    let enabled = rule
+        .get("enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or_else(|| {
+            existing
+                .as_ref()
+                .map(|e| e.enabled)
+                .unwrap_or(mode != "ignore")
+        });
+    let is_summary_whitelist = rule
+        .get("isSummaryWhitelist")
+        .and_then(|v| v.as_bool())
+        .unwrap_or_else(|| {
+            existing
+                .as_ref()
+                .map(|e| e.is_summary_whitelist)
+                .unwrap_or(false)
+        });
+    let summary_interval = rule
+        .get("summaryIntervalHours")
+        .and_then(|v| v.as_i64())
         .map(|v| v as i32)
-        .unwrap_or_else(|| existing.as_ref().map(|e| e.summary_interval_hours).unwrap_or(6));
+        .unwrap_or_else(|| {
+            existing
+                .as_ref()
+                .map(|e| e.summary_interval_hours)
+                .unwrap_or(6)
+        });
 
     let record = ContactRuleRecord {
         target_id: target_id.clone(),
-        target_type: existing.as_ref().map(|e| e.target_type.clone()).unwrap_or_else(|| "group".to_string()),
-        name: existing.as_ref().map(|e| e.name.clone()).unwrap_or_default(),
-        avatar_url: existing.as_ref().map(|e| e.avatar_url.clone()).unwrap_or_default(),
+        target_type: existing
+            .as_ref()
+            .map(|e| e.target_type.clone())
+            .unwrap_or_else(|| "group".to_string()),
+        name: existing
+            .as_ref()
+            .map(|e| e.name.clone())
+            .unwrap_or_default(),
+        avatar_url: existing
+            .as_ref()
+            .map(|e| e.avatar_url.clone())
+            .unwrap_or_default(),
         mode,
         trigger_condition,
         keywords,
@@ -233,8 +306,18 @@ pub async fn update_rule(state: State<'_, AppState>, rule: serde_json::Value) ->
 }
 
 #[command]
-pub async fn batch_update_mode(state: State<'_, AppState>, target_ids: Vec<String>, mode: String) -> Result<ApiResponse<serde_json::Value>, String> {
-    let affected = state.db.batch_update_mode(&target_ids, &mode).map_err(|e| e.to_string())?;
+pub async fn batch_update_mode(
+    state: State<'_, AppState>,
+    target_ids: Vec<String>,
+    mode: String,
+) -> Result<ApiResponse<serde_json::Value>, String> {
+    if !["ignore", "auto_reply", "copilot", "summary_only"].contains(&mode.as_str()) {
+        return Ok(ApiResponse::err(1002, "Invalid rule mode", None));
+    }
+    let affected = state
+        .db
+        .batch_update_mode(&target_ids, &mode)
+        .map_err(|e| e.to_string())?;
     Ok(ApiResponse::ok(serde_json::json!({
         "affectedCount": affected
     })))

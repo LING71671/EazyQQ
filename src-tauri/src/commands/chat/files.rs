@@ -1,6 +1,6 @@
-use tauri::{command, State};
 use crate::commands::AppState;
 use crate::models::{ApiResponse, FileSummaryResultDto, GroupFileItemDto};
+use tauri::{command, State};
 
 #[command]
 pub async fn get_group_files(
@@ -9,11 +9,16 @@ pub async fn get_group_files(
     _folder_id: Option<String>,
 ) -> Result<ApiResponse<Vec<GroupFileItemDto>>, String> {
     // Real implementation: mirror the remote list, then report local download state.
-    if let Err(e) = crate::services::group_files::sync_group_files(&state.db, &state.onebot, &group_id).await {
+    if let Err(e) =
+        crate::services::group_files::sync_group_files(&state.db, &state.onebot, &group_id).await
+    {
         tracing::warn!("group file sync failed for {}: {}", group_id, e);
     }
 
-    let records = state.db.get_group_files(&group_id).map_err(|e| e.to_string())?;
+    let records = state
+        .db
+        .get_group_files(&group_id)
+        .map_err(|e| e.to_string())?;
     let list: Vec<GroupFileItemDto> = records
         .into_iter()
         .map(|r| GroupFileItemDto {
@@ -39,7 +44,12 @@ pub async fn download_file(
     file_id: String,
     file_name: String,
 ) -> Result<ApiResponse<serde_json::Value>, String> {
-    tracing::info!("download requested: {} (group {}, file {})", file_name, group_id, file_id);
+    tracing::info!(
+        "download requested: {} (group {}, file {})",
+        file_name,
+        group_id,
+        file_id
+    );
 
     let path = crate::services::group_files::download_group_file(
         &state.db,
@@ -83,7 +93,12 @@ pub async fn open_folder(target_path: String) -> Result<ApiResponse<()>, String>
         }
     };
 
-    let _ = std::fs::create_dir_all(&path);
+    let path = if path.is_file() {
+        path.parent().unwrap_or(&path).to_path_buf()
+    } else {
+        path
+    };
+    std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
 
     #[cfg(target_os = "windows")]
     {

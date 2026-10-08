@@ -27,6 +27,17 @@ export const App: React.FC = () => {
   const [isHealthOpen, setIsHealthOpen] = useState(false);
   const [isDark, setIsDark] = useState(false);
 
+  useEffect(() => {
+    const openManual = (event: KeyboardEvent) => {
+      if (event.key === 'F1') {
+        event.preventDefault();
+        setIsManualOpen(previous => !previous);
+      }
+    };
+    window.addEventListener('keydown', openManual);
+    return () => window.removeEventListener('keydown', openManual);
+  }, []);
+
   // Summaries & Diagnostics state
   const [summaries, setSummaries] = useState<GroupSummaryDto[]>([]);
   const [isSummarizing, setIsSummarizing] = useState(false);
@@ -107,6 +118,8 @@ export const App: React.FC = () => {
   }, [fetchContactsAndDrafts]);
 
   const {
+    pendingLogin,
+    setPendingLogin,
     protocolStatus,
     setProtocolStatus,
     isRefreshingQr,
@@ -115,6 +128,7 @@ export const App: React.FC = () => {
     chainHasFailure,
     handleRefreshQr,
     handleQuickLogin,
+    handleLogout,
   } = useProtocolState({ onLoginSuccess: handleLoginSuccess });
 
   // Domain Hook 3: Group Files & AI Summarization
@@ -137,24 +151,6 @@ export const App: React.FC = () => {
   // Initial boot data fetch
   useEffect(() => {
     api.showWindow().catch(() => {});
-
-    // Proactively fetch QR code if waiting for scan without existing image
-    api.getProtocolStatus().then((res) => {
-      if (res.success && res.data) {
-        setProtocolStatus(res.data);
-        if (res.data.loginStatus !== 'logged_in' && !res.data.qrcodeBase64) {
-          api.refreshQrCode().then((rRes) => {
-            if (rRes.success && rRes.data) {
-              setProtocolStatus((prev) => ({
-                ...prev,
-                qrcodeBase64: rRes.data?.qrcodeBase64,
-                loginStatus: 'waiting_scan',
-              }));
-            }
-          }).catch(() => {});
-        }
-      }
-    }).catch(() => {});
 
     const fetchInitialData = async () => {
       const bootStartedAt = Date.now();
@@ -327,7 +323,10 @@ export const App: React.FC = () => {
               error={qrError || protocolStatus.qrcodeError}
               onQuickLogin={handleQuickLogin}
               isQuickLoggingIn={isQuickLoggingIn}
+              pendingLogin={pendingLogin}
+              onCancelPendingLogin={() => setPendingLogin(null)}
               onOpenHealth={() => setIsHealthOpen(true)}
+              onLogout={handleLogout}
             />
           )}
           {currentView === 'contacts' && (

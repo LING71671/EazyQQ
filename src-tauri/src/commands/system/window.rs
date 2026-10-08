@@ -1,7 +1,7 @@
-use tauri::{command, Manager, State};
 use crate::commands::AppState;
 use crate::models::ApiResponse;
 use crate::services::db::Database;
+use tauri::{command, Manager, State};
 
 /// Window behavior preferences, persisted in the SQLite `app_settings.app_config` blob.
 /// Project default: BOTH minimize and close collapse into the system tray, so the
@@ -51,7 +51,7 @@ pub async fn app_minimize_window(
 #[command]
 pub async fn app_toggle_maximize_window(window: tauri::Window) -> Result<bool, String> {
     if window.is_maximized().map_err(|e| e.to_string())? {
-        window.unminimize().map_err(|e| e.to_string())?;
+        window.unmaximize().map_err(|e| e.to_string())?;
         Ok(false)
     } else {
         let _ = window.unminimize();
