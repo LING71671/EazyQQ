@@ -1,0 +1,41 @@
+name: Native release diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download unpublished validated candidates
+        shell: pwsh
+        run: |
+          gh release download v0.5.0 --pattern eazyqq.exe --pattern eazyqq_cli.exe --dir .test-runtime/candidate-binaries
+          exit $LASTEXITCODE
+      - name: Inspect real native profiles
+        shell: pwsh
+        run: |
+          $env:EAZYQQ_TEST_CLI = (Resolve-Path .test-runtime/candidate-binaries/eazyqq_cli.exe).Path
+          $env:EAZYQQ_TEST_GUI = (Resolve-Path .test-runtime/candidate-binaries/eazyqq.exe).Path
+          python scripts/validation/native_profiles.py
+          exit $LASTEXITCODE
+      - name: Keep isolated startup logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-startup-diagnostics
+          include-hidden-files: true
+          path: |
+            .test-runtime/native-profiles-*/gui-stderr.log
+            .test-runtime/native-profiles-*/EazyQQ_Data/accounts/*/*/logs/*.log
+          if-no-files-found: ignore
