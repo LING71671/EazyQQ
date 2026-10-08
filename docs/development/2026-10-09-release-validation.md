@@ -25,3 +25,11 @@
 Windows runner 默认 checkout 为 CRLF，生成器产物按 LF 比较，造成相同 JSON 被误报 `Contract drift`。发布流程在 checkout 前设定 canonical LF；main 增加 `.gitattributes`，生成器读取时规范 CRLF。不是跳过校验或重新生成掩盖接口变更，仍比较完整内容。
 
 标签来源保持不变；新版流程以 canonical LF 检出同一标签。main 的兼容修复改善后续开发者 checkout，不改变本次发布应用行为。
+
+## 第三轮云端验收
+
+[运行 37806495896](https://github.com/LING71671/EazyQQ/actions/runs/37806495896) 已通过类型、契约、前端、Rust、完整安装包构建及 24 项 Release CLI 验收。原生驱动连接 WebView 调试端口超时，尚未建立公开 Release。
+
+本机同版本原生验收已通过，需定位 runner 的环境差异。验证驱动改为明确绕过系统代理访问本机端口，使用软件渲染，并为冷启动提供更长上限；失败时输出应用退出码和隔离日志。不能仅凭超时断言某一具体根因已修复。
+
+后续工作流从其自身修订读取验证驱动，应用仍构建同一标签。驱动变更不进入应用二进制；失败日志保存供定位，Rust 编译缓存也在失败时保存，避免无谓重复冷编译。

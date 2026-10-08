@@ -49,6 +49,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          cache-on-failure: true
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -106,8 +107,24 @@ jobs:
           $env:EAZYQQ_TEST_GUI = (Resolve-Path src-tauri/target/release/eazyqq.exe).Path
           pnpm test:smoke
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pnpm test:native
+          # Validation tools follow this workflow revision; application source stays tagged.
+          $content = gh api "repos/$env:GITHUB_REPOSITORY/contents/scripts/validation/native_profiles.py?ref=$env:GITHUB_SHA" --jq .content
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $validator = Join-Path $env:RUNNER_TEMP 'native_profiles.py'
+          [IO.File]::WriteAllBytes($validator, [Convert]::FromBase64String(($content -join '')))
+          $env:EAZYQQ_TEST_PROJECT_ROOT = (Get-Location).Path
+          python $validator
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Keep native startup diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-startup-diagnostics
+          path: |
+            .test-runtime/native-profiles-*/gui-stderr.log
+            .test-runtime/native-profiles-*/EazyQQ_Data/accounts/*/*/logs/*.log
+          if-no-files-found: ignore
 
       - name: Prepare validated distribution assets
         run: pnpm release:package

@@ -11,10 +11,10 @@ import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.request import urlopen
+from urllib.request import ProxyHandler, build_opener, getproxies
 from urllib.parse import urlsplit
 
-PROJECT = Path(__file__).resolve().parents[2]
+PROJECT = Path(os.environ.get("EAZYQQ_TEST_PROJECT_ROOT", Path(__file__).resolve().parents[2]))
 GUI = Path(os.environ.get("EAZYQQ_TEST_GUI", PROJECT / "src-tauri/target/release/eazyqq.exe"))
 CLI = Path(os.environ.get("EAZYQQ_TEST_CLI", PROJECT / "src-tauri/target/release/eazyqq_cli.exe"))
 FIXTURES = PROJECT / ".test-runtime"
@@ -22,6 +22,7 @@ FIXTURES.mkdir(exist_ok=True)
 ROOT = Path(tempfile.mkdtemp(prefix="native-profiles-", dir=FIXTURES))
 ENV = {**os.environ, "EAZYQQ_ROOT": str(ROOT)}
 servers = []
+LOCAL_HTTP = build_opener(ProxyHandler({}))
 
 
 class Protocol(BaseHTTPRequestHandler):
@@ -118,13 +119,13 @@ class CDP:
                 return response["result"]["result"].get("value")
 
 
-def connect(uin, timeout=35):
+def connect(uin, timeout=90):
     deadline = time.monotonic() + timeout
     last_error = None
     while time.monotonic() < deadline:
         client = None
         try:
-            with urlopen(f"http://127.0.0.1:{debug_port}/json/list", timeout=2) as response: pages = json.load(response)
+            with LOCAL_HTTP.open(f"http://127.0.0.1:{debug_port}/json/list", timeout=2) as response: pages = json.load(response)
             page = next(item for item in pages if item.get("type") == "page" and "tauri.localhost" in item.get("url", ""))
             client = CDP(page["webSocketDebuggerUrl"])
             value = client.evaluate("(async () => { if (!window.__TAURI_INTERNALS__) return null; const r = await window.__TAURI_INTERNALS__.invoke('get_protocol_status'); return r.data?.qqNumber; })()")
@@ -165,8 +166,9 @@ try:
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
         debug_port = reservation.getsockname()[1]
-    ENV["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={debug_port}"
-    gui = subprocess.Popen([str(GUI)], env=ENV, cwd=ROOT, creationflags=subprocess.CREATE_NO_WINDOW, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ENV["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={debug_port} --disable-gpu"
+    with (ROOT / "gui-stderr.log").open("wb") as stderr:
+        gui = subprocess.Popen([str(GUI)], env=ENV, cwd=ROOT, creationflags=subprocess.CREATE_NO_WINDOW, stdout=subprocess.DEVNULL, stderr=stderr)
     client = connect("10001")
     expected_version = json.loads((PROJECT / "package.json").read_text(encoding="utf-8-sig"))["version"]
     assert client.evaluate("window.__TAURI_INTERNALS__.invoke('plugin:app|version')") == expected_version
@@ -194,11 +196,18 @@ try:
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
         try:
-            with urlopen(f"http://127.0.0.1:{debug_port}/json/list", timeout=1): pass
+            with LOCAL_HTTP.open(f"http://127.0.0.1:{debug_port}/json/list", timeout=1): pass
         except OSError: break
         time.sleep(0.1)
     else: raise AssertionError("The test desktop did not shut down")
     print(json.dumps({"passed": True, "accountRoundTrip": True, "privateProfiles": True, "maximizeRoundTrip": True, "manualShortcut": True, "realQQTouched": False, "fixture": str(ROOT)}))
+except Exception:
+    print(json.dumps({"fixture": str(ROOT), "guiExitCode": gui.poll() if gui else None, "systemProxyConfigured": bool(getproxies())}), flush=True)
+    for log in [ROOT / "gui-stderr.log", *ROOT.glob("EazyQQ_Data/accounts/*/*/logs/*.log")]:
+        if log.exists():
+            print(f"Diagnostic log: {log.relative_to(ROOT)}", flush=True)
+            print("\n".join(log.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]), flush=True)
+    raise
 finally:
     if client:
         try: client.evaluate("window.__TAURI_INTERNALS__.invoke('app_close_window'); true")
