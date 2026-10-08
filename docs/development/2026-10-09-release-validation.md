@@ -45,3 +45,5 @@ Windows runner 默认 checkout 为 CRLF，生成器产物按 LF 比较，造成�
 [运行 37812548639](https://github.com/LING71671/EazyQQ/actions/runs/37812548639) 提供完整日志。应用成功创建窗口和托盘，前端调用联系人接口，确认模拟账号身份，WebSocket 与调度均运行。WebView2 153 已安装。问题限于驱动访问调试 HTTP 端口，不能继续称为“应用启动失败”。
 
 为避免重复编译，增加只读取未公开候选二进制的短诊断流程；候选仍为已在本机通过原生验收的 0.5.0。记录浏览器进程的调试参数和端口监听，不输出环境凭据。候选 Release 仍是 draft，临时诊断二进制须在公开前移除。
+
+短诊断日志中，浏览器进程未出现指定调试端口参数，也没有相应监听。采用 [Microsoft 文档支持的每应用注册表配置](https://learn.microsoft.com/en-us/microsoft-edge/webview2/how-to/debug-visual-studio-code#using-a-registry-value) 补充 runner 的调试入口：仅在 `GITHUB_ACTIONS=true` 时设置当前用户、当前测试 exe 的 AdditionalBrowserArguments，结束后恢复原值；本机验证和用户安装均不修改注册表。
