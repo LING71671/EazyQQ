@@ -164,7 +164,8 @@ try:
     napcat.mkdir()
     (napcat / "napcat.mjs").write_text("// Simulated protocol, no QQ launcher is installed here.\n")
     bootstrap = ROOT / "EazyQQ_Data/bootstrap.json"
-    bootstrap.write_text(json.dumps({"lastAccount": "10001", "webviewCompatMode": True}))
+    hosted = os.environ.get("GITHUB_ACTIONS") == "true"
+    bootstrap.write_text(json.dumps({"lastAccount": "10001", "webviewCompatMode": not hosted}))
     config = ROOT / "fixture-config.json"
     config.write_text(json.dumps({"ai": {"activeProvider": "opencode", "model": "big-pickle"}, "summary": {"enabled": False}, "napcat": {"autoRestart": False, "heartbeatIntervalSec": 15}, "storage": {"autoSyncFiles": False}, "window": {"closeToTray": False}}))
     for uin in ["10001", "10002"]: run("set-config", "--account", uin, "--key", "app_config", "--file", str(config))
@@ -172,14 +173,18 @@ try:
         reservation.bind(("127.0.0.1", 0))
         debug_port = reservation.getsockname()[1]
     ENV["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={debug_port} --disable-gpu"
-    if os.environ.get("GITHUB_ACTIONS") == "true":
+    if hosted:
         # Hosted WebView2 may ignore inherited flags; use its documented app override.
         import winreg
         key_path = r"Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
+        arguments = ENV.pop("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") + " --no-sandbox"
+        previous = []
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
-            try: previous = winreg.QueryValueEx(key, GUI.name)
-            except FileNotFoundError: previous = None
-            winreg.SetValueEx(key, GUI.name, 0, winreg.REG_SZ, ENV["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] + " --no-sandbox")
+            for app_id in [GUI.name, "com.eazyqq.app"]:
+                try: value = winreg.QueryValueEx(key, app_id)
+                except FileNotFoundError: value = None
+                previous.append((app_id, value))
+                winreg.SetValueEx(key, app_id, 0, winreg.REG_SZ, arguments)
         registry_override = (key_path, previous)
     with (ROOT / "gui-stderr.log").open("wb") as stderr:
         gui = subprocess.Popen([str(GUI)], env=ENV, cwd=ROOT, creationflags=subprocess.CREATE_NO_WINDOW, stdout=subprocess.DEVNULL, stderr=stderr)
@@ -242,5 +247,6 @@ finally:
         import winreg
         key_path, previous = registry_override
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE) as key:
-            if previous is None: winreg.DeleteValue(key, GUI.name)
-            else: winreg.SetValueEx(key, GUI.name, 0, previous[1], previous[0])
+            for app_id, value in previous:
+                if value is None: winreg.DeleteValue(key, app_id)
+                else: winreg.SetValueEx(key, app_id, 0, value[1], value[0])
