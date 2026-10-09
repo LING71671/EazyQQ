@@ -24,23 +24,20 @@ pub fn reconcile_account(app: &tauri::AppHandle, observed: &str) {
         return;
     }
 
-    match crate::services::accounts::active() {
-        Some(current) if current == observed => {}
-        _ => {
+    match crate::services::accounts::select_for_restart(observed) {
+        Ok(false) => {}
+        Ok(true) => {
             tracing::info!(
                 "adopting account {} so its data is isolated from other accounts (hot reloading webview)",
                 observed
             );
-            if let Err(e) = crate::services::accounts::adopt(observed) {
-                tracing::warn!("could not record the account: {}", e);
-                return;
-            }
             // Restart the application context only after authentication is confirmed.
             // Immutable per-process database/AI/workflow handles prevent in-flight work
             // from crossing account boundaries during a selection change.
             std::env::set_var("EAZYQQ_ACCOUNT_RESTART", "1");
             app.restart();
         }
+        Err(error) => tracing::warn!("could not record the account selection: {}", error),
     }
 }
 
@@ -65,7 +62,15 @@ pub async fn get_protocol_status(
                 uin,
                 evidence.nickname.as_deref(),
             );
-            reconcile_account(&app, uin);
+            match crate::services::accounts::adopt_observed(state.onebot.expected_account(), uin) {
+                Ok(true) => {
+                    tracing::info!("adopting first verified account {} from the unbound context", uin);
+                    std::env::set_var("EAZYQQ_ACCOUNT_RESTART", "1");
+                    app.restart();
+                }
+                Ok(false) => {}
+                Err(error) => tracing::warn!("could not adopt the initial account: {}", error),
+            }
         }
     }
     let connected = evidence.logged_in || alive;

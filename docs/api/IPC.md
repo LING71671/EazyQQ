@@ -1,6 +1,6 @@
 # 桌面 IPC 契约
 
-适用于 0.5.4，传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`，私有登记文件使用 `snake_case`。
+适用于 0.5.5，传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`，私有登记文件使用 `snake_case`。
 
 ## 返回与错误
 
@@ -45,6 +45,8 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 
 桌面切换只重建 EazyQQ 上下文，协议会话保持。数据库、AI 和执行中的任务仍绑定旧账号直至进程退出。目标未确认则保留当前选择。状态轮询不触发快速登录、停止进程或刷新二维码。
 
+已绑定上下文的身份观察不提交账号选择。显式切换只保存启动目标，旧进程的身份和路径在退出前保持；首次未绑定身份确认采用原子检查，不能覆盖另一操作已经保存的目标。延迟状态响应不得导致切换回旧账号。
+
 ## 登录、健康与恢复
 
 `get_protocol_status` 包含 `isConnected`、`loginStatus`、`qqNumber`、`nickname`、`avatarUrl`、`qrcodeBase64`、`qrcodeError` 与记忆账号列表。有效状态包括 `unlogged`、`waiting_scan`、`scanned`、`logged_in`。OneBot 必须返回 `status=ok`、`retcode=0` 和有效身份；已确认身份优先于陈旧 WebUI 标志。
@@ -75,9 +77,9 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 | 更新 | `check_app_update()`、`check_napcat_update()` 返回更新信息；`get_napcat_version()` 返回版本；`upgrade_app` / `upgrade_napcat` 接受 `{downloadUrl?}` |
 | QQ 路径 | `get_qq_path()` 返回路径；`set_qq_path({path})` 验证文件并更新引导 |
 
-0.5.4 的诊断 ZIP 新增 `protocol/startup-trace.json`，包含实际私有目录、入口解析、资源散列、本次启动编号及加载器执行凭证。阶段状态 `passed`、`failed`、`unknown` 分别表示该检查成立、该检查失败或缺乏证据；端口开放不代表认证成立。凭证只记录阶段、PID、运行时版本、时间、错误类型/代码，不记录 token、消息或完整环境。旧版 0.5.3 不包含该能力。
+0.5.5 的诊断 ZIP 新增 `protocol/startup-trace.json`，包含实际私有目录、入口解析、资源散列、本次启动编号及加载器执行凭证。阶段状态 `passed`、`failed`、`unknown` 分别表示该检查成立、该检查失败或缺乏证据；端口开放不代表认证成立。凭证只记录阶段、PID、运行时版本、时间、错误类型/代码，不记录 token、消息或完整环境。旧版 0.5.3 不包含该能力。
 
-0.5.4 的加载入口和更新安装助手使用最终物理路径跨进程交接，现有参数与 DTO 不变；真实 QQ 的执行凭证仍是加载验收依据。详见 `docs/development/2026-10-09-physical-path-handoff.md`，旧版 0.5.3 安装包不包含该修复。
+0.5.5 的加载入口和更新安装助手使用最终物理路径跨进程交接，现有参数与 DTO 不变；真实 QQ 的执行凭证仍是加载验收依据。详见 `docs/development/2026-10-09-physical-path-handoff.md`，旧版 0.5.3 安装包不包含该修复。
 
 完整命令清单由 [覆盖矩阵](COVERAGE.md) 生成。所有 DTO 的精确字段以 `src/api/contracts.ts` 和 Rust 命令返回类型为准。
 

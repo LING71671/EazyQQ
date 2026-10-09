@@ -61,6 +61,10 @@ pub fn set_webview_compat(enabled: bool) -> Result<(), String> {
 }
 
 pub fn update_bootstrap(operation: impl FnOnce(&mut Bootstrap)) -> Result<(), String> {
+    update_bootstrap_if(|bootstrap| { operation(bootstrap); true }).map(|_| ())
+}
+
+pub fn update_bootstrap_if(operation: impl FnOnce(&mut Bootstrap) -> bool) -> Result<bool, String> {
     let _guard = crate::services::infra::persistence::FileLock::acquire(
         &bootstrap_path().with_extension("lock"),
     )?;
@@ -70,6 +74,7 @@ pub fn update_bootstrap(operation: impl FnOnce(&mut Bootstrap)) -> Result<(), St
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Bootstrap::default(),
         Err(e) => return Err(e.to_string()),
     };
-    operation(&mut bootstrap);
-    write_bootstrap(&bootstrap)
+    if !operation(&mut bootstrap) { return Ok(false); }
+    write_bootstrap(&bootstrap)?;
+    Ok(true)
 }

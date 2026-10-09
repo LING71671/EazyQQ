@@ -27,6 +27,9 @@ ROOT = Path(tempfile.mkdtemp(prefix="native-profiles-", dir=FIXTURES))
 ENV = {**os.environ, "EAZYQQ_ROOT": str(ROOT)}
 servers = []
 LOCAL_HTTP = build_opener(ProxyHandler({}))
+delayed_probe_account = None
+delayed_probe_started = threading.Event()
+delayed_probe_release = threading.Event()
 
 
 class Protocol(BaseHTTPRequestHandler):
@@ -61,6 +64,9 @@ class Protocol(BaseHTTPRequestHandler):
     def do_POST(self):
         self.rfile.read(int(self.headers.get("Content-Length", 0)))
         if self.path == "/get_login_info":
+            if self.server.uin == delayed_probe_account:
+                delayed_probe_started.set()
+                delayed_probe_release.wait(timeout=3)
             body = {"status": "ok", "retcode": 0, "data": {"user_id": self.server.uin, "nickname": "Native fixture"}}
         elif self.path == "/api/auth/login": body = {"code": 0, "data": {"Credential": "fixture"}}
         elif self.path == "/api/QQLogin/CheckLoginStatus": body = {"code": 0, "data": {"isLogin": True, "uin": self.server.uin}}
@@ -205,7 +211,16 @@ try:
     assert client.evaluate("localStorage.getItem('eazyqq_profile_validation')") is None, "The second account inherited primary localStorage"
     client.evaluate("localStorage.setItem('eazyqq_profile_validation', '10002'); true")
     assert (registry_path.parent / "10002/webview/main/EBWebView").exists(), "The second account used a shared browser profile"
+    # Release old bound identity responses only after the new selection is committed.
+    delayed_probe_account = "10002"
+    client.evaluate("for(let i=0;i<8;i++) window.__TAURI_INTERNALS__.invoke('get_protocol_status').catch(()=>{}); true")
+    assert delayed_probe_started.wait(timeout=3), "Old context did not start its status probes"
     client.evaluate("window.__TAURI_INTERNALS__.invoke('quick_login', {uin:'10001'}); true")
+    deadline = time.monotonic() + 3
+    while json.loads(bootstrap.read_text())["lastAccount"] != "10001" and time.monotonic() < deadline:
+        time.sleep(0.005)
+    assert json.loads(bootstrap.read_text())["lastAccount"] == "10001", "Explicit selection was not committed"
+    delayed_probe_release.set()
     client.close()
     client = connect("10001")
     assert client.evaluate("localStorage.getItem('eazyqq_profile_validation')") == "10001"
@@ -219,7 +234,8 @@ try:
         except OSError: break
         time.sleep(0.1)
     else: raise AssertionError("The test desktop did not shut down")
-    print(json.dumps({"passed": True, "accountRoundTrip": True, "privateProfiles": True, "maximizeRoundTrip": True, "manualShortcut": True, "realQQTouched": False, "fixture": str(ROOT)}))
+    assert json.loads(bootstrap.read_text())["lastAccount"] == "10001", "An old status response reversed selection"
+    print(json.dumps({"passed": True, "accountRoundTrip": True, "delayedStatusSelectionPreserved": True, "privateProfiles": True, "maximizeRoundTrip": True, "manualShortcut": True, "realQQTouched": False, "fixture": str(ROOT)}))
 except Exception:
     print(json.dumps({"fixture": str(ROOT), "debugPort": globals().get("debug_port"), "guiExitCode": gui.poll() if gui else None, "systemProxyConfigured": bool(getproxies())}), flush=True)
     browser_state = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process -Filter \"Name='msedgewebview2.exe'\" | ForEach-Object { [pscustomobject]@{pid=$_.ProcessId;parent=$_.ParentProcessId;debug=[regex]::Match($_.CommandLine,'--remote-debugging-port=\\d+').Value} } | ConvertTo-Json -Compress"], capture_output=True, text=True, errors="replace", timeout=15)
@@ -234,6 +250,7 @@ except Exception:
             print("\n".join(log.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]), flush=True)
     raise
 finally:
+    delayed_probe_release.set()
     if client:
         try: client.evaluate("window.__TAURI_INTERNALS__.invoke('app_close_window'); true")
         except (OSError, EOFError, AssertionError): pass

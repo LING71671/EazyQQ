@@ -6,6 +6,28 @@ use super::migration::*;
 static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[test]
+fn delayed_identity_observation_cannot_reverse_an_explicit_selection() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    let previous_active = active();
+    let previous_bootstrap = read_bootstrap();
+    clear_active().unwrap();
+    assert!(adopt_observed(None,"10001").unwrap());
+    assert!(select_for_restart("10002").unwrap());
+    assert_eq!(active().as_deref(),Some("10001"),"The old process binding must stay immutable");
+    let selected = std::fs::read(bootstrap_path()).unwrap();
+    assert!(!adopt_observed(Some("10001"),"10001").unwrap());
+    assert!(!adopt_observed(None,"10001").unwrap());
+    assert_eq!(active().as_deref(),Some("10001"));
+    assert_eq!(std::fs::read(bootstrap_path()).unwrap(),selected);
+    // Another process may have selected a target while this context stayed unbound.
+    set_active(None);
+    assert!(!adopt_observed(None,"10001").unwrap());
+    assert_eq!(std::fs::read(bootstrap_path()).unwrap(),selected);
+    write_bootstrap(&previous_bootstrap).unwrap();
+    set_active(previous_active);
+}
+
+#[test]
 fn unbound_data_moves_into_the_adopted_account() {
     let _guard = TEST_LOCK.lock().unwrap();
     let uin = "555000111";

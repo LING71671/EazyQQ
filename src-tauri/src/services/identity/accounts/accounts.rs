@@ -59,14 +59,44 @@ pub fn account_changed(observed: &str) -> bool {
 /// Adopt an account: persist it and make it active for this process.
 pub fn adopt(uin: &str) -> Result<(), String> {
     crate::services::identity::machine::validate_uin(uin)?;
+    let mut active = active_slot().lock().map_err(|_| "Account selection lock is poisoned")?;
     super::bootstrap::update_bootstrap(|bootstrap| bootstrap.last_account = Some(uin.to_string()))?;
-    set_active(Some(uin.to_string()));
+    *active = Some(uin.to_string());
     Ok(())
+}
+
+/// Persist a GUI target without rebinding this process's existing handles or paths.
+pub fn select_for_restart(uin: &str) -> Result<bool, String> {
+    crate::services::identity::machine::validate_uin(uin)?;
+    let active = active_slot().lock().map_err(|_| "Account selection lock is poisoned")?;
+    super::bootstrap::update_bootstrap_if(|bootstrap| {
+        if bootstrap.last_account.as_deref() == Some(uin) { return false; }
+        bootstrap.last_account = Some(uin.to_string());
+        true
+    })?;
+    Ok(active.as_deref() != Some(uin))
+}
+
+/// Only the initial unbound context may claim a verified observed identity.
+/// A bound status response must never reverse a pending explicit selection.
+pub fn adopt_observed(bound_account: Option<&str>, uin: &str) -> Result<bool, String> {
+    crate::services::identity::machine::validate_uin(uin)?;
+    if bound_account.is_some() { return Ok(false); }
+    let mut active = active_slot().lock().map_err(|_| "Account selection lock is poisoned")?;
+    if active.is_some() { return Ok(false); }
+    let claimed = super::bootstrap::update_bootstrap_if(|bootstrap| {
+        if bootstrap.last_account.is_some() { return false; }
+        bootstrap.last_account = Some(uin.to_string());
+        true
+    })?;
+    if claimed { *active = Some(uin.to_string()); }
+    Ok(claimed)
 }
 
 /// Clear the active account from bootstrap and in-memory state.
 pub fn clear_active() -> Result<(), String> {
+    let mut active = active_slot().lock().map_err(|_| "Account selection lock is poisoned")?;
     super::bootstrap::update_bootstrap(|bootstrap| bootstrap.last_account = None)?;
-    set_active(None);
+    *active = None;
     Ok(())
 }
