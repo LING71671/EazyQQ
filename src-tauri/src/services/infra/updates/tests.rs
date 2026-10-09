@@ -2,6 +2,51 @@ use super::{download::*, release::*};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
+#[cfg(windows)]
+#[test]
+fn handoff_worker() {
+    if let Some(request) = std::env::args_os().find(|arg| std::path::Path::new(arg).extension().is_some_and(|extension| extension == "json")) {
+        super::installer::run_helper(std::path::Path::new(&request)).unwrap();
+        return;
+    }
+    let Some(path)=std::env::var_os("EAZYQQ_TEST_HANDOFF") else { return; };
+    let path=std::path::PathBuf::from(path);
+    let bytes=std::fs::read(&path).unwrap();
+    let prepared=super::download::PreparedUpdate {path,sha256:format!("{:x}",Sha256::digest(&bytes)),size:bytes.len() as u64};
+    super::installer::launch(&prepared,false).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn installer_handoff_survives_caller_exit_and_handles_unicode_paths() {
+    use std::os::windows::process::CommandExt;
+    let root=crate::services::logging::workspace_root().join("installer handoff 中文");
+    std::fs::create_dir_all(&root).unwrap();
+    let source=root.join("fixture.c");let executable=root.join("fixture.exe");
+    std::fs::write(&source,r#"
+#include <windows.h>
+#include <wchar.h>
+int WINAPI WinMain(HINSTANCE a,HINSTANCE b,LPSTR command,int show){
+  wchar_t file[32768];GetModuleFileNameW(NULL,file,32768);*wcsrchr(file,L'\\')=0;wcscat(file,L"\\installed.flag");
+  HANDLE h=CreateFileW(file,GENERIC_WRITE,0,NULL,CREATE_ALWAYS,0,NULL);if(h==INVALID_HANDLE_VALUE)return 2;
+  DWORD n;const wchar_t* args=GetCommandLineW();WriteFile(h,args,(DWORD)(wcslen(args)*2),&n,NULL);CloseHandle(h);return 0;
+}
+"#).unwrap();
+    let compiled=std::process::Command::new("cl.exe").args(["/nologo","/MT"])
+        .arg(&source).arg(format!("/Fe:{}",executable.display())).args(["/link","/SUBSYSTEM:WINDOWS","kernel32.lib"])
+        .current_dir(&root).creation_flags(0x08000000).output().expect("MSVC is required by the Windows Rust toolchain");
+    assert!(compiled.status.success(),"{}",String::from_utf8_lossy(&compiled.stdout));
+    let child=std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact","services::infra::updates::tests::handoff_worker","--nocapture"])
+        .env("EAZYQQ_TEST_HANDOFF",&executable).creation_flags(0x08000000).output().unwrap();
+    assert!(child.status.success(),"{}",String::from_utf8_lossy(&child.stdout));
+    let flag=root.join("installed.flag");let deadline=std::time::Instant::now()+std::time::Duration::from_secs(15);
+    while !flag.exists() && std::time::Instant::now()<deadline {std::thread::sleep(std::time::Duration::from_millis(150));}
+    assert!(flag.exists(),"Detached installer did not run after caller exit: {:?}",std::fs::read_dir(&root).unwrap().map(|e|e.unwrap().file_name()).collect::<Vec<_>>());
+    let bytes=std::fs::read(flag).unwrap();let wide=bytes.chunks_exact(2).map(|b|u16::from_le_bytes([b[0],b[1]])).collect::<Vec<_>>();
+    let command=String::from_utf16(&wide).unwrap();assert!(command.contains("/P /R"));
+}
+
 #[test]
 fn unknown_core_version_and_missing_shell_are_distinct_states() {
     let release=json!({"tag_name":"v4.18.33","assets":[

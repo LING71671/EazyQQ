@@ -20,6 +20,9 @@ use context::Services;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> ExitCode {
+    if let Some(code) = eazyqq_lib::services::infra::updates::run_helper_if_requested() {
+        return ExitCode::from(code as u8);
+    }
     if let Some(code) = eazyqq_lib::services::protocol::ownership::run_supervisor_if_requested() {
         return ExitCode::from(code as u8);
     }

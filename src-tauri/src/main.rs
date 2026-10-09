@@ -1,6 +1,9 @@
 #![windows_subsystem = "windows"]
 
 fn main() {
+    if let Some(code) = eazyqq_lib::services::infra::updates::run_helper_if_requested() {
+        std::process::exit(code);
+    }
     if let Some(code) = eazyqq_lib::services::protocol::ownership::run_supervisor_if_requested() {
         std::process::exit(code);
     }

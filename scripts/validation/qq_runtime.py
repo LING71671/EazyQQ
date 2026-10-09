@@ -65,7 +65,14 @@ try:
     owners = [int(line.split()[-1]) for line in netstat if len(line.split()) >= 5
         and line.split()[0] == "TCP" and line.split()[1].endswith(f":{port}") and line.split()[3] == "LISTENING"]
     assert any(pid in owned_pids(private) for pid in owners), "WebUI must belong to this test's process tree"
-    qr = call("--account", "10001", "qr")
+    qr_deadline = time.monotonic() + 45
+    while True:
+        try:
+            qr = call("--account", "10001", "qr")
+            break
+        except RuntimeError as error:
+            if "生成二维码" not in str(error) or time.monotonic() >= qr_deadline: raise
+            time.sleep(2)
     report["qrAvailable"] = any(bool(qr.get(key)) for key in ("qrcodeBase64", "qrcode", "qrCode", "qr"))
     report["webuiOwned"] = True
     report["passed"] = True

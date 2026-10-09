@@ -9,6 +9,7 @@ mod tests;
 pub use release::{check, AppUpdateInfo};
 pub use download::{prepare, UpdateProgress};
 pub use installer::launch;
+pub use installer::run_helper_if_requested;
 
 pub fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder().user_agent("EazyQQ-Updater")
