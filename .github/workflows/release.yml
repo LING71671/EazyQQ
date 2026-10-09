@@ -100,14 +100,15 @@ jobs:
       - name: Build desktop and CLI
         run: pnpm tauri:build
 
+      - name: Validate installed desktop bundle
+        run: pwsh -NoProfile -File scripts/validation/install_bundle.ps1
+
       - name: Validate release CLI and native account profiles
         shell: pwsh
         run: |
           $env:PYTHONUTF8 = '1'
           Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\*' -ErrorAction SilentlyContinue | Select-Object name,pv
           Get-ItemProperty 'HKCU:\Software\Microsoft\EdgeUpdate\Clients\*' -ErrorAction SilentlyContinue | Select-Object name,pv
-          $env:EAZYQQ_TEST_CLI = (Resolve-Path src-tauri/target/release/eazyqq_cli.exe).Path
-          $env:EAZYQQ_TEST_GUI = (Resolve-Path src-tauri/target/release/eazyqq.exe).Path
           pnpm test:smoke
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           # Validation tools follow this workflow revision; application source stays tagged.
