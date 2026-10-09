@@ -37,6 +37,14 @@ eazyqq_cli accounts forget --uin 10001 --json
 
 `status`、`login-info`、`quick-login-list`、`quick-login --uin`、`qr [--refresh] [--save path] [--browser]` 提供认证操作。快速请求被接受不等于完成登录。二维码可能是 URL、data URI 或 base64；普通 `qr --save` 只有在接收到 PNG data URI 时写入 PNG，否则保存返回值文本。
 
+## 启动证据诊断（当前开发源码）
+
+`napcat-doctor --json` 使用当前所选运行目录，新增 `startupTrace`。包含 `schemaVersion`、`observedAtMs`、`attemptId`、`attemptOrigin`、`runtimeDir`、`stages`、`firstFailure`、`firstUnconfirmed` 和 `ready`。每阶段包含 `code`、`state`、`detail` 与 `evidence`；`state` 为 `passed`、`failed` 或 `unknown`。
+
+阶段按私有载荷、文件系统入口解析、加载文件、启动请求、加载器执行、模块导入、受管理进程、WebUI TCP 和认证证据排列。文件及 TCP 检查通过不能推出登录成功；该只读快照不主动执行认证，因此 `authenticated_session` 保持未知，`ready` 不作为账号退出或登录依据。旧版本启动收据使用 `legacy_launch_request`，缺少执行凭证不会冒充加载成功。
+
+诊断不启动 QQ、不刷新二维码、不快速登录、不重启，也不执行 AI 推理。新追踪能力尚未包含在已发布的 0.5.3 二进制中；故障记录见 `docs/development/2026-10-09-startup-provenance.md`。
+
 ## 常驻工作进程
 
 ```powershell

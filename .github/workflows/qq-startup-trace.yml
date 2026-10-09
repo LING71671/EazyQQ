@@ -7,7 +7,8 @@ on:
         required: true
         type: string
 permissions:
-  contents: read
+  # GitHub exposes private draft fixtures only to tokens with push access.
+  contents: write
 jobs:
   trace:
     runs-on: windows-latest

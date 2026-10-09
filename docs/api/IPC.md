@@ -73,6 +73,8 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 | 模型 | `fetch_provider_models({provider,baseUrl?,apiKey?})` 返回目录；`test_ai_connection({provider?,modelId?,baseUrl?,apiKey?,prompt?})` 返回测试结果 |
 | 诊断 | `check_dependencies()` 返回依赖报告；`export_diagnostics_bundle()` 返回 `{zipFilePath}` |
 | 更新 | `check_app_update()`、`check_napcat_update()` 返回更新信息；`get_napcat_version()` 返回版本；`upgrade_app` / `upgrade_napcat` 接受 `{downloadUrl?}` |
+
+当前开发源码的诊断 ZIP 新增 `protocol/startup-trace.json`，包含实际私有目录、入口解析、资源散列、本次启动编号及加载器执行凭证。阶段状态 `passed`、`failed`、`unknown` 分别表示该检查成立、该检查失败或缺乏证据；端口开放不代表认证成立。凭证只记录阶段、PID、运行时版本、时间、错误类型/代码，不记录 token、消息或完整环境。新能力尚未随产品发布。
 | QQ 路径 | `get_qq_path()` 返回路径；`set_qq_path({path})` 验证文件并更新引导 |
 
 完整命令清单由 [覆盖矩阵](COVERAGE.md) 生成。所有 DTO 的精确字段以 `src/api/contracts.ts` 和 Rust 命令返回类型为准。

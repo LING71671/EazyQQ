@@ -2,6 +2,8 @@
 
 当前版本 0.5.3。公开发布须对应完整验收的 Git 标签；本地安装包生成不等于已经发布。
 
+已知 0.5.3 在用户本机仍有 QQ 加载入口故障，参见 `docs/development/2026-10-09-startup-provenance.md`。当前新增追踪代码仅用于定位，不发布新的产品版本。证据收集工作流的成功只证明数据收集完成，不证明 QQ 登录或协议就绪；发布前必须明确区分假引导器进程回归与真实 QQ 模块加载证据。
+
 ## 版本与文档
 
 统一更新 package.json、Cargo.toml、Cargo.lock 和 tauri.conf.json；运行 `pnpm contracts:write` 更新生成 schema。`pnpm version:check` 校验清单，`pnpm contracts:check` 校验接口覆盖。

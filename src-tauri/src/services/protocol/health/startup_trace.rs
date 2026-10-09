@@ -19,6 +19,7 @@ pub struct StartupTrace {
     pub schema_version: u32,
     pub observed_at_ms: u64,
     pub attempt_id: Option<String>,
+    pub attempt_origin: String,
     pub runtime_dir: String,
     pub stages: Vec<Stage>,
     pub first_failure: Option<String>,
@@ -111,6 +112,19 @@ mod tests {
     }
 
     #[test]
+    fn legacy_launch_receipts_are_correlated_without_creating_new_attempts() {
+        let dir = fixture("startup-legacy-launch");
+        std::fs::write(dir.join("eazyqq-launch.json"),br#"{"request_id":"legacy-fixture"}"#).unwrap();
+        std::fs::write(dir.join("eazyqq-launch-result.json"),br#"{"request_id":"legacy-fixture","ok":true,"detail":"accepted"}"#).unwrap();
+        let trace = capture(&dir);
+        assert_eq!(trace.attempt_id.as_deref(),Some("legacy:legacy-fixture"));
+        assert_eq!(trace.attempt_origin,"legacy_launch_request");
+        assert_eq!(trace.stages.iter().find(|s|s.code=="launch_request").unwrap().state,"passed");
+        assert_eq!(trace.stages.iter().find(|s|s.code=="loader_execution").unwrap().state,"unknown");
+        assert!(!dir.join("eazyqq-startup-attempt.json").exists());
+    }
+
+    #[test]
     fn real_node_execution_distinguishes_import_success_and_failure() {
         for (name,code,expected) in [("startup-import-ok","export const fixture = true;","module_imported"),
             ("startup-import-failed","throw Object.assign(new Error('private-secret'), {code:'FIXTURE_IMPORT_FAILURE'});","module_failed")]
@@ -163,13 +177,26 @@ pub fn capture(dir: &Path) -> StartupTrace {
     stages.push(stage("private_loader",if expected.is_file() {"passed"} else {"failed"},"私有加载文件及散列",file_evidence(&expected)));
 
     let attempt = read_json(&dir.join("eazyqq-startup-attempt.json"));
-    let id = attempt.as_ref().and_then(|v|v["attemptId"].as_str()).map(str::to_owned);
+    let mut id = attempt.as_ref().and_then(|v|v["attemptId"].as_str()).map(str::to_owned);
+    let mut origin = if id.is_some() {"startup_attempt"} else {"missing"};
     let launch = read_json(&dir.join("eazyqq-startup-launch.json"));
-    let launch = launch.filter(|v| id.is_some() && v["attemptId"].as_str() == id.as_deref());
+    let mut launch = launch.filter(|v| id.is_some() && v["attemptId"].as_str() == id.as_deref());
+    if id.is_none() {
+        let plan = read_json(&dir.join("eazyqq-launch.json"));
+        let result = read_json(&dir.join("eazyqq-launch-result.json"));
+        if let Some(request_id) = plan.as_ref().and_then(|v|v["request_id"].as_str()) {
+            if let Some(result) = result.filter(|v|v["request_id"].as_str()==Some(request_id)) {
+                id = Some(format!("legacy:{request_id}")); origin = "legacy_launch_request";
+                launch = Some(json!({"ok":result["ok"],"detail":result["detail"],"legacyRequestId":request_id}));
+            }
+        }
+    }
     stages.push(stage("launch_request",match launch.as_ref().and_then(|v|v["ok"].as_bool()) {Some(true)=>"passed",Some(false)=>"failed",None=>"unknown"},
         "启动请求接受不等于模块加载成功",launch.unwrap_or(json!({"reason":"No matching launch receipt"}))));
     let witness = read_json(&dir.join("eazyqq-loader-witness.json"));
     let witness = witness.filter(|v|id.is_some() && v["attemptId"].as_str()==id.as_deref());
+    stages.push(stage("loader_execution",if witness.is_some() {"passed"} else {"unknown"},
+        "仅本次加载器写入的凭证证明入口曾执行",json!({"witnessMatched":witness.is_some()})));
     stages.push(stage("qq_module_load",match witness.as_ref().and_then(|v|v["stage"].as_str()) {Some("module_imported")=>"passed",Some("module_failed")=>"failed",_=>"unknown"},
         "由本次加载器执行写入；缺少或陈旧凭证不能当作成功",witness.unwrap_or(json!({"reason":"No matching loader witness"}))));
     stages.push(stage("owned_process",if super::ownership::is_running(dir) {"passed"} else {"unknown"},
@@ -182,5 +209,5 @@ pub fn capture(dir: &Path) -> StartupTrace {
     stages.push(stage("authenticated_session","unknown","此文件链路快照不执行登录；由只读账号探测确认身份",json!({})));
     let first_failure = stages.iter().find(|s|s.state=="failed").map(|s|s.code.clone());
     let first_unconfirmed = stages.iter().find(|s|s.state=="unknown").map(|s|s.code.clone());
-    StartupTrace {schema_version:1,observed_at_ms:now_ms(),attempt_id:id,runtime_dir:dir.display().to_string(),stages,first_failure,first_unconfirmed,ready:false}
+    StartupTrace {schema_version:1,observed_at_ms:now_ms(),attempt_id:id,attempt_origin:origin.into(),runtime_dir:dir.display().to_string(),stages,first_failure,first_unconfirmed,ready:false}
 }
