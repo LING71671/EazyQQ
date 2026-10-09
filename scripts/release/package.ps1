@@ -21,7 +21,7 @@ try {
     New-Item -ItemType Directory -Path (Join-Path $stageDir 'bin') -Force | Out-Null
     Copy-Item -LiteralPath $cli -Destination (Join-Path $stageDir 'bin/eazyqq_cli.exe')
     Copy-Item -LiteralPath $cli -Destination (Join-Path $stageDir 'bin/ezq.exe')
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'src-tauri/resources/napcat') -Destination (Join-Path $stageDir 'napcat') -Recurse
+    Copy-Item -LiteralPath (Join-Path $projectRoot "src-tauri/resources/protocol/$version") -Destination (Join-Path $stageDir 'napcat') -Recurse
     Copy-Item -LiteralPath (Join-Path $projectRoot 'docs') -Destination (Join-Path $stageDir 'docs') -Recurse
     foreach ($file in @('README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'AGENTS.md', 'LICENSE', 'llms.txt', 'llms-full.txt')) {
         Copy-Item -LiteralPath (Join-Path $projectRoot $file) -Destination $stageDir

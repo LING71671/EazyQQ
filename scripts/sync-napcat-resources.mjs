@@ -4,10 +4,21 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const source = path.join(root, 'napcat');
-const target = path.join(root, 'src-tauri/resources/napcat');
-const privateNames = new Set(['config', 'cache', 'logs', 'plugins', '.git', 'loadnapcat.js', 'qqnt.json']);
+const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+const target = path.join(root, 'src-tauri/resources/protocol', version);
+const privateNames = new Set(['config', 'cache', 'logs', 'plugins', '.git', 'loadnapcat.js', 'loadnapcat.cjs', 'qqnt.json']);
 const within = candidate => candidate.toLowerCase().startsWith(root.toLowerCase() + path.sep);
 if (!within(target)) throw new Error('Resource target escaped the workspace');
+const backupParent = path.join(root, '.test-runtime/resource-backups');
+fs.mkdirSync(backupParent, { recursive: true });
+const candidates = [path.join(root, 'src-tauri/resources/napcat')];
+const protocols = path.join(root, 'src-tauri/resources/protocol');
+if (fs.existsSync(protocols)) candidates.push(...fs.readdirSync(protocols).filter(name => name !== version).map(name => path.join(protocols, name)));
+for (const candidate of candidates) {
+  if (!fs.existsSync(candidate)) continue;
+  if (!within(fs.realpathSync(candidate))) throw new Error('Previous resource path escaped workspace');
+  fs.renameSync(candidate, path.join(backupParent, 'package-' + Date.now() + '-' + path.basename(candidate)));
+}
 fs.mkdirSync(target, { recursive: true });
 function copy(dir, dest) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

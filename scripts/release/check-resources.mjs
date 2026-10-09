@@ -3,7 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const directory = path.join(root, 'src-tauri/resources/napcat');
+const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+const directory = path.join(root, 'src-tauri/resources/protocol', version);
 const allowedConfigs = new Set(['webui.json', 'napcat.json', 'onebot11.json']);
 let count = 0;
 function inspect(dir) {

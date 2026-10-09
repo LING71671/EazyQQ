@@ -1,6 +1,6 @@
 # CLI 使用与契约
 
-适用于 0.5.1。源码构建：`pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli`。桌面安装包包含同名 CLI；独立压缩包还提供 `ezq.exe` 兼容名。
+适用于 0.5.2。源码构建：`pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli`。桌面安装包包含同名 CLI；独立压缩包还提供 `ezq.exe` 兼容名。
 
 ```powershell
 .\src-tauri\target\debug\eazyqq_cli.exe --account 10001 status --json
@@ -88,6 +88,6 @@ eazyqq_cli repair --json
 
 [命令 schema](cli.schema.json) 和 [覆盖矩阵](COVERAGE.md) 自动生成；`pnpm contracts:check` 验证前端 invoke、桌面处理函数、CLI 路由与文档的一致性。
 
-## 0.5.1 更新边界
+## 0.5.2 更新边界
 
 updates install-app|install-napcat --confirm 只接受当前官方稳定资产，--url 不能绕过校验。主程序精确匹配 EazyQQ_<version>_x64-setup.exe，核心精确匹配 NapCat.Shell.zip；校验大小与 SHA256，更新跨进程互斥。CLI 安装助手等待本次命令退出，不强制关闭另一个桌面或 QQ。协议更新要求相关会话停机，保留配置和备份。JSON stdout 只输出最终结果。

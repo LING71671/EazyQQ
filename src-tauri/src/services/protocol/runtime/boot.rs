@@ -52,11 +52,13 @@ pub fn locate_napcat_dir() -> PathBuf {
     let root_dir = crate::services::logging::workspace_root();
     let mut candidates = vec![
         root_dir.join("napcat"),
+        root_dir.join("resources/protocol").join(env!("CARGO_PKG_VERSION")),
         root_dir.join("resources").join("napcat"),
     ];
 
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
+            candidates.push(exe_dir.join("resources/protocol").join(env!("CARGO_PKG_VERSION")));
             candidates.push(exe_dir.join("resources").join("napcat"));
             candidates.push(exe_dir.join("napcat"));
         }
@@ -408,6 +410,11 @@ fn start_unlocked(
             ok: false,
             detail: "The configured control port is occupied by an unowned service; its process was preserved".into(),
         };
+    }
+    if napcat_dir == super::layout::unbound_runtime_dir() {
+        if let Err(detail) = super::layout::prepare_unbound(&locate_napcat_dir(), napcat_dir) {
+            return BootOutcome { attempted: false, ok: false, detail };
+        }
     }
     if inst.is_none() {
         if let Err(reason) = may_attempt() {

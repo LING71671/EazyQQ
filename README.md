@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/LING71671/EazyQQ/releases"><img alt="版本 0.5.1" src="https://img.shields.io/badge/版本-0.5.1-0284c7?style=flat-square" /></a>
+  <a href="https://github.com/LING71671/EazyQQ/releases"><img alt="版本 0.5.2" src="https://img.shields.io/badge/版本-0.5.2-0284c7?style=flat-square" /></a>
   <img alt="Windows x64" src="https://img.shields.io/badge/Windows-x64-334155?style=flat-square" />
   <a href="LICENSE"><img alt="Apache 2.0" src="https://img.shields.io/badge/License-Apache_2.0-334155?style=flat-square" /></a>
 </p>
@@ -48,7 +48,7 @@ eazyqq_cli mcp
 2. 打开账号管理，登记 QQ 号，使用对应账号扫码确认；多个账号可以独立保持在线。
 3. 在系统设置选择模型并测试，再启用所需联系人规则；自动回复和草稿发送会影响真实 QQ 联系人。
 
-`0.5.1` 已正式发布：[桌面安装包](https://github.com/LING71671/EazyQQ/releases/download/v0.5.1/EazyQQ_0.5.1_x64-setup.exe) · [CLI ZIP](https://github.com/LING71671/EazyQQ/releases/download/v0.5.1/eazyqq-cli-windows-x64.zip) · [发布说明与校验和](https://github.com/LING71671/EazyQQ/releases/tag/v0.5.1)。
+`0.5.2` 正在验收重装修复，当前公开版本见 [Releases](https://github.com/LING71671/EazyQQ/releases)。
 
 ## 用你选择的模型
 

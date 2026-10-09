@@ -38,7 +38,37 @@ pub fn selected(source: &Path) -> (PathBuf, u16, u16, u16) {
                 .find(|i| i.uin == uin)
         })
         .map(|i| (runtime_dir(&i), i.http_port, i.ws_port, i.webui_port))
-        .unwrap_or_else(|| (source.to_path_buf(), 3000, 3001, 6099))
+        .unwrap_or_else(|| {
+            let legacy = logging::workspace_root().join("resources/napcat");
+            let legacy_config = legacy.join("config/webui.json");
+            let legacy_port = std::fs::read(&legacy_config).ok()
+                .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+                .and_then(|value| value["port"].as_u64()).and_then(|port| u16::try_from(port).ok()).unwrap_or(6099);
+            let legacy_live = super::ownership::is_running(&legacy) || (legacy_config.is_file()
+                && std::net::TcpStream::connect_timeout(&std::net::SocketAddr::from(([127,0,0,1],legacy_port)),std::time::Duration::from_millis(150)).is_ok());
+            if legacy_live { (legacy, 3000, 3001, 6099) }
+            else if source.join("eazyqq-process.json").exists() && super::ownership::is_running(source) {
+                (source.to_path_buf(), 3000, 3001, 6099)
+            } else { (unbound_runtime_dir(), 3000, 3001, 6099) }
+        })
+}
+
+pub fn unbound_runtime_dir() -> PathBuf {
+    crate::services::accounts::account_dir(None).join("protocol")
+}
+
+pub fn prepare_unbound(source: &Path, target: &Path) -> Result<(), String> {
+    link_resources(source, target)?;
+    std::fs::create_dir_all(target.join("config")).map_err(|e| e.to_string())?;
+    for name in ["webui.json", "napcat.json", "onebot11.json", "qq_path.txt"] {
+        let destination = target.join("config").join(name);
+        if destination.exists() { continue; }
+        let bundled = source.join("config").join(name);
+        let legacy = logging::workspace_root().join("resources/napcat/config").join(name);
+        let origin = if name == "qq_path.txt" && legacy.is_file() { legacy } else { bundled };
+        if origin.is_file() { std::fs::copy(origin, destination).map_err(|e| e.to_string())?; }
+    }
+    Ok(())
 }
 
 pub fn is_immutable_resource(name: &str) -> bool {
@@ -72,9 +102,8 @@ fn link_resources(source: &Path, target: &Path) -> Result<(), String> {
             link_resources(&entry.path(), &dest)?;
         } else {
             let incoming = dest.with_extension("eazyqq-link");
-            std::fs::hard_link(entry.path(), &incoming)
-                .or_else(|_| std::fs::copy(entry.path(), &incoming).map(|_| ()))
-                .map_err(|e| e.to_string())?;
+            // A mapped private DLL must not lock the installer's source file through a hard link.
+            std::fs::copy(entry.path(), &incoming).map_err(|e| e.to_string())?;
             std::fs::rename(incoming, dest).map_err(|e| e.to_string())?;
         }
     }
@@ -197,6 +226,16 @@ pub fn sync_onebot_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn private_protocol_files_are_independent_from_installer_payloads() {
+        let root=crate::services::logging::workspace_root().join("protocol-copy-isolation");
+        let source=root.join("installed");let private=root.join("private");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("NapCatWinBootHook.dll"),b"immutable installed image").unwrap();
+        link_resources(&source,&private).unwrap();
+        std::fs::write(private.join("NapCatWinBootHook.dll"),b"private image changed").unwrap();
+        assert_eq!(std::fs::read(source.join("NapCatWinBootHook.dll")).unwrap(),b"immutable installed image");
+    }
     #[test]
     fn mutable_files_and_process_receipts_are_never_shared() {
         for name in [

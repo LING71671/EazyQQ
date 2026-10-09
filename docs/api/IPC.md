@@ -1,6 +1,6 @@
 # 桌面 IPC 契约
 
-适用于 0.5.1，传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`，私有登记文件使用 `snake_case`。
+适用于 0.5.2，传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`，私有登记文件使用 `snake_case`。
 
 ## 返回与错误
 
@@ -83,7 +83,7 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 
 配置保存在账号 SQLite 中；长期工作进程在处理消息/定时任务前刷新 AI 配置。应用版本来自构建清单，协议版本来自实时接口或安装 metadata，不可用时为 `unknown`。协议升级要求已知会话停机，归档暂存检查路径及符号链接，并保留个人配置和回滚备份。
 
-## 0.5.1 更新状态与事件
+## 0.5.2 更新状态与事件
 
 主程序信息新增 status、installerName、downloadSize、checksumSha256。状态为 available、up_to_date、newer_local、no_release、installer_missing；核心状态为 available、up_to_date、newer_local、version_unknown、asset_missing。可选值可能为 null。
 

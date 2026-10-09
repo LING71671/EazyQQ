@@ -37,7 +37,7 @@ pub(super) fn run_helper(request_path: &Path) -> Result<(),String> {
         let bytes=std::fs::read(&request.installer).map_err(|e|e.to_string())?;
         if bytes.len() as u64 != request.size || format!("{:x}",Sha256::digest(&bytes)) != request.sha256 {return Err("Installer changed after verification".into());}
         let mut installer=std::process::Command::new(&request.installer);
-        installer.args(["/P","/R"]);
+        installer.args(["/P","/R","/UPDATE"]);
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;

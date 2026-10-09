@@ -80,38 +80,8 @@ pub fn run() {
     let data_dir = services::logging::data_dir();
     services::logging::ensure_dir(&data_dir);
 
-    // Locate the NapCat installation: prioritize workspace, bundled resources, or dynamic sibling paths.
-    let mut napcat_candidates = vec![
-        root_dir.join("napcat"),
-        root_dir.join("resources").join("napcat"),
-    ];
-
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(exe_dir) = exe.parent() {
-            napcat_candidates.push(exe_dir.join("resources").join("napcat"));
-            napcat_candidates.push(exe_dir.join("napcat"));
-        }
-    }
-
-    if let Some(parent) = root_dir.parent() {
-        if let Ok(entries) = std::fs::read_dir(parent) {
-            for entry in entries.flatten() {
-                let p = entry.path();
-                if p.is_dir() {
-                    let name = entry.file_name().to_string_lossy().to_lowercase();
-                    if name.contains("napcat") {
-                        napcat_candidates.push(p);
-                    }
-                }
-            }
-        }
-    }
-
-    let napcat_dir = napcat_candidates
-        .iter()
-        .find(|p| p.join("NapCatWinBootMain.exe").exists() || p.join("napcat.mjs").exists())
-        .cloned()
-        .unwrap_or_else(|| root_dir.join("napcat"));
+    let napcat_dir = services::protocol::boot::locate_napcat_dir();
+    let napcat_candidates = vec![napcat_dir.clone()];
     let (selected_dir, http_port, ws_port, webui_port) =
         services::protocol::layout::selected(&napcat_dir);
     let napcat_dir_str = selected_dir.to_string_lossy().to_string();

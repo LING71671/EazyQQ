@@ -16,7 +16,7 @@ PROJECT = Path(__file__).resolve().parents[2]
 CLI = PROJECT / "src-tauri/target/release/eazyqq_cli.exe"
 QQ = Path(os.environ["EAZYQQ_QA_QQ"])
 ROOT = Path(tempfile.mkdtemp(prefix="qq-runtime-", dir=PROJECT / ".test-runtime"))
-shutil.copytree(PROJECT / "src-tauri/resources/napcat", ROOT / "napcat")
+shutil.copytree(PROJECT / "src-tauri/resources/protocol" / json.loads((PROJECT / "package.json").read_text())["version"], ROOT / "napcat")
 (ROOT / "napcat/config").mkdir(exist_ok=True)
 (ROOT / "napcat/config/qq_path.txt").write_text(str(QQ), encoding="utf-8")
 ENV = dict(os.environ, EAZYQQ_ROOT=str(ROOT))
