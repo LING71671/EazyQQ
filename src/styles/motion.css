@@ -1,0 +1,51 @@
+:root {
+  --motion-feedback: 120ms;
+  --motion-enter: 200ms;
+  --motion-exit: 160ms;
+  --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.transition-all {
+  transition-property: color, background-color, border-color, opacity, transform;
+  transition-duration: var(--motion-feedback);
+  transition-timing-function: var(--motion-ease);
+}
+
+.motion-overlay {
+  opacity: 1;
+  transition: opacity var(--motion-exit) ease-out;
+}
+
+@keyframes view-settle { from { opacity: 0.88; } to { opacity: 1; } }
+.motion-view { animation: view-settle var(--motion-feedback) ease-out; }
+
+.motion-drawer {
+  opacity: 1;
+  transform: translateX(0);
+  transition: transform var(--motion-enter) var(--motion-ease), opacity var(--motion-enter) ease-out;
+}
+
+.motion-overlay[data-open='false'] { opacity: 0; pointer-events: none; }
+.motion-drawer[data-open='false'] {
+  opacity: 0;
+  transform: translateX(20px);
+  transition-duration: var(--motion-exit);
+}
+
+@starting-style {
+  .motion-overlay[data-open='true'] { opacity: 0; }
+  .motion-drawer[data-open='true'] { transform: translateX(20px); }
+}
+
+[data-motion-paused='true'] :is(.animate-spin, .animate-pulse, .boot-anim-spin, .boot-anim-slide) {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.animate-spin, .animate-pulse, .boot-anim-spin, .boot-anim-slide) { animation: none !important; }
+  .boot-anim-slide { transform: none !important; width: 100%; }
+  .motion-drawer { transform: none !important; transition: opacity 80ms ease-out; }
+  .motion-overlay { transition-duration: 80ms; }
+  .motion-view { animation: none; }
+  button:not(:disabled):active, [role='button']:active { transform: none !important; }
+}

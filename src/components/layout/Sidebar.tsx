@@ -80,7 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span>{item.label}</span>
                 </div>
                 {item.badge !== undefined && (
-                  <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-500 text-white animate-pulse">
+                  <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-500 text-white">
                     {item.badge}
                   </span>
                 )}

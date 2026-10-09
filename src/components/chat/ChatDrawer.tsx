@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { usePresence } from '@/hooks/usePresence';
 import { 
   X, Send, Sparkles, Bot, Shield, User, Copy, Check, 
   ArrowDownCircle, RefreshCw, MessageSquare, FileText
@@ -287,7 +288,8 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
     }
   }, [isOpen, messages]);
 
-  if (!isOpen || !contact) return null;
+  const mounted = usePresence(isOpen && !!contact);
+  if (!mounted || !contact) return null;
 
   const handleSend = async () => {
     const text = inputText.trim();
@@ -339,15 +341,16 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden flex justify-end">
+    <div aria-hidden={!isOpen} inert={!isOpen} className="fixed inset-0 z-50 overflow-hidden flex justify-end">
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-slate-900/20 backdrop-blur-xs transition-opacity" 
+        data-open={isOpen}
+        className="motion-overlay fixed inset-0 bg-slate-900/20"
         onClick={onClose} 
       />
 
       {/* Slide-over panel */}
-      <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 h-full shadow-2xl flex flex-col z-10 border-l border-slate-200 dark:border-slate-800 animate-in slide-in-from-right duration-200">
+      <div data-open={isOpen} className="motion-drawer relative w-full max-w-lg bg-white dark:bg-slate-900 h-full shadow-2xl flex flex-col z-10 border-l border-slate-200 dark:border-slate-800">
         
         {/* Header */}
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">

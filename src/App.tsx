@@ -20,8 +20,10 @@ import type {
 import { useProtocolState } from '@/hooks/useProtocolState';
 import { useChatManager } from '@/hooks/useChatManager';
 import { useGroupFilesManager } from '@/hooks/useGroupFilesManager';
+import { useMotionPolicy } from '@/hooks/useMotionPolicy';
 
 export const App: React.FC = () => {
+  const reducedMotion = useMotionPolicy();
   const [currentView, setCurrentView] = useState<NavView>('login');
   const [isManualOpen, setIsManualOpen] = useState(false);
   const [isHealthOpen, setIsHealthOpen] = useState(false);
@@ -153,7 +155,6 @@ export const App: React.FC = () => {
     api.showWindow().catch(() => {});
 
     const fetchInitialData = async () => {
-      const bootStartedAt = Date.now();
       setBootStage('正在同步本地配置与联系人');
 
       try {
@@ -197,8 +198,7 @@ export const App: React.FC = () => {
       } catch (e) {
         console.error('Failed to load initial data from SQLite', e);
       } finally {
-        const elapsed = Date.now() - bootStartedAt;
-        setTimeout(() => setIsBooting(false), Math.max(0, 900 - elapsed));
+        setIsBooting(false);
       }
     };
 
@@ -314,7 +314,7 @@ export const App: React.FC = () => {
         />
 
         {/* View Switcher */}
-        <main className="flex-1 overflow-hidden bg-slate-50/50">
+        <main key={currentView} className="motion-view flex-1 overflow-hidden bg-slate-50/50">
           {currentView === 'login' && (
             <LoginView
               status={protocolStatus}
@@ -409,7 +409,7 @@ export const App: React.FC = () => {
       />
 
       {/* Boot overlay: animates until the first local data round-trip settles */}
-      <BootSplash visible={isBooting} stageLabel={bootStage} />
+      <BootSplash visible={isBooting} stageLabel={bootStage} reducedMotion={reducedMotion} />
     </div>
   );
 };

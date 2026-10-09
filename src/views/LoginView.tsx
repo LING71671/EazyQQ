@@ -99,7 +99,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 QQ: {status.qqNumber || '已连接'}
               </span>
               <div className="mt-1 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200/80 text-emerald-700 text-xs font-medium">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
                 <span>QQ 会话已登录</span>
               </div>
               {error && (

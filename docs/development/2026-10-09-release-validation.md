@@ -53,3 +53,5 @@ Windows runner 默认 checkout 为 CRLF，生成器产物按 LF 比较，造成�
 Microsoft 在 2026-09 更新的 WebView2 安全规范明确：提升权限进程忽略 WEBVIEW2_* 环境变量及 HKCU AdditionalBrowserArguments，而接受 HKLM 策略和程序内参数。参见 https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/security#for-an-elevated-host-app-use-appropriate-override-flags 。这与 runner 中全部调试参数缺失、应用前端仍正常的现象一致。
 
 临时托管 CI 验证改用 HKLM 的本应用配置，并在结束后恢复原值。本机仍使用普通进程环境，不设置机器注册表。先前 HKCU 尝试是诊断过程，当前实现不再使用它。
+
+[运行 37864516213](https://github.com/LING71671/EazyQQ/actions/runs/37864516213) 已成功完成全部原生验证，证明问题为托管提升权限场景的调试配置机制；应用启动、版本、身份往返、缓存、窗口和 F1 均通过。仍须将用户随后追加的展示与动效修改纳入最终版本，不能公开旧候选二进制。

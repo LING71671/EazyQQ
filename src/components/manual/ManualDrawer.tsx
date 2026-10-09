@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePresence } from '@/hooks/usePresence';
 import { X, BookOpen, Cpu, ShieldCheck, FolderSync, Keyboard, HelpCircle } from 'lucide-react';
 
 interface ManualDrawerProps {
@@ -9,7 +10,8 @@ interface ManualDrawerProps {
 export const ManualDrawer: React.FC<ManualDrawerProps> = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState<'routing' | 'opencode' | 'files' | 'shortcuts' | 'faq'>('routing');
 
-  if (!isOpen) return null;
+  const mounted = usePresence(isOpen);
+  if (!mounted) return null;
 
   const chapters = [
     { id: 'routing', label: '1. 四象限策略说明', icon: ShieldCheck },
@@ -20,15 +22,16 @@ export const ManualDrawer: React.FC<ManualDrawerProps> = ({ isOpen, onClose }) =
   ] as const;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden select-none">
+    <div aria-hidden={!isOpen} inert={!isOpen} className="fixed inset-0 z-50 overflow-hidden select-none">
       {/* Backdrop */}
       <div 
-        className="absolute inset-0 bg-slate-900/30 backdrop-blur-xs transition-opacity"
+        data-open={isOpen}
+        className="motion-overlay absolute inset-0 bg-slate-900/30"
         onClick={onClose} 
       />
 
       {/* Drawer Panel */}
-      <div className="absolute inset-y-0 right-0 max-w-2xl w-full bg-white shadow-2xl border-l border-slate-200 flex flex-col">
+      <div data-open={isOpen} className="motion-drawer absolute inset-y-0 right-0 max-w-2xl w-full bg-white shadow-2xl border-l border-slate-200 flex flex-col">
         {/* Header */}
         <div className="h-14 px-6 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-2.5">

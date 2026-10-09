@@ -6,6 +6,7 @@ interface BootSplashProps {
   visible: boolean;
   /** Human-readable description of what the app is currently waiting on. */
   stageLabel?: string;
+  reducedMotion?: boolean;
 }
 
 /**
@@ -18,6 +19,7 @@ interface BootSplashProps {
 export const BootSplash: React.FC<BootSplashProps> = ({
   visible,
   stageLabel = '正在初始化本地运行环境',
+  reducedMotion = false,
 }) => {
   const [mounted, setMounted] = useState(true);
   const [opaque, setOpaque] = useState(true);
@@ -31,16 +33,17 @@ export const BootSplash: React.FC<BootSplashProps> = ({
     }
 
     setOpaque(false);
-    const timer = setTimeout(() => setMounted(false), 320);
+    if (reducedMotion) { setMounted(false); return; }
+    const timer = setTimeout(() => setMounted(false), 180);
     return () => clearTimeout(timer);
-  }, [visible]);
+  }, [visible, reducedMotion]);
 
   if (!mounted) return null;
 
   return (
     <div
       aria-hidden={!visible}
-      className={`fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 bg-slate-50 transition-opacity duration-300 ${
+      className={`fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 bg-slate-50 transition-opacity duration-150 ${
         opaque ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}
     >

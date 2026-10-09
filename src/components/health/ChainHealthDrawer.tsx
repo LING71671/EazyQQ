@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { usePresence } from '@/hooks/usePresence';
 import {
   Activity,
   CheckCircle2,
@@ -157,7 +158,8 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
     }
   };
 
-  if (!isOpen) return null;
+  const mounted = usePresence(isOpen);
+  if (!mounted) return null;
 
   const formatUptime = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -168,8 +170,8 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/30 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
-      <div className="w-full max-w-md h-full bg-white shadow-2xl border-l border-slate-200/80 flex flex-col overflow-hidden animate-in slide-in-from-right duration-200">
+    <div data-open={isOpen} aria-hidden={!isOpen} inert={!isOpen} className="motion-overlay fixed inset-0 z-50 flex justify-end bg-slate-900/30">
+      <div data-open={isOpen} className="motion-drawer w-full max-w-md h-full bg-white shadow-2xl border-l border-slate-200/80 flex flex-col overflow-hidden">
         {/* Drawer Header */}
         <div className="h-14 px-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
           <div className="flex items-center gap-2">
@@ -283,7 +285,7 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
                             isOk
                               ? 'bg-emerald-500 ring-2 ring-emerald-200'
                               : isFailed
-                              ? 'bg-red-500 ring-2 ring-red-200 animate-pulse'
+                              ? 'bg-red-500 ring-2 ring-red-200'
                               : 'bg-amber-400'
                           }`}
                         />

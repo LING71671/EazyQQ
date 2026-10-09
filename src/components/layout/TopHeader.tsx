@@ -104,7 +104,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         <button
           onClick={onOpenHealth}
           title="检测到链路存在异常，点击查看体检与一键自愈"
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 text-xs font-medium border border-amber-300 hover:bg-amber-100 transition-all cursor-pointer shadow-2xs animate-pulse"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 text-xs font-medium border border-amber-300 hover:bg-amber-100 transition-all cursor-pointer shadow-2xs"
         >
           <span className="w-2 h-2 rounded-full bg-amber-500" />
           <span>链路异常 · 点击修复</span>
@@ -120,7 +120,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             title="点击查看全链路体检"
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200/60 hover:bg-emerald-100 transition-all cursor-pointer"
           >
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
             <span>已登录 ({protocolStatus.nickname || protocolStatus.qqNumber || 'QQ 用户'})</span>
           </button>
         );
@@ -131,7 +131,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             title="点击查看全链路体检"
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200/60 hover:bg-amber-100 transition-all cursor-pointer"
           >
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
             <span>已扫码，等待确认</span>
           </button>
         );
