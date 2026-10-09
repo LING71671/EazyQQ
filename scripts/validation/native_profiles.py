@@ -224,6 +224,8 @@ except Exception:
     print(json.dumps({"fixture": str(ROOT), "debugPort": globals().get("debug_port"), "guiExitCode": gui.poll() if gui else None, "systemProxyConfigured": bool(getproxies())}), flush=True)
     browser_state = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process -Filter \"Name='msedgewebview2.exe'\" | ForEach-Object { [pscustomobject]@{pid=$_.ProcessId;parent=$_.ParentProcessId;debug=[regex]::Match($_.CommandLine,'--remote-debugging-port=\\d+').Value} } | ConvertTo-Json -Compress"], capture_output=True, text=True, errors="replace", timeout=15)
     print(f"Browser processes: {browser_state.stdout.strip()}", flush=True)
+    command_lines = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process -Filter \"Name='msedgewebview2.exe'\" | Where-Object { $_.CommandLine -like '*native-profiles-*' } | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress"], capture_output=True, text=True, errors="replace", timeout=15)
+    print(f"Isolated browser arguments: {command_lines.stdout.strip()}", flush=True)
     network = subprocess.run(["netstat", "-ano"], capture_output=True, text=True, errors="replace", timeout=15)
     print("\n".join(line for line in network.stdout.splitlines() if f":{globals().get('debug_port')} " in line), flush=True)
     for log in [ROOT / "gui-stderr.log", *ROOT.glob("EazyQQ_Data/accounts/*/*/logs/*.log")]:
