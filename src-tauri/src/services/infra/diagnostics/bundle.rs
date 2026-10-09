@@ -209,6 +209,8 @@ pub async fn export_bundle(
         "health.json".to_string(),
         serde_json::to_vec_pretty(&health).unwrap_or_default(),
     ));
+    let startup = crate::services::protocol::startup_trace::capture(Path::new(napcat.napcat_dir()));
+    entries.push(("protocol/startup-trace.json".into(),serde_json::to_vec_pretty(&startup).map_err(|e|e.to_string())?));
 
     // config/app_config.json
     if let Ok(Some(raw)) = db.get_setting("app_config") {

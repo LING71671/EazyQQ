@@ -95,7 +95,7 @@ pub fn configured_qq_path(napcat_dir: &Path) -> Result<PathBuf, String> {
     ))
 }
 
-pub fn sync_qqnt_patch(qq_path: &Path, patch_pkg: &Path) -> Result<(), String> {
+pub fn package_metadata_path(qq_path: &Path) -> Result<std::path::PathBuf, String> {
     let qq_dir = qq_path
         .parent()
         .ok_or("QQ executable has no parent directory")?;
@@ -116,6 +116,11 @@ pub fn sync_qqnt_patch(qq_path: &Path, patch_pkg: &Path) -> Result<(), String> {
             .path()
             .join("resources/app/package.json")
     };
+    Ok(candidate)
+}
+
+pub fn sync_qqnt_patch(qq_path: &Path, patch_pkg: &Path) -> Result<(), String> {
+    let candidate = package_metadata_path(qq_path)?;
     let source: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&candidate).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;

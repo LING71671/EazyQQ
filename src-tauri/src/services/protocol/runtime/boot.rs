@@ -473,10 +473,11 @@ fn start_unlocked(
             }
         }
     };
-    let loader = format!(
-        "(async () => {{await import({})}})()",
-        serde_json::to_string(main_url.as_str()).unwrap()
-    );
+    let attempt_id = match super::startup_trace::begin(napcat_dir) {
+        Ok(id) => id,
+        Err(detail) => return BootOutcome { attempted: false, ok: false, detail },
+    };
+    let loader = super::startup_trace::loader_source(napcat_dir,main_url.as_str(),&attempt_id);
     if let Err(e) = std::fs::write(&files.load_js, loader) {
         note_result(false);
         return BootOutcome {
@@ -541,6 +542,7 @@ fn start_unlocked(
 
     match spawn {
         Ok(pid) => {
+            let _ = super::startup_trace::record_launch(napcat_dir,&attempt_id,true,"Verified ownership supervisor accepted the launch");
             if let Ok(mut st) = state().lock() {
                 if inst.is_none() {
                     st.child_pid = Some(pid);
@@ -586,6 +588,7 @@ fn start_unlocked(
             }
         }
         Err(e) => {
+            let _ = super::startup_trace::record_launch(napcat_dir,&attempt_id,false,&e);
             note_result(false);
             BootOutcome {
                 attempted: true,

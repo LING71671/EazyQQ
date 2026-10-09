@@ -4,6 +4,8 @@ pub mod accounts;
 pub mod boot;
 #[path = "health/diagnostics.rs"]
 pub mod diagnostics;
+#[path = "health/startup_trace.rs"]
+pub mod startup_trace;
 #[path = "messaging/events.rs"]
 pub mod events;
 #[path = "health/health.rs"]

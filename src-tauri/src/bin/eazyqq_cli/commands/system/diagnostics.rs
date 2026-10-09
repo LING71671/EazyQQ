@@ -622,7 +622,8 @@ pub async fn cmd_selftest(svc_ctx: &Services, args: &Args) -> Result<(), String>
 }
 
 pub fn cmd_napcat_doctor(args: &Args) -> Result<(), String> {
-    let napcat_dir = eazyqq_lib::services::logging::workspace_root().join("napcat");
+    let source = eazyqq_lib::services::napcat_boot::locate_napcat_dir();
+    let (napcat_dir, _, _, _) = eazyqq_lib::services::protocol::layout::selected(&source);
     let uin = eazyqq_lib::services::accounts::active();
     let steps = eazyqq_lib::services::napcat_boot::diagnose(&napcat_dir, uin.as_deref());
     let blocker = steps.iter().position(|s| !s.ok);
@@ -632,6 +633,7 @@ pub fn cmd_napcat_doctor(args: &Args) -> Result<(), String> {
             "napcatDir": napcat_dir.display().to_string(),
             "account": uin,
             "ok": blocker.is_none(),
+            "startupTrace": eazyqq_lib::services::protocol::startup_trace::capture(&napcat_dir),
             "steps": steps.iter().map(|s| serde_json::json!({
                 "name": s.name, "ok": s.ok, "detail": s.detail,
             })).collect::<Vec<_>>(),
