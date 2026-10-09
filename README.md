@@ -48,7 +48,7 @@ eazyqq_cli mcp
 2. 打开账号管理，登记 QQ 号，使用对应账号扫码确认；多个账号可以独立保持在线。
 3. 在系统设置选择模型并测试，再启用所需联系人规则；自动回复和草稿发送会影响真实 QQ 联系人。
 
-`0.5.2` 正在验收重装修复，当前公开版本见 [Releases](https://github.com/LING71671/EazyQQ/releases)。
+`0.5.2` 已正式发布：[桌面安装包](https://github.com/LING71671/EazyQQ/releases/download/v0.5.2/EazyQQ_0.5.2_x64-setup.exe) · [CLI ZIP](https://github.com/LING71671/EazyQQ/releases/download/v0.5.2/eazyqq-cli-windows-x64.zip) · [发布说明与校验和](https://github.com/LING71671/EazyQQ/releases/tag/v0.5.2)。
 
 ## 用你选择的模型
 
