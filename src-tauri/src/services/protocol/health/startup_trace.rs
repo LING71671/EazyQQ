@@ -171,9 +171,17 @@ pub fn capture(dir: &Path) -> StartupTrace {
     let actual = resolved.as_ref().and_then(|path|std::fs::canonicalize(path).ok());
     let expected_real = std::fs::canonicalize(&expected).ok();
     let entry_matches = actual.is_some() && actual == expected_real;
+    // Resolve the bridge root before following its final junction into another drive.
+    let logical_bridge_root = resolved.as_ref().and_then(|p|std::path::absolute(p).ok())
+        .and_then(|p|p.parent().and_then(Path::parent).map(Path::to_path_buf));
+    let physical_bridge_root = logical_bridge_root.as_ref().and_then(|p|std::fs::canonicalize(p).ok());
+    let namespace_redirected = logical_bridge_root.as_ref().zip(physical_bridge_root.as_ref())
+        .map(|(a,b)|a.to_string_lossy().replace(r"\\?\", "").to_lowercase()!=b.to_string_lossy().replace(r"\\?\", "").to_lowercase());
     stages.push(stage("entry_resolution",if entry_matches {"passed"} else {"failed"},
         "普通文件系统解析结果；QQ 内部模块解析仍需运行时证据",
-        json!({"appDir":app_dir,"packageMain":main,"resolvedPath":resolved,"canonicalPath":actual,"expectedLoader":expected,"matchesPrivateLoader":entry_matches})));
+        json!({"appDir":app_dir,"packageMain":main,"resolvedPath":resolved,"canonicalPath":actual,"expectedLoader":expected,"matchesPrivateLoader":entry_matches,
+            "logicalBridgeRoot":logical_bridge_root,"physicalBridgeRoot":physical_bridge_root,"callerNamespaceRedirected":namespace_redirected,
+            "scope":"Caller file lookup only; QQ visibility is confirmed by the loader witness"})));
     stages.push(stage("private_loader",if expected.is_file() {"passed"} else {"failed"},"私有加载文件及散列",file_evidence(&expected)));
 
     let attempt = read_json(&dir.join("eazyqq-startup-attempt.json"));

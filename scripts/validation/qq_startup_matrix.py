@@ -101,7 +101,7 @@ for name,qq in [('profile',Path(os.environ['EAZYQQ_QA_PROFILE_QQ'])),('program-f
     (root/'napcat/config').mkdir(exist_ok=True)
     (root/'napcat/config/qq_path.txt').write_text(str(qq),encoding='utf-8')
     env={**os.environ,'EAZYQQ_ROOT':str(root)}
-    report={'case':name,'fixture':str(root),'qq':str(qq),'loginAttempted':False,'evidenceCollected':False}
+    report={'case':name,'fixture':str(root),'qq':str(qq),'loginApiInvoked':False,'evidenceCollected':False}
     private=None; inspector=None; supervisor=None
     def call(*args):
         response=subprocess.run([str(CLI),*args,'--json'],env=env,capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=40)
@@ -124,29 +124,7 @@ for name,qq in [('profile',Path(os.environ['EAZYQQ_QA_PROFILE_QQ'])),('program-f
         report['startupTrace']=call('napcat-doctor','--account','10001')['startupTrace']
         call('accounts','stop','--uin','10001')
 
-        # Inspect before application code starts. Never resume into a real login.
-        with socket.socket() as reservation:
-            reservation.bind(('127.0.0.1',0)); debug_port=reservation.getsockname()[1]
-        plan=json.loads((private/'eazyqq-launch.json').read_text())
-        plan['request_id']='paused-inspector-'+name
-        plan['args']=[str(qq),str(private/'NapCatWinBootHook.dll'),f'--inspect-brk=127.0.0.1:{debug_port}']
-        (private/'eazyqq-launch.json').write_text(json.dumps(plan))
-        supervisor=subprocess.Popen([str(CLI),'--protocol-supervisor',str(private)],env=env,creationflags=subprocess.CREATE_NO_WINDOW)
-        deadline=time.monotonic()+25; endpoint=None
-        while time.monotonic()<deadline:
-            try:
-                with HTTP.open(f'http://127.0.0.1:{debug_port}/json/list',timeout=1) as response: pages=json.load(response)
-                endpoint=pages[0]['webSocketDebuggerUrl']; break
-            except Exception: time.sleep(.5)
-        if endpoint:
-            inspector=Inspector(endpoint)
-            inspector.call('Debugger.enable')
-            inspector.call('Runtime.runIfWaitingForDebugger')
-            patch=json.loads((private/'qqnt.json').read_text())
-            app=qq.parent/'versions'/patch['version']/'resources/app'
-            expression='''(() => {const fs=process.getBuiltinModule('fs');const path=process.getBuiltinModule('path');const mod=process.getBuiltinModule('module');const app=APP;const entry=path.join(app,MAIN);const out={versions:process.versions,execPath:process.execPath,resourcesPath:process.resourcesPath,cwd:process.cwd(),entry};for(const [name,fn] of Object.entries({exists:()=>fs.existsSync(entry),stat:()=>({size:fs.statSync(entry).size}),realpath:()=>fs.realpathSync(entry),resolve:()=>mod.createRequire(path.join(app,'package.json')).resolve(entry),receivedPackage:()=>{const p=JSON.parse(fs.readFileSync(path.join(app,'package.json'),'utf8'));return {main:p.main,version:p.version};}})){try{out[name]={ok:true,value:fn()};}catch(e){out[name]={ok:false,code:e.code,message:e.message};}}return out;})()'''.replace('APP',json.dumps(str(app))).replace('MAIN',json.dumps(patch['main']))
-            report['pausedInspector']=inspector.call('Runtime.evaluate',{'expression':expression,'returnByValue':True})
-        else: report['pausedInspector']={'available':False,'dialogs':error_dialogs(owned_pids(private))}
+        report['pausedInspector']={'available':False,'reason':'Native launcher rewrites arbitrary third arguments as a QQ account; inspector flags were not actually delivered'}
         report['evidenceCollected']=True
     except Exception as error: report['collectionError']=str(error)
     finally:
