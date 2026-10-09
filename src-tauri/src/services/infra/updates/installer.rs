@@ -43,11 +43,14 @@ pub fn launch(prepared: &PreparedUpdate, desktop: bool) -> Result<(), String> {
             "installDirectory":if desktop { exe.parent() } else { None },
             "previousExecutable":if desktop { Some(&exe) } else { None }
         }))?;
-        std::process::Command::new("powershell.exe")
-            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
-            .arg(&script).arg("-RequestFile").arg(&request)
-            .creation_flags(0x08000000 | 0x00000008).spawn()
-            .map_err(|e| format!("启动更新安装助手失败：{e}"))?;
+        let command_line = format!("powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{}\" -RequestFile \"{}\"", script.display(), request.display());
+        let output = std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop'; $startup=New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ShowWindow=[uint16]0}; $result=Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine=$env:EAZYQQ_UPDATE_COMMAND;CurrentDirectory=$env:EAZYQQ_UPDATE_DIRECTORY;ProcessStartupInformation=$startup}; if($result.ReturnValue -ne 0){throw ('Installer helper creation failed: '+$result.ReturnValue)}; $result.ProcessId"])
+            .env("EAZYQQ_UPDATE_COMMAND", command_line).env("EAZYQQ_UPDATE_DIRECTORY", root)
+            .creation_flags(0x08000000).output().map_err(|e| format!("启动更新安装助手失败：{e}"))?;
+        if !output.status.success() || String::from_utf8_lossy(&output.stdout).trim().parse::<u32>().is_err() {
+            return Err(format!("更新安装助手未启动：{}",String::from_utf8_lossy(&output.stderr).trim()));
+        }
         Ok(())
     }
 }

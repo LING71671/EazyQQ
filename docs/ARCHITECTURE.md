@@ -32,7 +32,7 @@ flowchart TD
 | `services/ai/` | `runtime/` 调用与配置，`catalog/` 模型目录，`tests/` |
 | `services/storage/` | `database/` 连接与结构，`tables/` 各表操作，`tests/` |
 | `services/workflows/` | `files/` 文档和群文件，`summaries/` 简报，`monitoring/` 链路，`tests/` |
-| `services/infra/` | `system/` 配置、版本、持久化、更新；`diagnostics/` 日志包 |
+| `services/infra/` | `system/` 配置、版本、持久化；`updates/` 选择、下载、安装交接与核心升级；`diagnostics/` 日志包 |
 | `bin/eazyqq_cli/commands/` | `protocol/`、`chat/`、`ai/`、`system/`、`integrations/` |
 | `src/` | `api/` 契约，`hooks/` 状态，`features/` 领域辅助，`components/` 与 `views/` 界面 |
 
@@ -96,3 +96,9 @@ OpenCode 使用原生运行时、当前模型目录、账号私有会话和非�
 发布时准备中性的协议配置，排除凭据、QQ 路径、账号配置、数据库和日志。桌面包包含 CLI，独立 CLI 包保留兼容别名。更新清单和 SHA256 校验和随版本生成。
 
 单元测试的根目录强制位于每进程 `.test-runtime`，即使直接运行 Cargo 也不能迁移或删除真实数据。接口变更要更新适配层、行为测试、生成契约及中文开发记录。详见 [贡献指南](../CONTRIBUTING.md) 与 [发布流程](release/RELEASING.md)。
+
+## 0.5.1 入口与更新领域
+
+Electron 拼接 appPath 与 package.main；runtime/entry.rs 生成相对 .cjs 入口，同盘使用私有路径，跨盘使用目录桥接。桥接优先使用同盘 LOCALAPPDATA，再选数据根或 QQ 盘的 EazyQQ_Runtime；既有链接必须指向同一账号目标，QQ 安装文件不改动。
+
+infra/updates 复用到 GUI、CLI 与 MCP，选择稳定版本及精确官方资产，流式接收并校验，暂存使用用户可写目录。主程序助手通过 WMI 脱离终端，等待调用者退出后安装；核心使用维护锁和保留配置的暂存部署。

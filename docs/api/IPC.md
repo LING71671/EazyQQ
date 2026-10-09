@@ -82,3 +82,11 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 事件包括 `new-draft`、`new-chat-message`、`summary-chunk`、`summary-end`；对应 payload 在前端类型文件中定义。当前可见账号之外的后台工作进程不将账号数据推送给当前界面。
 
 配置保存在账号 SQLite 中；长期工作进程在处理消息/定时任务前刷新 AI 配置。应用版本来自构建清单，协议版本来自实时接口或安装 metadata，不可用时为 `unknown`。协议升级要求已知会话停机，归档暂存检查路径及符号链接，并保留个人配置和回滚备份。
+
+## 0.5.1 更新状态与事件
+
+主程序信息新增 status、installerName、downloadSize、checksumSha256。状态为 available、up_to_date、newer_local、no_release、installer_missing；核心状态为 available、up_to_date、newer_local、version_unknown、asset_missing。可选值可能为 null。
+
+app-update-progress、napcat-update-progress 的 payload 为 {phase,downloadedBytes,totalBytes}，阶段包含 checking、downloading、verifying、installing、ready。调用前订阅，成功、失败和卸载后释放。ready 只表示包就绪，不表示安装结束。
+
+主程序升级只接受当前稳定版本的明确安装包及官方 SHA256；显式 downloadUrl 不能绕过选择。桌面退出后助手安装并重开，CLI 不退出另一个桌面。核心只接受官方 Shell 包，存活会话阻止覆盖，配置与备份保留；成功后按需启动账号。

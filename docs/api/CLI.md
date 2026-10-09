@@ -87,3 +87,7 @@ eazyqq_cli repair --json
 `EAZYQQ_ROOT` 指定数据与资源根目录；默认根据安装/源码位置解析。普通云模型密钥可来自专用配置或通用兼容服务环境变量，免费 OpenCode 不自动采用这些密钥。Python 环境与包管理约束仍遵循 `AGENTS.md`。
 
 [命令 schema](cli.schema.json) 和 [覆盖矩阵](COVERAGE.md) 自动生成；`pnpm contracts:check` 验证前端 invoke、桌面处理函数、CLI 路由与文档的一致性。
+
+## 0.5.1 更新边界
+
+updates install-app|install-napcat --confirm 只接受当前官方稳定资产，--url 不能绕过校验。主程序精确匹配 EazyQQ_<version>_x64-setup.exe，核心精确匹配 NapCat.Shell.zip；校验大小与 SHA256，更新跨进程互斥。CLI 安装助手等待本次命令退出，不强制关闭另一个桌面或 QQ。协议更新要求相关会话停机，保留配置和备份。JSON stdout 只输出最终结果。
