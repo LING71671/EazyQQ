@@ -1,6 +1,6 @@
 # EazyQQ
 
-> Windows QQ 助手，提供桌面端、独立 CLI 与 stdio MCP；当前版本 0.5.2。
+> Windows QQ 助手，提供桌面端、独立 CLI 与 stdio MCP；当前版本 0.5.4。
 
 支持多账号独立端点、数据库、模型会话和浏览器缓存，登录与健康诊断共用身份校验。进程恢复保留已有 QQ 会话，免费 OpenCode 模型使用原生运行时。
 
@@ -11,6 +11,6 @@
 - [命令 schema](docs/api/cli.schema.json)：自动生成的实际参数。
 - [桌面 IPC](docs/api/IPC.md)：返回封装与 DTO。
 - [覆盖矩阵](docs/api/COVERAGE.md)：桌面和 CLI 映射。
-- [开发记录](docs/development/2026-10-08-reliability.md)：决策与验收证据。
+- [开发记录](docs/development/2026-10-09-physical-path-handoff.md)：决策与验收证据。
 - [发布流程](docs/release/RELEASING.md)：版本、产物和分发。
 - [智能体操作指南](llms-full.txt)：约束与入口。

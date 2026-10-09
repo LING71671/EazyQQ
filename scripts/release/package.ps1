@@ -1,12 +1,14 @@
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+. (Join-Path $PSScriptRoot '../toolchain/cargo-paths.ps1')
+$targetDirectory = Resolve-CargoTargetDirectory -ProjectRoot $projectRoot
 $package = Get-Content -LiteralPath (Join-Path $projectRoot 'package.json') -Raw | ConvertFrom-Json
 $version = $package.version
 if ($version -notmatch '^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$') { throw 'Invalid release version' }
 $releaseDir = Join-Path $projectRoot "output/release/$version"
 $stageDir = Join-Path $releaseDir ('cli-stage-' + [guid]::NewGuid().ToString('N'))
-$installer = Join-Path $projectRoot "src-tauri/target/release/bundle/nsis/EazyQQ_${version}_x64-setup.exe"
-$cli = Join-Path $projectRoot 'src-tauri/target/release/eazyqq_cli.exe'
+$installer = Join-Path $targetDirectory "release/bundle/nsis/EazyQQ_${version}_x64-setup.exe"
+$cli = Join-Path $targetDirectory 'release/eazyqq_cli.exe'
 foreach ($path in @($installer, $cli)) {
     if (-not (Test-Path -LiteralPath $path)) { throw "Release artifact missing: $path. Run pnpm tauri:build first." }
 }

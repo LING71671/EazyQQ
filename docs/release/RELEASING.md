@@ -1,10 +1,12 @@
 # EazyQQ 发布流程
 
-当前版本 0.5.3。公开发布须对应完整验收的 Git 标签；本地安装包生成不等于已经发布。
+当前源码版本 0.5.4。公开发布须对应完整验收的 Git 标签；本地安装包生成不等于已经发布。
 
-已知 0.5.3 在用户本机仍有 QQ 加载入口故障，参见 `docs/development/2026-10-09-startup-provenance.md`。当前新增追踪代码仅用于定位，不发布新的产品版本。证据收集工作流的成功只证明数据收集完成，不证明 QQ 登录或协议就绪；发布前必须明确区分假引导器进程回归与真实 QQ 模块加载证据。
+0.5.3 的已知 QQ 加载入口故障见 `docs/development/2026-10-09-startup-provenance.md`。0.5.4 源码修复已通过隔离真实 QQ 的跨盘模块导入与 WebUI 验收；打包、安装和分发仍须通过本流程。不能将证据收集、假引导器回归或文件存在替代真实 QQ 加载及身份确认。
 
 后续物理路径源码修复见 `docs/development/2026-10-09-physical-path-handoff.md`。发布门禁还须证明真实 QQ 执行新入口、导入协议模块并使 WebUI 可达；独立 Node 接收路径测试不能代替 QQ 验收。公开 0.5.3 标签和资产不覆盖。
+
+设置 `CARGO_TARGET_DIR` 时，`release:package` 与 Cargo 使用同一目标目录；本机建议放在 A 盘。测试 CLI/GUI 用 `EAZYQQ_TEST_CLI`、`EAZYQQ_TEST_GUI` 指定该目录的 release 二进制，避免误测旧版本。
 
 ## 版本与文档
 
@@ -49,9 +51,9 @@ git diff --check
 发布工作流由 `v*` 标签或带标签参数的手动触发启动。它确认标签与清单版本相同，准备官方协议资源，执行类型/单元/CLI/原生测试，构建及打包后才建立并发布 Release。
 
 ```powershell
-git tag -a v0.5.3 -m "Release 0.5.3"
+git tag -a v0.5.4 -m "Release 0.5.4"
 git push origin main
-git push origin v0.5.3
+git push origin v0.5.4
 gh run list --workflow release.yml
 ```
 

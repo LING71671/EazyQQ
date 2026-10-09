@@ -1,6 +1,6 @@
 # 桌面 IPC 契约
 
-适用于 0.5.3，传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`，私有登记文件使用 `snake_case`。
+适用于 0.5.4，传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`，私有登记文件使用 `snake_case`。
 
 ## 返回与错误
 
@@ -73,11 +73,11 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 | 模型 | `fetch_provider_models({provider,baseUrl?,apiKey?})` 返回目录；`test_ai_connection({provider?,modelId?,baseUrl?,apiKey?,prompt?})` 返回测试结果 |
 | 诊断 | `check_dependencies()` 返回依赖报告；`export_diagnostics_bundle()` 返回 `{zipFilePath}` |
 | 更新 | `check_app_update()`、`check_napcat_update()` 返回更新信息；`get_napcat_version()` 返回版本；`upgrade_app` / `upgrade_napcat` 接受 `{downloadUrl?}` |
-
-当前开发源码的诊断 ZIP 新增 `protocol/startup-trace.json`，包含实际私有目录、入口解析、资源散列、本次启动编号及加载器执行凭证。阶段状态 `passed`、`failed`、`unknown` 分别表示该检查成立、该检查失败或缺乏证据；端口开放不代表认证成立。凭证只记录阶段、PID、运行时版本、时间、错误类型/代码，不记录 token、消息或完整环境。新能力尚未随产品发布。
-
-加载入口和更新安装助手的后续源码修复使用最终物理路径跨进程交接，现有参数与 DTO 不变；真实 QQ 的执行凭证仍是加载验收依据。详见 `docs/development/2026-10-09-physical-path-handoff.md`，修复尚未进入公开安装包。
 | QQ 路径 | `get_qq_path()` 返回路径；`set_qq_path({path})` 验证文件并更新引导 |
+
+0.5.4 的诊断 ZIP 新增 `protocol/startup-trace.json`，包含实际私有目录、入口解析、资源散列、本次启动编号及加载器执行凭证。阶段状态 `passed`、`failed`、`unknown` 分别表示该检查成立、该检查失败或缺乏证据；端口开放不代表认证成立。凭证只记录阶段、PID、运行时版本、时间、错误类型/代码，不记录 token、消息或完整环境。旧版 0.5.3 不包含该能力。
+
+0.5.4 的加载入口和更新安装助手使用最终物理路径跨进程交接，现有参数与 DTO 不变；真实 QQ 的执行凭证仍是加载验收依据。详见 `docs/development/2026-10-09-physical-path-handoff.md`，旧版 0.5.3 安装包不包含该修复。
 
 完整命令清单由 [覆盖矩阵](COVERAGE.md) 生成。所有 DTO 的精确字段以 `src/api/contracts.ts` 和 Rust 命令返回类型为准。
 
@@ -91,7 +91,7 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 
 配置保存在账号 SQLite 中；长期工作进程在处理消息/定时任务前刷新 AI 配置。应用版本来自构建清单，协议版本来自实时接口或安装 metadata，不可用时为 `unknown`。协议升级要求已知会话停机，归档暂存检查路径及符号链接，并保留个人配置和回滚备份。
 
-## 0.5.3 更新状态与事件
+## 更新状态与事件
 
 主程序信息新增 status、installerName、downloadSize、checksumSha256。状态为 available、up_to_date、newer_local、no_release、installer_missing；核心状态为 available、up_to_date、newer_local、version_unknown、asset_missing。可选值可能为 null。
 
