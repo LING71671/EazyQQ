@@ -248,6 +248,10 @@ pub fn restart(napcat_dir: &Path) -> BootOutcome {
 }
 
 pub fn restart_with_uin(napcat_dir: &Path, uin: Option<&str>) -> BootOutcome {
+    let target = match super::recovery::restart_target(napcat_dir) {
+        Ok(target) => target,
+        Err(detail) => return BootOutcome { attempted: false, ok: false, detail },
+    };
     if let Ok(mut st) = state().lock() {
         st.consecutive_failures = 0;
         st.last_attempt = None;
@@ -283,7 +287,13 @@ pub fn restart_with_uin(napcat_dir: &Path, uin: Option<&str>) -> BootOutcome {
             detail: "An unowned protocol session is running; restart was refused".into(),
         };
     }
-    start_with_args(napcat_dir, None, uin)
+    let outcome = start_with_args(&target, None, uin);
+    if outcome.ok {
+        if let Err(detail) = super::recovery::record_relocation(napcat_dir, &target) {
+            return BootOutcome { attempted: outcome.attempted, ok: false, detail: format!("Protocol started but its runtime registration could not be updated: {}", detail) };
+        }
+    }
+    outcome
 }
 
 pub fn start_instance(napcat_dir: &Path, uin: &str) -> BootOutcome {

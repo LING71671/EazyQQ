@@ -49,7 +49,11 @@ pub async fn get_protocol_status(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<ApiResponse<ProtocolStatusDto>, String> {
-    let evidence = crate::services::protocol::session::probe(&state.napcat, &state.onebot).await;
+    let (evidence, alive) = tokio::join!(
+        async { tokio::time::timeout(std::time::Duration::from_secs(3),
+            crate::services::protocol::session::probe(&state.napcat, &state.onebot)).await.unwrap_or_default() },
+        async { tokio::time::timeout(std::time::Duration::from_secs(3), state.napcat.is_alive()).await.unwrap_or(false) }
+    );
     if evidence.logged_in {
         crate::services::chain::record_ok(
             crate::services::chain::Link::QqLogin,
@@ -64,9 +68,16 @@ pub async fn get_protocol_status(
             reconcile_account(&app, uin);
         }
     }
-    let connected = evidence.logged_in || state.napcat.is_alive().await;
+    let connected = evidence.logged_in || alive;
+    let (quick_result, qr_result) = tokio::join!(
+        async { if alive { tokio::time::timeout(std::time::Duration::from_secs(5), state.napcat.get_quick_login_list()).await.ok().and_then(Result::ok) } else { None } },
+        async { if !evidence.logged_in && connected {
+            Some(tokio::time::timeout(std::time::Duration::from_secs(5), state.napcat.get_qrcode()).await
+                .unwrap_or_else(|_| Err("二维码查询超过 5 秒，请查看链路诊断。".into())))
+        } else { None } }
+    );
     let mut quick_accounts = Vec::new();
-    if let Ok(res) = state.napcat.get_quick_login_list().await {
+    if let Some(res) = quick_result {
         if let Some(arr) = res["data"].as_array() {
             for item in arr {
                 if let Some(uin) = crate::services::protocol::session::account_id(&item["uin"]) {
@@ -79,13 +90,14 @@ pub async fn get_protocol_status(
             }
         }
     }
-    let (qr, error) = if !evidence.logged_in && connected {
-        match state.napcat.get_qrcode().await {
+    let (qr, error) = if let Some(result) = qr_result {
+        match result {
             Ok(qr) => (Some(qr), None),
             Err(e) => (None, Some(e)),
         }
     } else {
-        (None, None)
+        (None, if connected { None } else { Some(crate::services::protocol::recovery::unavailable_message(
+            std::path::Path::new(state.napcat.napcat_dir()))) })
     };
     Ok(ApiResponse::ok(ProtocolStatusDto {
         is_connected: connected,
@@ -225,6 +237,8 @@ pub async fn logout(state: State<'_, AppState>) -> Result<ApiResponse<()>, Strin
 
 #[command]
 pub async fn restart_napcat(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
 ) -> Result<ApiResponse<crate::services::napcat_boot::BootOutcome>, String> {
     let napcat_dir = crate::services::napcat_boot::locate_napcat_dir();
     crate::services::protocol::boot::set_auto_start(true);
@@ -235,5 +249,18 @@ pub async fn restart_napcat(
     if !outcome.ok {
         return Ok(ApiResponse::err(1004, outcome.detail, None));
     }
+    reload_relocated_runtime(app, &state);
     Ok(ApiResponse::ok(outcome))
+}
+
+pub fn reload_relocated_runtime(app: tauri::AppHandle, state: &AppState) {
+    let source = crate::services::protocol::boot::locate_napcat_dir();
+    let (selected, _, _, _) = crate::services::protocol::layout::selected(&source);
+    if selected != std::path::Path::new(state.napcat.napcat_dir()) {
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            std::env::set_var("EAZYQQ_ACCOUNT_RESTART", "1");
+            app.restart();
+        });
+    }
 }

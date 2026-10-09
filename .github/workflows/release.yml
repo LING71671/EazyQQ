@@ -111,6 +111,8 @@ jobs:
           Get-ItemProperty 'HKCU:\Software\Microsoft\EdgeUpdate\Clients\*' -ErrorAction SilentlyContinue | Select-Object name,pv
           pnpm test:smoke
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/validation/protocol_recovery.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           # Validation tools follow this workflow revision; application source stays tagged.
           $content = gh api "repos/$env:GITHUB_REPOSITORY/contents/scripts/validation/native_profiles.py?ref=$env:GITHUB_SHA" --jq .content
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

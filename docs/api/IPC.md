@@ -1,6 +1,6 @@
 # 桌面 IPC 契约
 
-适用于 0.5.2，传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`，私有登记文件使用 `snake_case`。
+适用于 0.5.3，传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`，私有登记文件使用 `snake_case`。
 
 ## 返回与错误
 
@@ -49,6 +49,10 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 
 `get_protocol_status` 包含 `isConnected`、`loginStatus`、`qqNumber`、`nickname`、`avatarUrl`、`qrcodeBase64`、`qrcodeError` 与记忆账号列表。有效状态包括 `unlogged`、`waiting_scan`、`scanned`、`logged_in`。OneBot 必须返回 `status=ok`、`retcode=0` 和有效身份；已确认身份优先于陈旧 WebUI 标志。
 
+协议与登录探测并行，各限制三秒；记忆账号与二维码请求并行，各限制五秒。离线时 `qrcodeError` 返回缺失资源或服务不可用原因，不继续查询记忆账号。客户端应显示领域错误、Promise 拒绝与等待超时，不能因没有二维码就无限展示加载。
+
+`restart_napcat` 是显式恢复操作。旧安装根 `resources/napcat` 会先准备并验证私有替换目录，再只停止原目录受验证的 Windows Job；外部监听会话拒绝重启。迁移成功后桌面自动重建上下文以读取新目录的凭据。`repair_chain` 仅在旧目录缺失必需资源且属于受管理故障时使用此路径，普通等待扫码、健康和外部会话保留。
+
 `refresh_qrcode` 调用实际 `RefreshQRcode` API，失败不会返回旧磁盘图片冒充新码。`logout`、`restart_napcat` 拒绝结束不属于 EazyQQ 的运行会话。
 
 `get_chain_status` 返回八个环节、`firstBreak`、`hasFailure`、`uptimeSecs`。状态为 `ok`、`unknown`、`failed`；链路时间字段保持现有 `last_ok_secs_ago`、`last_error_secs_ago`。等待扫码、未测试推理、只有 TCP 端口开放均不能代表完整正常。
@@ -83,7 +87,7 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 
 配置保存在账号 SQLite 中；长期工作进程在处理消息/定时任务前刷新 AI 配置。应用版本来自构建清单，协议版本来自实时接口或安装 metadata，不可用时为 `unknown`。协议升级要求已知会话停机，归档暂存检查路径及符号链接，并保留个人配置和回滚备份。
 
-## 0.5.2 更新状态与事件
+## 0.5.3 更新状态与事件
 
 主程序信息新增 status、installerName、downloadSize、checksumSha256。状态为 available、up_to_date、newer_local、no_release、installer_missing；核心状态为 available、up_to_date、newer_local、version_unknown、asset_missing。可选值可能为 null。
 

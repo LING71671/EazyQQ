@@ -1,7 +1,7 @@
 import { AccountLoginQr } from '@/components/accounts/AccountLoginQr';
 import { AccountManager } from '@/components/accounts/AccountManager';
 import React, { useState, useEffect } from 'react';
-import { QrCode, RefreshCw, Smartphone, CheckCircle, ShieldCheck, Loader2, Sparkles, UserCheck, Activity, LogOut, ArrowRightLeft } from 'lucide-react';
+import { QrCode, RefreshCw, Smartphone, CheckCircle, ShieldCheck, Loader2, Sparkles, UserCheck, Activity, LogOut, ArrowRightLeft, AlertCircle } from 'lucide-react';
 import QRCode from 'qrcode';
 import type { ProtocolStatusDto, QuickLoginAccountDto } from '@/api/contracts';
 
@@ -10,6 +10,7 @@ interface LoginViewProps {
   onCancelPendingLogin?: () => void;
   status: ProtocolStatusDto;
   onRefreshQr: () => void;
+  onRestoreProtocol?: () => void;
   isLoading: boolean;
   /** Notice or error explaining the state */
   error?: string | null;
@@ -24,6 +25,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
   pendingLogin,
   onCancelPendingLogin,
   onRefreshQr,
+  onRestoreProtocol,
   isLoading,
   error,
   onQuickLogin,
@@ -34,6 +36,13 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const isLoggedIn = status.loginStatus === 'logged_in';
   const [generatedQr, setGeneratedQr] = useState<string | null>(null);
   const [refreshedNotice, setRefreshedNotice] = useState(false);
+  const [waitExpired, setWaitExpired] = useState(false);
+  useEffect(() => {
+    setWaitExpired(false);
+    if (status.qrcodeBase64 || isLoggedIn) return;
+    const timer = setTimeout(() => setWaitExpired(true), 20000);
+    return () => clearTimeout(timer);
+  }, [status.qrcodeBase64, isLoggedIn, isLoading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,10 +66,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const quickAccounts: QuickLoginAccountDto[] = status.quickLoginAccounts || [];
   const otherQuickAccounts = quickAccounts.filter((acc) => acc.uin !== status.qqNumber);
 
-  // Determine if the current notice is a normal loading/startup state
-  const isStartupNotice =
-    !currentQrImage ||
-    (error && (error.includes('启动') || error.includes('加载') || error.includes('准备') || error.includes('NapCat') || error.includes('凭据')));
+  const displayError = error || status.qrcodeError || (waitExpired && !currentQrImage ? '二维码等待超过 20 秒，请查看链路诊断。' : null);
+  const isStartupNotice = !currentQrImage && !displayError;
 
   return (
     <div className="flex-1 h-full p-8 flex flex-col items-center select-none bg-slate-50/50 overflow-y-auto">
@@ -255,10 +262,10 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 ) : (
                   <div className="flex flex-col items-center gap-3 text-slate-400 p-4">
                     <div className="w-12 h-12 rounded-full bg-sky-50 flex items-center justify-center text-sky-500">
-                      <Loader2 className="w-6 h-6 animate-spin text-sky-600" />
+                      {displayError && !isLoading ? <AlertCircle className="w-6 h-6 text-amber-600" /> : <Loader2 className="w-6 h-6 animate-spin text-sky-600" />}
                     </div>
-                    <span className="text-xs font-medium text-slate-600">正在与底层协议连接…</span>
-                    <span className="text-[11px] text-slate-400 leading-tight">若有已记忆账号将自动就绪</span>
+                    <span className="text-sm font-medium text-slate-600">{displayError && !isLoading ? '二维码服务不可用' : '正在连接二维码服务…'}</span>
+                    {displayError && !isLoading && <span className="text-xs text-slate-500 leading-tight">查看诊断或恢复协议</span>}
                   </div>
                 )}
               </div>
@@ -275,10 +282,10 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     <Loader2 className="w-3 h-3 animate-spin text-sky-600" />
                     服务加载中
                   </span>
-                ) : error ? (
+                ) : displayError ? (
                   <span className="text-[11px] text-amber-800 font-medium flex items-center gap-1 bg-amber-50 px-3 py-1 rounded-full border border-amber-200/70 shadow-2xs">
                     <RefreshCw className="w-3 h-3 text-amber-600" />
-                    尚未加载完成
+                    连接失败
                   </span>
                 ) : (
                   <span className="text-[11px] text-slate-400">
@@ -286,9 +293,9 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   </span>
                 )}
 
-                {error && (
-                  <p className="max-w-[18rem] text-[11px] leading-relaxed text-slate-500 text-center mt-1">
-                    {error}
+                {displayError && (
+                  <p role="alert" className="max-w-[24rem] text-sm leading-relaxed text-slate-600 text-center mt-1 break-words">
+                    {displayError}
                   </p>
                 )}
               </div>
@@ -297,12 +304,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
             {/* Action Buttons */}
             <div className="flex items-center gap-3">
               <button
-                onClick={onRefreshQr}
+                onClick={!status.isConnected && displayError && onRestoreProtocol ? onRestoreProtocol : onRefreshQr}
                 disabled={isLoading}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                <span>{isLoading ? '正在获取全新二维码...' : '刷新二维码'}</span>
+                <span>{isLoading ? '正在处理…' : !status.isConnected && displayError && onRestoreProtocol ? '恢复协议' : '刷新二维码'}</span>
               </button>
 
               {onOpenHealth && (

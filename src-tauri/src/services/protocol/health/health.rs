@@ -72,6 +72,16 @@ pub async fn repair(napcat: &NapCatService, onebot: &OneBotClient) -> RepairRepo
             return RepairReport { action: "inspect_webui".into(), attempted: false, ok: false, detail: "QQ is authenticated. Its running session was preserved; inspect WebUI configuration".into() };
         }
         if super::ownership::is_running(std::path::Path::new(napcat.napcat_dir())) {
+            let dir = std::path::PathBuf::from(napcat.napcat_dir());
+            if dir == crate::services::logging::workspace_root().join("resources/napcat")
+                && !super::recovery::missing_payload(&dir).is_empty()
+            {
+                let target = onebot.expected_account().map(str::to_string);
+                let outcome = tokio::task::spawn_blocking(move || super::boot::restart_with_uin(&dir, target.as_deref())).await;
+                if let Ok(outcome) = outcome {
+                    return RepairReport { action: "restore_legacy_runtime".into(), attempted: outcome.attempted, ok: outcome.ok, detail: outcome.detail };
+                }
+            }
             return RepairReport {
                 action: "wait".into(),
                 attempted: false,

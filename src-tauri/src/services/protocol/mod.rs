@@ -20,6 +20,8 @@ pub mod ownership;
 pub mod patch;
 #[path = "runtime/entry.rs"]
 pub mod entry;
+#[path = "runtime/recovery.rs"]
+pub mod recovery;
 #[path = "messaging/pipeline.rs"]
 pub mod pipeline;
 #[path = "auth/service.rs"]

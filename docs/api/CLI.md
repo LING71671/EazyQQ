@@ -1,6 +1,6 @@
 # CLI 使用与契约
 
-适用于 0.5.2。源码构建：`pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli`。桌面安装包包含同名 CLI；独立压缩包还提供 `ezq.exe` 兼容名。
+适用于 0.5.3。源码构建：`pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli`。桌面安装包包含同名 CLI；独立压缩包还提供 `ezq.exe` 兼容名。
 
 ```powershell
 .\src-tauri\target\debug\eazyqq_cli.exe --account 10001 status --json
@@ -32,6 +32,8 @@ eazyqq_cli accounts forget --uin 10001 --json
 `instances` 是 `accounts` 的兼容别名。批量支持 `--uin`、`--uins`、`--all` 与 `--dry-run`，结果逐账号返回。登录不等于选中；进程已启动不等于身份已确认。忘记账号保留目录，拒绝当前账号及仍受管理的运行账号。
 
 `start`、`stop`、`logout`、`restart` 针对当前上下文。Windows Job 仅包含 EazyQQ 创建的进程树；独立监督进程使后续 CLI 仍可管理。没有所有权收据的外部会话被保留，PID 和进程名不能作为终止依据。
+
+`restart` 遇到旧安装根 `resources/napcat` 时，先验证当前版本载荷并准备私有运行目录，再定向停止旧受管理 Job。准备失败不会停止旧树，外部监听服务拒绝重启。操作成功表示进程启动请求已完成，仍需通过 `status` 确认服务及账号身份；不能据此宣称已登录。
 
 `status`、`login-info`、`quick-login-list`、`quick-login --uin`、`qr [--refresh] [--save path] [--browser]` 提供认证操作。快速请求被接受不等于完成登录。二维码可能是 URL、data URI 或 base64；普通 `qr --save` 只有在接收到 PNG data URI 时写入 PNG，否则保存返回值文本。
 
@@ -88,6 +90,6 @@ eazyqq_cli repair --json
 
 [命令 schema](cli.schema.json) 和 [覆盖矩阵](COVERAGE.md) 自动生成；`pnpm contracts:check` 验证前端 invoke、桌面处理函数、CLI 路由与文档的一致性。
 
-## 0.5.2 更新边界
+## 0.5.3 更新边界
 
 updates install-app|install-napcat --confirm 只接受当前官方稳定资产，--url 不能绕过校验。主程序精确匹配 EazyQQ_<version>_x64-setup.exe，核心精确匹配 NapCat.Shell.zip；校验大小与 SHA256，更新跨进程互斥。CLI 安装助手等待本次命令退出，不强制关闭另一个桌面或 QQ。协议更新要求相关会话停机，保留配置和备份。JSON stdout 只输出最终结果。

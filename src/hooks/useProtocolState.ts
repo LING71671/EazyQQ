@@ -7,6 +7,7 @@ export function useProtocolState(options?: { onLoginSuccess?: () => void }) {
   const [pendingLogin, setPendingLogin] = useState<{ uin: string; qrcodeBase64: string } | null>(null);
   const [isRefreshingQr, setIsRefreshingQr] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [isQuickLoggingIn, setIsQuickLoggingIn] = useState<string | null>(null);
   const [chainHasFailure, setChainHasFailure] = useState(false);
   const generation = useRef(0);
@@ -29,16 +30,21 @@ export function useProtocolState(options?: { onLoginSuccess?: () => void }) {
     if (busy.current || polling.current) return;
     polling.current = true;
     const epoch = generation.current;
+    const watchdog = setTimeout(() => {
+      if (mounted.current && epoch === generation.current) setStatusError('状态查询超过 15 秒，二维码服务未响应。请查看链路诊断。');
+    }, 15000);
     try {
       const res = await api.getProtocolStatus();
-      if (!mounted.current || epoch !== generation.current || !res.success || !res.data) return;
+      if (!mounted.current || epoch !== generation.current) return;
+      if (!res.success || !res.data) throw new Error(res.error?.message || '协议状态查询失败');
+      setStatusError(null);
       const next = res.data;
       setProtocolStatus(next);
       if (next.loginStatus === 'logged_in' && previous.current !== 'logged_in') onSuccess.current?.();
       previous.current = next.loginStatus;
     } catch (e) {
-      if (mounted.current && epoch === generation.current) setQrError(e instanceof Error ? e.message : String(e));
-    } finally { polling.current = false; }
+      if (mounted.current && epoch === generation.current) setStatusError(e instanceof Error ? e.message : String(e));
+    } finally { clearTimeout(watchdog); polling.current = false; }
   }, []);
 
   const mutate = useCallback(async (operation: () => Promise<void>) => {
@@ -58,6 +64,12 @@ export function useProtocolState(options?: { onLoginSuccess?: () => void }) {
     const res = await api.refreshQrCode();
     if (!res.success || !res.data) throw new Error(res.error?.message || '二维码刷新失败');
     if (mounted.current) setProtocolStatus(prev => ({ ...prev, qrcodeBase64: res.data!.qrcodeBase64, loginStatus: 'waiting_scan' }));
+  }), [mutate]);
+
+  const handleRestoreProtocol = useCallback(() => mutate(async () => {
+    setIsRefreshingQr(true);
+    const res = await api.restartNapCat();
+    if (!res.success || !res.data?.ok) throw new Error(res.error?.message || res.data?.detail || '协议恢复失败');
   }), [mutate]);
 
   const handleQuickLogin = useCallback((uin: string) => mutate(async () => {
@@ -89,13 +101,13 @@ export function useProtocolState(options?: { onLoginSuccess?: () => void }) {
     let tick = 0;
     const poll = async () => {
       await refreshProtocolStatus();
-      if (tick++ % 4 === 0) await refreshChainStatus();
+      if (tick++ % 4 === 0) void refreshChainStatus();
       if (!cancelled) timer = setTimeout(poll, 2000);
     };
     void poll();
     return () => { cancelled = true; mounted.current = false; generation.current++; clearTimeout(timer); };
   }, [refreshProtocolStatus, refreshChainStatus]);
 
-  return { pendingLogin, setPendingLogin, protocolStatus, setProtocolStatus, isRefreshingQr, qrError, isQuickLoggingIn, chainHasFailure,
-    handleRefreshQr, handleQuickLogin, handleLogout, refreshProtocolStatus, refreshChainStatus };
+  return { pendingLogin, setPendingLogin, protocolStatus, setProtocolStatus, isRefreshingQr, qrError: qrError || statusError, isQuickLoggingIn, chainHasFailure,
+    handleRefreshQr, handleRestoreProtocol, handleQuickLogin, handleLogout, refreshProtocolStatus, refreshChainStatus };
 }

@@ -129,6 +129,7 @@ export const App: React.FC = () => {
     isQuickLoggingIn,
     chainHasFailure,
     handleRefreshQr,
+    handleRestoreProtocol,
     handleQuickLogin,
     handleLogout,
   } = useProtocolState({ onLoginSuccess: handleLoginSuccess });
@@ -319,6 +320,7 @@ export const App: React.FC = () => {
             <LoginView
               status={protocolStatus}
               onRefreshQr={handleRefreshQr}
+              onRestoreProtocol={handleRestoreProtocol}
               isLoading={isRefreshingQr}
               error={qrError || protocolStatus.qrcodeError}
               onQuickLogin={handleQuickLogin}

@@ -130,9 +130,10 @@ pub async fn export_diagnostics_bundle(
 
 #[command]
 pub async fn repair_chain(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<ApiResponse<crate::services::protocol::health::RepairReport>, String> {
-    Ok(ApiResponse::ok(
-        crate::services::protocol::health::repair(&state.napcat, &state.onebot).await,
-    ))
+    let report = crate::services::protocol::health::repair(&state.napcat, &state.onebot).await;
+    if report.ok { crate::commands::protocol::auth::reload_relocated_runtime(app, &state); }
+    Ok(ApiResponse::ok(report))
 }

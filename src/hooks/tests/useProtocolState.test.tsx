@@ -6,7 +6,7 @@ import { api } from '@/api/client';
 import type { ApiResponse, ProtocolStatusDto } from '@/api/contracts';
 
 vi.mock('@/api/client', () => ({ api: {
-  getAccountStatus: vi.fn(), accountQrCode: vi.fn(), getProtocolStatus: vi.fn(), getChainStatus: vi.fn(), quickLogin: vi.fn(), refreshQrCode: vi.fn(), logout: vi.fn(),
+  getAccountStatus: vi.fn(), accountQrCode: vi.fn(), getProtocolStatus: vi.fn(), getChainStatus: vi.fn(), quickLogin: vi.fn(), refreshQrCode: vi.fn(), restartNapCat: vi.fn(), logout: vi.fn(),
 } }));
 const loggedIn: ApiResponse<ProtocolStatusDto> = { success: true, timestamp: 0, data: { isConnected: true, loginStatus: 'logged_in', qqNumber: '10001' } };
 const pending: ApiResponse<ProtocolStatusDto> = { success: true, timestamp: 0, data: { isConnected: true, loginStatus: 'waiting_scan', qrcodeBase64: 'old-qr' } };
@@ -33,9 +33,30 @@ describe('protocol account transitions', () => {
   });
   it('does not overlap slow polling calls', async () => {
     vi.mocked(api.getProtocolStatus).mockReturnValue(new Promise(() => {}));
-    renderHook(() => useProtocolState());
+    const { result } = renderHook(() => useProtocolState());
     await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
     expect(api.getProtocolStatus).toHaveBeenCalledTimes(1);
+    expect(result.current.qrError).toContain('15 秒');
+    expect(api.quickLogin).not.toHaveBeenCalled();
+    expect(api.restartNapCat).not.toHaveBeenCalled();
+  });
+  it('shows domain failures and clears them after a successful read-only poll', async () => {
+    vi.mocked(api.getProtocolStatus).mockResolvedValueOnce({ success: false, timestamp: 0, error: { code: 1001, message: 'Protocol unavailable' } });
+    const { result } = renderHook(() => useProtocolState());
+    await flush();
+    expect(result.current.qrError).toBe('Protocol unavailable');
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(result.current.qrError).toBeNull();
+  });
+  it('restores the protocol only after an explicit action and reports refused restarts', async () => {
+    vi.mocked(api.restartNapCat).mockResolvedValue({ success: true, timestamp: 0, data: { attempted: false, ok: false, detail: 'Unowned session preserved' } });
+    const { result } = renderHook(() => useProtocolState());
+    await flush();
+    expect(api.restartNapCat).not.toHaveBeenCalled();
+    await act(async () => { await result.current.handleRestoreProtocol(); });
+    expect(api.restartNapCat).toHaveBeenCalledTimes(1);
+    expect(result.current.qrError).toBe('Unowned session preserved');
+    expect(result.current.isRefreshingQr).toBe(false);
   });
   it('discards a stale QR response after an account operation', async () => {
     let resolve!: (value: ApiResponse<ProtocolStatusDto>) => void;

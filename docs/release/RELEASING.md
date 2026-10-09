@@ -1,6 +1,6 @@
 # EazyQQ 发布流程
 
-当前版本 0.5.2。公开发布须对应完整验收的 Git 标签；本地安装包生成不等于已经发布。
+当前版本 0.5.3。公开发布须对应完整验收的 Git 标签；本地安装包生成不等于已经发布。
 
 ## 版本与文档
 
@@ -45,9 +45,9 @@ git diff --check
 发布工作流由 `v*` 标签或带标签参数的手动触发启动。它确认标签与清单版本相同，准备官方协议资源，执行类型/单元/CLI/原生测试，构建及打包后才建立并发布 Release。
 
 ```powershell
-git tag -a v0.5.2 -m "Release 0.5.2"
+git tag -a v0.5.3 -m "Release 0.5.3"
 git push origin main
-git push origin v0.5.2
+git push origin v0.5.3
 gh run list --workflow release.yml
 ```
 
