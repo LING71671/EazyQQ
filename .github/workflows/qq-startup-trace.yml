@@ -38,12 +38,12 @@ jobs:
           New-Item -ItemType Directory .test-runtime -Force | Out-Null
           gh release download $env:FIXTURE_TAG --pattern qq-native-qa.zip --dir .test-runtime
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $profile = Join-Path $env:LOCALAPPDATA 'EazyQQ-QA/QQ NT'
-          $program = Join-Path $env:ProgramFiles 'Tencent/QQNT'
-          Expand-Archive .test-runtime/qq-native-qa.zip -DestinationPath $profile
-          Expand-Archive .test-runtime/qq-native-qa.zip -DestinationPath $program
-          "EAZYQQ_QA_PROFILE_QQ=$profile/QQ.exe" | Out-File $env:GITHUB_ENV -Append
-          "EAZYQQ_QA_PROGRAM_QQ=$program/QQ.exe" | Out-File $env:GITHUB_ENV -Append
+          $fixtureProfile = Join-Path $env:LOCALAPPDATA 'EazyQQ-QA/QQ NT'
+          $fixtureProgram = Join-Path $env:ProgramFiles 'Tencent/QQNT'
+          Expand-Archive .test-runtime/qq-native-qa.zip -DestinationPath $fixtureProfile
+          Expand-Archive .test-runtime/qq-native-qa.zip -DestinationPath $fixtureProgram
+          "EAZYQQ_QA_PROFILE_QQ=$fixtureProfile/QQ.exe" | Out-File $env:GITHUB_ENV -Append
+          "EAZYQQ_QA_PROGRAM_QQ=$fixtureProgram/QQ.exe" | Out-File $env:GITHUB_ENV -Append
           $release = Invoke-RestMethod 'https://api.github.com/repos/NapNeko/NapCatQQ/releases/latest'
           $asset = $release.assets | Where-Object name -eq 'NapCat.Shell.zip' | Select-Object -First 1
           Invoke-WebRequest $asset.browser_download_url -OutFile .test-runtime/protocol.zip
