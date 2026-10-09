@@ -111,7 +111,7 @@ pub fn resolve(napcat_dir: &Path) -> Result<BootFiles, String> {
         main_mjs,
         load_js,
         patch_pkg,
-        qq_path: configured_qq_path(napcat_dir)?,
+        qq_path: crate::services::infra::filesystem::physical_path(&configured_qq_path(napcat_dir)?)?,
     })
 }
 
@@ -426,6 +426,12 @@ fn start_unlocked(
             return BootOutcome { attempted: false, ok: false, detail };
         }
     }
+    // QQ and its WMI supervisor do not inherit the caller's AppData view.
+    let physical_dir = match crate::services::infra::filesystem::physical_path(napcat_dir) {
+        Ok(path) => path,
+        Err(detail) => return BootOutcome { attempted: false, ok: false, detail },
+    };
+    let napcat_dir = physical_dir.as_path();
     if inst.is_none() {
         if let Err(reason) = may_attempt() {
             return BootOutcome {

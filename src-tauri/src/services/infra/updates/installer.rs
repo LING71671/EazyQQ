@@ -88,18 +88,21 @@ pub fn launch(prepared:&PreparedUpdate,desktop:bool)->Result<(),String> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        let root=prepared.path.parent().ok_or("安装包目录无效")?;
-        let bytes=std::fs::read(&prepared.path).map_err(|e|e.to_string())?;
+        use crate::services::infra::filesystem::physical_path;
+        let installer_path=physical_path(&prepared.path)?;
+        let root=installer_path.parent().ok_or("安装包目录无效")?;
+        let bytes=std::fs::read(&installer_path).map_err(|e|e.to_string())?;
         if bytes.len() as u64 != prepared.size || format!("{:x}",Sha256::digest(&bytes))!=prepared.sha256 {return Err("安装包在校验后发生变化，已拒绝启动".into());}
-        let source=std::env::current_exe().map_err(|e|e.to_string())?;
+        let source=physical_path(&std::env::current_exe().map_err(|e|e.to_string())?)?;
         let source_bytes=std::fs::read(&source).map_err(|e|e.to_string())?;
         let helper=root.join(format!("eazyqq-update-helper-{:x}.exe",Sha256::digest(source_bytes)));
         if !helper.exists() {std::fs::copy(&source,&helper).map_err(|e|e.to_string())?;}
         let request=root.join(format!("handoff-{}.json",std::process::id()));
         crate::services::infra::persistence::write_json(&request,&Request {
-            parent_id:std::process::id(),installer:prepared.path.clone(),sha256:prepared.sha256.clone(),size:prepared.size,
+            parent_id:std::process::id(),installer:installer_path.clone(),sha256:prepared.sha256.clone(),size:prepared.size,
             install_directory:if desktop {source.parent().map(Path::to_path_buf)} else {None},
-            previous_executable:desktop.then_some(source),root_override:std::env::var("EAZYQQ_ROOT").ok(),
+            previous_executable:desktop.then_some(source),root_override:std::env::var_os("EAZYQQ_ROOT")
+                .map(|path|physical_path(Path::new(&path)).map(|p|p.to_string_lossy().into_owned())).transpose()?,
         })?;
         #[cfg(not(test))]
         let command_line=format!("\"{}\" --app-update-helper \"{}\"",helper.display(),request.display());

@@ -138,3 +138,8 @@ for name,qq in [('profile',Path(os.environ['EAZYQQ_QA_PROFILE_QQ'])),('program-f
         results.append(report)
 print(json.dumps({'purpose':'diagnostic evidence collection, not release validation','cases':[{'case':r['case'],'evidenceCollected':r['evidenceCollected'],'webuiTransportListening':r.get('webuiTransportListening'),'collectionError':r.get('collectionError')} for r in results]}))
 if not all(r['evidenceCollected'] for r in results): raise SystemExit(1)
+if os.environ.get('EAZYQQ_QA_REQUIRE_READY') == 'true':
+    for report in results:
+        stages={stage['code']:stage['state'] for stage in report['startupTrace']['stages']}
+        if report['dialogs'] or not report['webuiTransportListening'] or stages.get('qq_module_load') != 'passed':
+            raise SystemExit(f"Real QQ runtime readiness failed: {report['case']}")

@@ -45,6 +45,8 @@ eazyqq_cli accounts forget --uin 10001 --json
 
 诊断不启动 QQ、不刷新二维码、不快速登录、不重启，也不执行 AI 推理。新追踪能力尚未包含在已发布的 0.5.3 二进制中；故障记录见 `docs/development/2026-10-09-startup-provenance.md`。
 
+后续开发源码已修正加载桥、监督进程及更新助手的物理路径交接，命令与输出契约保持。记录见 `docs/development/2026-10-09-physical-path-handoff.md`；不能据此宣称已发布 0.5.3 安装包包含修复。
+
 ## 常驻工作进程
 
 ```powershell

@@ -20,6 +20,9 @@ pub use logging::*;
 #[path = "system/persistence.rs"]
 pub mod persistence;
 
+#[path = "system/filesystem.rs"]
+pub mod filesystem;
+
 #[path = "system/versions.rs"]
 pub mod versions;
 

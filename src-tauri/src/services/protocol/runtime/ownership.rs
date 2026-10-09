@@ -223,6 +223,9 @@ pub fn spawn_owned(
     dir: &Path,
     output_log: Option<&Path>,
 ) -> Result<u32, String> {
+    use crate::services::infra::filesystem::{physical_directory, physical_path, output_path};
+    let physical_dir = physical_path(dir)?;
+    let dir = physical_dir.as_path();
     let mut random = [0u8; 16];
     getrandom::fill(&mut random).map_err(|e| e.to_string())?;
     let request_id = random
@@ -231,7 +234,7 @@ pub fn spawn_owned(
         .collect::<String>();
     let plan = LaunchPlan {
         request_id: request_id.clone(),
-        executable: command.get_program().into(),
+        executable: physical_path(Path::new(command.get_program()))?,
         args: command
             .get_args()
             .map(|s| s.to_string_lossy().into_owned())
@@ -248,10 +251,10 @@ pub fn spawn_owned(
             })
             .collect(),
         workdir: dir.into(),
-        output_log: output_log.map(Path::to_path_buf),
+        output_log: output_log.map(output_path).transpose()?,
     };
     crate::services::infra::persistence::write_json(&dir.join("eazyqq-launch.json"), &plan)?;
-    let source = std::env::current_exe().map_err(|e| e.to_string())?;
+    let source = physical_path(&std::env::current_exe().map_err(|e| e.to_string())?)?;
     use sha2::{Digest, Sha256};
     use std::io::Read;
     let mut file = std::fs::File::open(&source).map_err(|e| e.to_string())?;
@@ -264,8 +267,7 @@ pub fn spawn_owned(
         }
         hash.update(&buffer[..count]);
     }
-    let directory = crate::services::accounts::data_root().join("runtimes/supervisors");
-    std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+    let directory = physical_directory(&crate::services::accounts::data_root().join("runtimes/supervisors"))?;
     let executable = directory.join(format!("eazyqq-supervisor-{:x}.exe", hash.finalize()));
     if !executable.exists() {
         let temp = directory.join(format!("copy-{}.tmp", std::process::id()));

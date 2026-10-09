@@ -105,6 +105,8 @@ OpenCode 使用原生运行时、当前模型目录、账号私有会话和非�
 
 Electron 拼接 appPath 与 package.main；runtime/entry.rs 生成相对 .cjs 入口，同盘使用私有路径，跨盘使用目录桥接。桥接优先使用同盘 LOCALAPPDATA，再选数据根或 QQ 盘的 EazyQQ_Runtime；既有链接必须指向同一账号目标，QQ 安装文件不改动。
 
+当前开发源码新增 `infra/system/filesystem.rs`：所有脱离进程交接的文件路径先解析存在父目录的最终物理位置。加载桥在解析后的父目录创建，再生成相对入口；不能将调用者的逻辑 AppData 视图交给普通 QQ。监督进程与更新安装助手复用同一边界；详见 [物理路径修复记录](development/2026-10-09-physical-path-handoff.md)。源码修复尚未随新安装包发布。
+
 infra/updates 复用到 GUI、CLI 与 MCP，选择稳定版本及精确官方资产，流式接收并校验，暂存使用用户可写目录。主程序助手通过 WMI 脱离终端，等待调用者退出后安装；核心使用维护锁和保留配置的暂存部署。
 
 ## 安装资源与运行时副本

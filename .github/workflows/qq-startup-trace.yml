@@ -6,6 +6,11 @@ on:
         description: Private draft containing the immutable QQ fixture
         required: true
         type: string
+      require_ready:
+        description: Require real module import and WebUI readiness
+        required: false
+        default: false
+        type: boolean
 permissions:
   # GitHub exposes private draft fixtures only to tokens with push access.
   contents: write
@@ -16,6 +21,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       PYTHONUTF8: '1'
+      EAZYQQ_QA_REQUIRE_READY: ${{ inputs.require_ready }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -53,7 +59,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build diagnostic CLI
         run: pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli
-      - name: Collect runtime and paused inspector evidence
+      - name: Collect runtime evidence and validate requested readiness
         run: python scripts/validation/qq_startup_matrix.py
       - name: Save evidence even if collection fails
         if: always()
