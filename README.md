@@ -1,89 +1,101 @@
-# EazyQQ
+<p align="center">
+  <img src="docs/assets/social-preview.png" alt="EazyQQ 0.5.0：让 QQ 会话更有秩序，多账号、CLI 与 MCP" width="960" />
+</p>
 
-面向 Windows 的 QQ 助手，提供桌面端、独立 CLI 和 stdio MCP。当前版本为 **0.5.0**，基于 Tauri、Rust、React、TypeScript、SQLite 和 NapCat / OneBot 11。
+<p align="center">
+  <a href="https://github.com/LING71671/EazyQQ/releases"><img alt="版本 0.5.0" src="https://img.shields.io/badge/版本-0.5.0-0284c7?style=flat-square" /></a>
+  <img alt="Windows x64" src="https://img.shields.io/badge/Windows-x64-334155?style=flat-square" />
+  <a href="LICENSE"><img alt="Apache 2.0" src="https://img.shields.io/badge/License-Apache_2.0-334155?style=flat-square" /></a>
+</p>
 
-## 安装与使用
+<p align="center">
+  一个桌面工作台，管理多个 QQ 账号。需要自动化时，用 CLI 或 MCP 接入。
+</p>
 
-从 [GitHub Releases](https://github.com/LING71671/EazyQQ/releases) 下载桌面安装包，或下载 `eazyqq-cli-windows-x64.zip` 解压使用。需要本机安装官方 QQNT；使用 OpenCode 免费模型还需要安装原生 OpenCode。
+<p align="center">
+  <a href="https://github.com/LING71671/EazyQQ/releases"><strong>下载与版本</strong></a> ·
+  <a href="#快速开始">快速开始</a> ·
+  <a href="docs/API_SPECIFICATION.md">接口文档</a> ·
+  <a href="CHANGELOG.md">更新日志</a>
+</p>
 
-桌面端的账号管理支持输入多个 QQ 号、批量启动或登录、独立扫码及账号切换。快速凭据失效时显示目标账号二维码，原有账号保持连接；目标身份确认后才提交切换。
+## 多个账号，一个工作台
 
-CLI 压缩包目录如下：
+| 账号独立 | 回复可控 | 自动化接入 |
+| :--- | :--- | :--- |
+| 独立端口、数据库、模型会话和浏览器缓存 | 默认忽略未授权会话，支持草稿审核与规则回复 | 桌面后端能力提供 CLI，MCP 使用标准 JSON-RPC |
+| 批量登记、启动、登录和停止 | 按群生成简报，索引并处理群文件 | JSON 输出、命令 schema 和账号常驻工作进程 |
 
-```text
-bin/eazyqq_cli.exe
-bin/ezq.exe
-napcat/
-docs/
-README.md
-```
+账号切换先确认身份；快速凭据失效时打开目标二维码，原会话继续保持连接。健康诊断指出具体环节，修复保留已登录和外部管理的 QQ。
 
-`ezq.exe` 是同一 CLI 的兼容文件名。桌面安装包也包含 `eazyqq_cli.exe`，与 GUI 共用安装目录的数据根路径。把可执行文件目录加入 PATH，或使用完整路径调用。
+## 选择你的使用方式
+
+**桌面端** — 扫码登录、管理账号、配置联系人规则、审核草稿和查看简报。
+
+**CLI** — 给脚本和自动化流程使用，支持批量账号、JSON 输出和独立常驻工作进程。
+
+**MCP** — 让智能体通过 `tools/list` 发现工具，再按授权操作 QQ。
 
 ```powershell
-eazyqq_cli accounts add --uin 10001 --json
-eazyqq_cli accounts qr --uin 10001 --json
-eazyqq_cli accounts select --uin 10001 --json
-eazyqq_cli --account 10001 status --json
 eazyqq_cli accounts start --uins 10001,10002 --dry-run --json
-eazyqq_cli run --all
+eazyqq_cli --account 10001 run
+eazyqq_cli mcp
 ```
 
-示例账号需要替换成自己的 QQ 号。`accounts login` 仅登录；`accounts select` 同时切换当前账号。`--account` 只改变该次 CLI 调用的上下文。批量结果逐账号返回，忘记账号保留数据。
+## 快速开始
 
-## 功能与边界
+1. 在 Windows x64 安装官方 QQNT，从 [Releases](https://github.com/LING71671/EazyQQ/releases) 选择桌面安装包或 CLI ZIP。
+2. 打开账号管理，登记 QQ 号，使用对应账号扫码确认；多个账号可以独立保持在线。
+3. 在系统设置选择模型并测试，再启用所需联系人规则；自动回复和草稿发送会影响真实 QQ 联系人。
 
-- **多账号**：独立 HTTP、WebSocket、WebUI 端口，独立协议配置、数据库、AI 会话和浏览器缓存；工作租约避免重复消费消息。
-- **消息与草稿**：默认拒绝未授权会话；支持自动回复、草稿待审、仅总结和忽略模式。发送、草稿审核和自动回复规则会影响真实 QQ 联系人。
-- **简报与文件**：支持定时及手动简报、流式输出、群文件索引、下载和文档提取。实际支持的文件格式与参数以 CLI schema 为准。
-- **模型与诊断**：OpenCode 免费模型通过原生运行时调用；自定义兼容服务通过 HTTP 调用。状态、登录和诊断共用身份校验，待扫码和未测试推理显示未知。
-- **恢复与升级**：恢复按故障环节处理，保留已登录和外部管理的 QQ。只有 EazyQQ 自己创建的进程树可以定向停止；安装脚本不按 QQ 进程名清理。
+`0.5.0` 源码及候选构建已就绪，正式分发状态以 Releases 页面为准。
+
+## 用你选择的模型
+
+OpenCode 免费模型通过本机原生运行时调用；自定义或本地兼容服务通过 HTTP 接入。模型目录展示可选项，显式测试确认当前是否能推理。
 
 ```powershell
 eazyqq_cli ai-models --json
 eazyqq_cli ai-set --provider opencode --model big-pickle --json
 eazyqq_cli ai-test --prompt "Reply only OK" --json
-eazyqq_cli chain-status --json
-eazyqq_cli repair --json
-eazyqq_cli schema --json
-eazyqq_cli mcp
 ```
 
-模型目录不等于推理可用性，模型可能调整、限流或下线。周期监控不主动消耗模型推理额度；`ai-test` 和 `health --deep` 是显式推理检查。QQ 可能要求重新扫码认证。
+使用 OpenCode 需先安装其原生运行时；QQ 可能要求重新扫码。规则和数据默认保存在本机，选择云端模型时，被允许处理的内容会交给对应服务。
 
-## 从源码开发
+## 给开发者与智能体
 
-环境：Windows x64、Node.js、pnpm、Rust、MSVC 构建工具和官方 QQNT。协议资源来自本地 `napcat/` 或 `src-tauri/resources/napcat/`；发布流程会准备官方 NapCat 资源。
+| 你需要了解 | 从这里开始 |
+| :--- | :--- |
+| 产品能力与交互 | [产品规格](docs/PRODUCT.md) · [设计规范](docs/DESIGN.md) |
+| 目录、任务与数据隔离 | [架构](docs/ARCHITECTURE.md) |
+| 桌面与命令行契约 | [IPC](docs/api/IPC.md) · [CLI](docs/api/CLI.md) · [覆盖矩阵](docs/api/COVERAGE.md) |
+| 参与开发和复现检查 | [贡献指南](CONTRIBUTING.md) · [开发记录](docs/development/2026-10-08-reliability.md) |
+| 构建与发布 | [发布流程](docs/release/RELEASING.md) · [云端验收记录](docs/development/2026-10-09-release-validation.md) |
+| 智能体入口 | [llms.txt](llms.txt) · [完整操作指南](llms-full.txt) |
+
+<details>
+<summary><strong>从源码启动</strong></summary>
+
+需要 Node.js、pnpm、Rust、MSVC、QQNT 和协议资源。Windows 包装脚本自动定位 MSVC。
 
 ```powershell
 pnpm install --frozen-lockfile
 pnpm tauri:dev
-pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli
-pnpm tauri:build
-pnpm release:package
 ```
 
-Windows 包装脚本自动定位 MSVC；`dev.cmd` 使用相同入口。发布包位于 `output/release/0.5.0/`，包含桌面安装包、CLI 压缩包、独立 CLI、校验和及更新清单。
+构建、验收和环境约束见 [贡献指南](CONTRIBUTING.md)。所有项目文档使用中文，命令与接口标识保留英文。
 
-## 验收与文档
+</details>
 
-```powershell
-pnpm version:check
-pnpm contracts:check
-pnpm typecheck
-pnpm test
-pnpm test:rust
-pnpm build
-pnpm test:smoke
-pnpm test:native
-```
+<details>
+<summary><strong>CLI 包与环境</strong></summary>
 
-CLI 冒烟验收使用模拟 HTTP/WebSocket 和独立数据库。原生缓存验收使用真实 Tauri 桌面、两个模拟账号和独立 WebView 数据目录，不需要手机扫码。`EAZYQQ_ROOT` 可指定隔离的数据根目录。
+桌面安装包包含 `eazyqq_cli.exe`；CLI ZIP 提供 `bin/eazyqq_cli.exe`、兼容名 `bin/ezq.exe`、协议资源和中文文档。
 
-- [产品规格](docs/PRODUCT.md)、[交互设计](docs/DESIGN.md)：用户能力与状态语义。
-- [架构](docs/ARCHITECTURE.md)：目录、依赖与数据边界。
-- [接口总览](docs/API_SPECIFICATION.md)、[桌面 IPC](docs/api/IPC.md)、[CLI](docs/api/CLI.md)、[覆盖矩阵](docs/api/COVERAGE.md)：契约与使用方法。
-- [开发记录](docs/development/2026-10-08-reliability.md)、[0.5.0 发布记录](docs/development/2026-10-08-release-0.5.0.md)：问题、决策与验收证据。
-- [贡献指南](CONTRIBUTING.md)、[变更日志](CHANGELOG.md)、[发布流程](docs/release/RELEASING.md)：后续维护入口。
+`EAZYQQ_ROOT` 可指定独立的数据根目录；`EAZYQQ_OPENCODE_BIN` 可指定原生 OpenCode。发布包排除个人协议配置、凭据、日志和缓存。
 
-协议数据默认保存在本机；选择云端模型时，被允许处理的内容会交给对应服务。密钥、个人协议配置和运行日志不进入发布包。许可证：[Apache 2.0](LICENSE)。
+</details>
+
+---
+
+基于 Tauri、Rust、React、TypeScript、SQLite 和 NapCat / OneBot 11。遵循 [Apache 2.0](LICENSE) 许可证。
