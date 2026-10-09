@@ -28,3 +28,5 @@ pub mod protocol_update;
 
 #[path = "system/runtime_config.rs"]
 pub mod runtime_config;
+
+pub mod updates;

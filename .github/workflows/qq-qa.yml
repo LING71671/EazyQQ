@@ -1,0 +1,57 @@
+name: Real QQ runtime QA
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  qq:
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare immutable QQ fixture and official protocol
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory .test-runtime -Force | Out-Null
+          gh release download v0.5.1 --pattern qq-native-qa.zip --dir .test-runtime
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $qq = Join-Path $env:LOCALAPPDATA 'EazyQQ-QA/QQ NT'
+          Expand-Archive .test-runtime/qq-native-qa.zip -DestinationPath $qq
+          "EAZYQQ_QA_QQ=$qq/QQ.exe" | Out-File $env:GITHUB_ENV -Append
+          $release = Invoke-RestMethod 'https://api.github.com/repos/NapNeko/NapCatQQ/releases/latest'
+          $asset = $release.assets | Where-Object name -eq 'NapCat.Shell.zip' | Select-Object -First 1
+          Invoke-WebRequest $asset.browser_download_url -OutFile .test-runtime/protocol.zip
+          Expand-Archive .test-runtime/protocol.zip -DestinationPath napcat
+          pnpm install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm prepare:resources
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build release CLI
+        run: pwsh -NoProfile -File scripts/cargo.ps1 build --release --bin eazyqq_cli
+      - name: Verify real legacy QQ startup
+        run: python scripts/validation/qq_runtime.py
+      - name: Keep isolated runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-qq-runtime-evidence
+          include-hidden-files: true
+          path: |
+            .test-runtime/qq-runtime-*/verification.json
+            .test-runtime/qq-runtime-*/EazyQQ_Data/accounts/*/_unbound/napcat_logs/*.log
+          if-no-files-found: ignore

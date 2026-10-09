@@ -18,6 +18,8 @@ pub mod onebot;
 pub mod ownership;
 #[path = "runtime/patch.rs"]
 pub mod patch;
+#[path = "runtime/entry.rs"]
+pub mod entry;
 #[path = "messaging/pipeline.rs"]
 pub mod pipeline;
 #[path = "auth/service.rs"]

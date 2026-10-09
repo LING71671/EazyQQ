@@ -21,6 +21,7 @@ import type {
   WindowBehaviorDto,
   QuickLoginAccountDto,
   AppUpdateInfo,
+  AppUpdateProgress,
   NapCatUpdateInfo,
   ModelInfoDto,
 } from './contracts';
@@ -202,6 +203,12 @@ export const api = {
   // Event Listeners
   onProtocolStatusChanged: (callback: (status: ProtocolStatusDto) => void): Promise<UnlistenFn> => {
     return listen<ProtocolStatusDto>('event:protocol-status-changed', (event) => callback(event.payload));
+  },
+  onAppUpdateProgress: (callback: (progress: AppUpdateProgress) => void): Promise<UnlistenFn> => {
+    return listen<AppUpdateProgress>('app-update-progress', event => callback(event.payload));
+  },
+  onNapCatUpdateProgress: (callback: (progress: AppUpdateProgress) => void): Promise<UnlistenFn> => {
+    return listen<AppUpdateProgress>('napcat-update-progress', event => callback(event.payload));
   },
   onDraftCreated: (callback: (draft: PendingDraftDto) => void): Promise<UnlistenFn> => {
     return listen<PendingDraftDto>('new-draft', (event) => callback(event.payload));

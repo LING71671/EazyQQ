@@ -142,7 +142,11 @@ pub fn sync_qqnt_patch(qq_path: &Path, patch_pkg: &Path) -> Result<(), String> {
             patch.insert(key.into(), value.clone());
         }
     }
-    patch.insert("main".into(), "./loadNapCat.js".into());
+    // Electron joins package entries to QQ's resources/app directory.
+    // The loader belongs to this account, never to the shared QQ installation.
+    let loader = patch_pkg.parent().ok_or("Patch package has no parent")?.join("loadNapCat.cjs");
+    let main = super::entry::package_main(candidate.parent().unwrap(), &loader)?;
+    patch.insert("main".into(), main.into());
     patch.insert("isPureShell".into(), true.into());
     patch.insert("isByteCodeShell".into(), true.into());
     patch.insert("platform".into(), "win32".into());

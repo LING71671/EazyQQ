@@ -1,0 +1,4 @@
+.app-update-progress { appearance: none; border: 0; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+.app-update-progress::-webkit-progress-bar { background: #e2e8f0; border-radius: 999px; }
+.app-update-progress::-webkit-progress-value { background: #0284c7; border-radius: 999px; }
+.app-update-progress::-moz-progress-bar { background: #0284c7; border-radius: 999px; }

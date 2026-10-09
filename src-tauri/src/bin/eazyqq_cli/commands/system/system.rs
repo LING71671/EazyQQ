@@ -48,11 +48,11 @@ pub async fn cmd_updates(svc: &Services, args: &Args) -> Result<(), String> {
             )
         }
         "install-app" => {
-            serde_json::to_value(updater::upgrade_app(args.flag("url").map(str::to_string)).await?)
+            serde_json::to_value(updater::upgrade_app_for(args.flag("url").map(str::to_string)).await?)
                 .map_err(|e| e.to_string())?
         }
         "install-napcat" => serde_json::to_value(
-            updater::upgrade_napcat(args.flag("url").map(str::to_string)).await?,
+            updater::upgrade_napcat_for(args.flag("url").map(str::to_string)).await?,
         )
         .map_err(|e| e.to_string())?,
         _ => {

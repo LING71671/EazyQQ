@@ -86,7 +86,7 @@ pub fn resolve(napcat_dir: &Path) -> Result<BootFiles, String> {
     let launcher = napcat_dir.join("NapCatWinBootMain.exe");
     let hook_dll = napcat_dir.join("NapCatWinBootHook.dll");
     let main_mjs = napcat_dir.join("napcat.mjs");
-    let load_js = napcat_dir.join("loadNapCat.js");
+    let load_js = napcat_dir.join("loadNapCat.cjs");
     let patch_pkg = napcat_dir.join("qqnt.json");
 
     for (path, what) in [
@@ -446,16 +446,6 @@ fn start_unlocked(
             };
         }
     }
-    if let Err(detail) = sync_qqnt_patch(&files.qq_path, &files.patch_pkg) {
-        note_result(false);
-        return BootOutcome {
-            attempted: true,
-            ok: false,
-            detail,
-        };
-    }
-    note_attempt();
-
     let main_url = match reqwest::Url::from_file_path(&files.main_mjs) {
         Ok(url) => url,
         Err(_) => {
@@ -478,6 +468,12 @@ fn start_unlocked(
             detail: format!("写入 {} 失败: {}", files.load_js.display(), e),
         };
     }
+
+    if let Err(detail) = sync_qqnt_patch(&files.qq_path, &files.patch_pkg) {
+        note_result(false);
+        return BootOutcome { attempted: false, ok: false, detail };
+    }
+    note_attempt();
 
     let mut cmd = Command::new(&files.launcher);
     cmd.arg(&files.qq_path).arg(&files.hook_dll);

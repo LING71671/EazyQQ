@@ -2,6 +2,31 @@ use super::boot::*;
 use super::patch::*;
 
 #[test]
+fn electron_resolves_private_loader_from_qq_installation_without_modifying_qq() {
+    let root = crate::services::logging::workspace_root().join("loader resolution 中文");
+    let app = root.join("QQNT/versions/9.9.23-42430/resources/app");
+    std::fs::create_dir_all(&app).unwrap();
+    let original = br#"{"version":"9.9.23-42430","main":"./application.asar/app_launcher/index.js"}"#;
+    std::fs::write(app.join("package.json"), original).unwrap();
+    let qq = root.join("QQNT/QQ.exe");
+    for uin in ["10001", "10002"] {
+        let private = root.join(uin);
+        std::fs::create_dir_all(&private).unwrap();
+        std::fs::write(private.join("package.json"), r#"{"type":"module"}"#).unwrap();
+        std::fs::write(private.join("loadNapCat.cjs"), format!("module.exports = '{uin}';")).unwrap();
+        let patch = private.join("qqnt.json");
+        sync_qqnt_patch(&qq, &patch).unwrap();
+        let output = std::process::Command::new("node")
+            .args(["-e", "const fs=require('node:fs');const p=JSON.parse(fs.readFileSync(process.argv[1]));process.stdout.write(require(require('node:path').join(process.cwd(),p.main)));", &patch.to_string_lossy()])
+            .current_dir(&app).output().expect("Node is required by the frontend toolchain");
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        assert_eq!(String::from_utf8_lossy(&output.stdout), uin);
+    }
+    assert_eq!(std::fs::read(app.join("package.json")).unwrap(), original);
+    assert!(!app.join("loadNapCat.js").exists());
+}
+
+#[test]
 fn missing_install_reports_which_file_is_absent() {
     let dir = std::env::temp_dir().join("eazyqq_boot_test_missing");
     let _ = std::fs::create_dir_all(&dir);

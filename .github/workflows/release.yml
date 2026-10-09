@@ -151,7 +151,13 @@ jobs:
             gh release create $env:RELEASE_TAG --verify-tag --draft --title "EazyQQ $env:RELEASE_TAG" --notes-file "docs/release/$env:RELEASE_TAG.md"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-          gh release upload $env:RELEASE_TAG @assets --clobber
+          # Older clients pick the first exe asset; publish the desktop installer first.
+          $installer = @($assets | Where-Object { [IO.Path]::GetFileName($_) -eq "EazyQQ_${version}_x64-setup.exe" })
+          if ($installer.Count -ne 1) { throw 'Exactly one desktop installer is required' }
+          gh release upload $env:RELEASE_TAG @installer --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $otherAssets = @($assets | Where-Object { $_ -ne $installer[0] })
+          gh release upload $env:RELEASE_TAG @otherAssets --clobber
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           gh release edit $env:RELEASE_TAG --draft=false --prerelease=false --latest --title "EazyQQ $env:RELEASE_TAG" --notes-file "docs/release/$env:RELEASE_TAG.md"
           exit $LASTEXITCODE

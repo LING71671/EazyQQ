@@ -204,6 +204,16 @@ export interface AppUpdateInfo {
   htmlUrl: string;
   downloadUrl?: string;
   publishedAt: string;
+  status: 'available' | 'up_to_date' | 'newer_local' | 'no_release' | 'installer_missing';
+  installerName?: string | null;
+  downloadSize?: number | null;
+  checksumSha256?: string | null;
+}
+
+export interface AppUpdateProgress {
+  phase: 'checking' | 'downloading' | 'verifying' | 'installing' | 'ready';
+  downloadedBytes: number;
+  totalBytes: number;
 }
 
 export interface NapCatUpdateInfo {
@@ -213,6 +223,7 @@ export interface NapCatUpdateInfo {
   releaseName: string;
   releaseNotes: string;
   downloadUrl?: string;
+  status: 'available' | 'up_to_date' | 'newer_local' | 'version_unknown' | 'asset_missing';
 }
 
 export interface ModelInfoDto {

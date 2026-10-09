@@ -45,7 +45,7 @@ pub fn is_immutable_resource(name: &str) -> bool {
     let name = name.to_ascii_lowercase();
     !matches!(
         name.as_str(),
-        "config" | "logs" | "cache" | "plugins" | "loadnapcat.js" | "qqnt.json"
+        "config" | "logs" | "cache" | "plugins" | "loadnapcat.js" | "loadnapcat.cjs" | "qqnt.json"
     ) && !name.starts_with("eazyqq-")
         && ![
             ".db", ".db-wal", ".db-shm", ".sqlite", ".sqlite3", ".log", ".bak",
@@ -208,6 +208,7 @@ mod tests {
             "eazyqq-launch.json",
             "eazyqq-process.json",
             "qqnt.json",
+            "loadNapCat.cjs",
         ] {
             assert!(!is_immutable_resource(name));
         }
