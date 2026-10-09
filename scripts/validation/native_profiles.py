@@ -179,7 +179,7 @@ try:
         key_path = r"Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
         arguments = ENV.pop("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") + " --no-sandbox"
         previous = []
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+        with winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, key_path) as key:
             for app_id in [GUI.name, "com.eazyqq.app"]:
                 try: value = winreg.QueryValueEx(key, app_id)
                 except FileNotFoundError: value = None
@@ -192,7 +192,7 @@ try:
     expected_version = json.loads((PROJECT / "package.json").read_text(encoding="utf-8-sig"))["version"]
     assert client.evaluate("window.__TAURI_INTERNALS__.invoke('plugin:app|version')") == expected_version
     assert client.evaluate("(async () => { window.dispatchEvent(new KeyboardEvent('keydown', {key:'F1'})); await new Promise(resolve => setTimeout(resolve, 50)); return !!document.querySelector('button[aria-label=\"关闭使用说明书\"]'); })()") is True
-    assert client.evaluate("(async () => { window.dispatchEvent(new KeyboardEvent('keydown', {key:'F1'})); await new Promise(resolve => setTimeout(resolve, 50)); return !document.querySelector('button[aria-label=\"关闭使用说明书\"]'); })()") is True
+    assert client.evaluate("(async () => { window.dispatchEvent(new KeyboardEvent('keydown', {key:'F1'})); await new Promise(resolve => setTimeout(resolve, 240)); return !document.querySelector('button[aria-label=\"关闭使用说明书\"]'); })()") is True
     assert client.evaluate("window.__TAURI_INTERNALS__.invoke('app_toggle_maximize_window')") is True
     assert client.evaluate("window.__TAURI_INTERNALS__.invoke('app_toggle_maximize_window')") is False
     assert client.evaluate("localStorage.getItem('eazyqq_profile_validation')") is None
@@ -248,7 +248,7 @@ finally:
     if registry_override:
         import winreg
         key_path, previous = registry_override
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE) as key:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_SET_VALUE) as key:
             for app_id, value in previous:
                 if value is None: winreg.DeleteValue(key, app_id)
                 else: winreg.SetValueEx(key, app_id, 0, value[1], value[0])

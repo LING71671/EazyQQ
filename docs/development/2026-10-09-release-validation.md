@@ -47,3 +47,9 @@ Windows runner 默认 checkout 为 CRLF，生成器产物按 LF 比较，造成�
 为避免重复编译，增加只读取未公开候选二进制的短诊断流程；候选仍为已在本机通过原生验收的 0.5.0。记录浏览器进程的调试参数和端口监听，不输出环境凭据。候选 Release 仍是 draft，临时诊断二进制须在公开前移除。
 
 短诊断日志中，浏览器进程未出现指定调试端口参数，也没有相应监听。采用 [Microsoft 文档支持的每应用注册表配置](https://learn.microsoft.com/en-us/microsoft-edge/webview2/how-to/debug-visual-studio-code#using-a-registry-value) 补充 runner 的调试入口：仅在 `GITHUB_ACTIONS=true` 时设置当前用户、当前测试 exe 的 AdditionalBrowserArguments，结束后恢复原值；本机验证和用户安装均不修改注册表。
+
+## 已确认的调试配置限制
+
+Microsoft 在 2026-09 更新的 WebView2 安全规范明确：提升权限进程忽略 WEBVIEW2_* 环境变量及 HKCU AdditionalBrowserArguments，而接受 HKLM 策略和程序内参数。参见 https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/security#for-an-elevated-host-app-use-appropriate-override-flags 。这与 runner 中全部调试参数缺失、应用前端仍正常的现象一致。
+
+临时托管 CI 验证改用 HKLM 的本应用配置，并在结束后恢复原值。本机仍使用普通进程环境，不设置机器注册表。先前 HKCU 尝试是诊断过程，当前实现不再使用它。
