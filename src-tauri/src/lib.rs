@@ -548,6 +548,7 @@ pub fn run() {
             update_config,
             test_ai_connection,
             fetch_provider_models,
+            detect_free_models,
             check_dependencies,
             restart_napcat,
             export_diagnostics_bundle,

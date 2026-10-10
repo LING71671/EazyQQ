@@ -24,6 +24,7 @@ pub struct AiService {
 }
 
 impl AiService {
+    pub fn runtime_dir(&self) -> &std::path::Path { &self.runtime_dir }
     pub fn new(config: AiRuntimeConfig) -> Self {
         let client_proxied = Client::builder()
             .timeout(Duration::from_secs(120))

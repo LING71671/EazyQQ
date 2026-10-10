@@ -1,6 +1,19 @@
 use crate::commands::AppState;
 use crate::models::ApiResponse;
 use tauri::{command, State};
+use tauri::Emitter;
+
+#[command]
+pub async fn detect_free_models(app:tauri::AppHandle,state:State<'_,AppState>,probe:Option<bool>,request_id:Option<String>)
+    ->Result<ApiResponse<crate::services::ai::free_models::FreeModelsReport>,String> {
+    let request_id=request_id.unwrap_or_default();
+    if request_id.len()>128 {return Err("检测请求编号过长".into());}
+    match crate::services::ai::free_models::detect(state.ai.runtime_dir(),probe.unwrap_or(false),&request_id,
+        |progress|{let _=app.emit("free-model-progress",progress);}).await {
+        Ok(report)=>Ok(ApiResponse::ok(report)),
+        Err(error)=>Ok(ApiResponse::err(1003,error,None)),
+    }
+}
 
 #[command]
 pub async fn test_ai_connection(

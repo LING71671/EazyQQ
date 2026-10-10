@@ -13,6 +13,7 @@ const cliFiles = new Map([...cliModule.matchAll(/#\[path = "([^"]+)"\]\s*pub mod
 const commands = [...read('src-tauri/src/bin/eazyqq_cli/commands/system/schema.rs').matchAll(/^\s+"([a-z-]+)",/gm)].map(match => match[1]);
 const route = new Map([...main.matchAll(/"([a-z-]+)"\s*=>\s*commands::(\w+)::(\w+)/g)].map(match => [match[1], [match[2], match[3]]]));
 const map = {
+  detect_free_models: 'ai-free-models',
   get_protocol_status: 'status', refresh_qrcode: 'qr --refresh', quick_login: 'quick-login', get_quick_login_accounts: 'quick-login-list', logout: 'logout',
   list_accounts: 'accounts list', get_account_status: 'accounts status', register_account: 'accounts add', batch_accounts: 'accounts start|stop|login', account_qrcode: 'accounts qr', configure_account: 'accounts configure', forget_account: 'accounts forget',
   get_contacts: 'contacts', get_chain_status: 'chain-status', repair_chain: 'repair', mark_read: 'mark-read', update_rule: 'rule', batch_update_mode: 'batch-mode',

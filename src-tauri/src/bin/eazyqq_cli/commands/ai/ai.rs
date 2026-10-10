@@ -2,6 +2,20 @@ use crate::args::Args;
 use crate::context::Services;
 use crate::format::{hr, print_json};
 
+pub async fn cmd_free_models(svc:&Services,args:&Args)->Result<(),String> {
+    let probe=args.has("probe");
+    let stream=args.has("stream");
+    let report=eazyqq_lib::services::ai::free_models::detect(svc.ai.runtime_dir(),probe,"cli",|progress| {
+        if stream {println!("{}",serde_json::json!({"type":"progress","data":progress}));}
+    }).await?;
+    if args.json() && stream {println!("{}",serde_json::json!({"type":"complete","data":report}));}
+    else if args.json() {print_json(&serde_json::to_value(&report).map_err(|e|e.to_string())?);} else {
+        println!("OpenCode {}；检测时间 {}；未使用凭据",report.runtime_version,report.observed_at_ms);
+        for model in report.models {println!("{} [{}] {}",model.id,model.state,model.detail);}
+    }
+    Ok(())
+}
+
 pub fn cmd_ai_config(svc: &Services, args: &Args) -> Result<(), String> {
     let cfg = svc.ai.current();
 

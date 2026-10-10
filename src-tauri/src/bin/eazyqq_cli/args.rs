@@ -32,6 +32,7 @@ impl Args {
                 } else if matches!(
                     name,
                     "json"
+                        | "probe"
                         | "all"
                         | "help"
                         | "deep"

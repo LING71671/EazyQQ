@@ -18,6 +18,7 @@
 | `check_napcat_update` | `updates check-napcat` |
 | `configure_account` | `accounts configure` |
 | `delete_summary` | `summary-delete` |
+| `detect_free_models` | `ai-free-models` |
 | `dismiss_draft` | `draft-dismiss` |
 | `download_file` | `file-download` |
 | `export_diagnostics_bundle` | `export` |

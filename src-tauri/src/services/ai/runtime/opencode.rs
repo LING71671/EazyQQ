@@ -26,7 +26,7 @@ pub fn binary() -> Option<PathBuf> {
     None
 }
 
-fn command() -> Result<tokio::process::Command, String> {
+pub(crate) fn command() -> Result<tokio::process::Command, String> {
     let binary = binary().ok_or("OpenCode runtime was not found on PATH. Install OpenCode or set EAZYQQ_OPENCODE_BIN to its native executable")?;
     let mut command = tokio::process::Command::new(binary);
     command.kill_on_drop(true);
@@ -56,11 +56,41 @@ pub async fn complete<F>(
     model: &str,
     api_key: &str,
     payload: &Value,
-    mut on_chunk: F,
+    on_chunk: F,
 ) -> Result<(String, Option<String>), String>
 where
     F: FnMut(&str) + Send,
 {
+    complete_mode(runtime_dir, model, api_key, payload, false, on_chunk).await
+}
+
+pub(crate) fn anonymous_environment(command: &mut tokio::process::Command, root: &std::path::Path) {
+    for name in ["OPENCODE_API_KEY","OPENCODE_GO_API_KEY","OPENCODE_ZEN_API_KEY","OPENAI_API_KEY","ANTHROPIC_API_KEY","GOOGLE_GENERATIVE_AI_API_KEY"] {
+        command.env_remove(name);
+    }
+    command.env("XDG_DATA_HOME",root.join("data"))
+        .env("XDG_STATE_HOME",root.join("state"))
+        .env("XDG_CONFIG_HOME",root.join("config"))
+        .env("XDG_CACHE_HOME",root.join("cache"))
+        .env("OPENCODE_TEST_HOME",root.join("home"))
+        .env("OPENCODE_CONFIG_DIR",root.join("config"))
+        .env("OPENCODE_DISABLE_PROJECT_CONFIG","true")
+        .env("OPENCODE_CONFIG_CONTENT",serde_json::json!({
+            "enabled_providers":["opencode"],"disabled_providers":[],
+            "permission":{"*":"ask","external_directory":"deny","question":"deny"},
+            "agent":{"build":{"permission":{"*":"ask","external_directory":"deny","question":"deny"}}}
+        }).to_string());
+}
+
+pub async fn probe_without_credentials(root: &std::path::Path, model: &str) -> Result<(),String> {
+    let payload=serde_json::json!({"messages":[{"role":"user","content":"Reply only OK"}]});
+    tokio::time::timeout(std::time::Duration::from_secs(25),complete_mode(root,model,"",&payload,true,|_|{}))
+        .await.map_err(|_|"无凭据检测超过 25 秒，不能确认当前可用".to_string())??;
+    Ok(())
+}
+
+async fn complete_mode<F>(runtime_dir: &std::path::Path,model: &str,api_key: &str,payload: &Value,anonymous:bool,mut on_chunk:F) -> Result<(String,Option<String>),String>
+where F:FnMut(&str)+Send {
     if model.trim().is_empty() {
         return Err("Select an available OpenCode model".into());
     }
@@ -94,6 +124,7 @@ where
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
+    if anonymous { anonymous_environment(&mut command,runtime_dir); }
     let mut child = command
         .spawn()
         .map_err(|e| format!("Cannot start OpenCode: {}", e))?;
@@ -194,6 +225,19 @@ pub async fn models() -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn anonymous_probe_uses_private_identity_and_preserves_native_defaults() {
+        let root=crate::services::logging::workspace_root().join("anonymous-model-environment");
+        let mut command=tokio::process::Command::new("fixture");
+        anonymous_environment(&mut command,&root);
+        let environment:std::collections::HashMap<_,_>=command.as_std().get_envs().map(|(key,value)|(key.to_string_lossy().into_owned(),value.map(|value|value.to_string_lossy().into_owned()))).collect();
+        assert_eq!(environment.get("OPENCODE_API_KEY"),Some(&None));
+        assert_eq!(environment["OPENCODE_TEST_HOME"].as_deref(),Some(root.join("home").to_string_lossy().as_ref()));
+        let config:Value=serde_json::from_str(environment["OPENCODE_CONFIG_CONTENT"].as_ref().unwrap()).unwrap();
+        assert!(config["provider"].is_null(),"Do not replace the native anonymous provider default with an empty key");
+        assert_eq!(config["permission"]["*"],"ask");
+        assert_eq!(config["permission"]["external_directory"],"deny");
+    }
     #[test]
     fn extracts_only_assistant_text_events() {
         assert_eq!(

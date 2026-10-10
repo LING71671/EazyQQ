@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/LING71671/EazyQQ/releases"><img alt="版本 0.5.6" src="https://img.shields.io/badge/版本-0.5.6-0284c7?style=flat-square" /></a>
+  <a href="https://github.com/LING71671/EazyQQ/releases"><img alt="版本 0.6.0" src="https://img.shields.io/badge/版本-0.6.0-0284c7?style=flat-square" /></a>
   <img alt="Windows x64" src="https://img.shields.io/badge/Windows-x64-334155?style=flat-square" />
   <a href="LICENSE"><img alt="Apache 2.0" src="https://img.shields.io/badge/License-Apache_2.0-334155?style=flat-square" /></a>
 </p>
@@ -48,9 +48,16 @@ eazyqq_cli mcp
 2. 打开账号管理，登记 QQ 号，使用对应账号扫码确认；多个账号可以独立保持在线。
 3. 在系统设置选择模型并测试，再启用所需联系人规则；自动回复和草稿发送会影响真实 QQ 联系人。
 
-`0.5.6` 修复包：[桌面安装包](https://github.com/LING71671/EazyQQ/releases/download/v0.5.6/EazyQQ_0.5.6_x64-setup.exe) · [CLI ZIP](https://github.com/LING71671/EazyQQ/releases/download/v0.5.6/eazyqq-cli-windows-x64.zip) · [发布说明与校验和](https://github.com/LING71671/EazyQQ/releases/tag/v0.5.6)。
+`0.6.0` 修复包：[桌面安装包](https://github.com/LING71671/EazyQQ/releases/download/v0.6.0/EazyQQ_0.6.0_x64-setup.exe) · [CLI ZIP](https://github.com/LING71671/EazyQQ/releases/download/v0.6.0/eazyqq-cli-windows-x64.zip) · [发布说明与校验和](https://github.com/LING71671/EazyQQ/releases/tag/v0.6.0)。
 
 ## 用你选择的模型
+
+OpenCode 的免费名单会变化。设置页可自动检测“无需账号或 API Key”的模型，区分本次可用、额外条件、停用和未确认，并保留检测时间；不会静默替换旧选择。
+
+```powershell
+eazyqq_cli ai-free-models --json
+eazyqq_cli ai-free-models --probe --stream --json
+```
 
 OpenCode 免费模型通过本机原生运行时调用；自定义或本地兼容服务通过 HTTP 接入。模型目录展示可选项，显式测试确认当前是否能推理。
 

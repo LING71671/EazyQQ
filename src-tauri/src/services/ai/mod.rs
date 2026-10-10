@@ -8,6 +8,8 @@ pub mod config;
 pub mod models;
 #[path = "runtime/opencode.rs"]
 pub mod opencode;
+#[path = "catalog/free_models.rs"]
+pub mod free_models;
 
 #[cfg(test)]
 #[path = "tests/tests.rs"]

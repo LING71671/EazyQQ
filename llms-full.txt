@@ -1,6 +1,6 @@
 # EazyQQ 智能体操作指南
 
-适用于 0.5.6。修改前阅读 AGENTS.md、docs/ARCHITECTURE.md 和最新中文开发记录。接口以 docs/api/IPC.md、docs/api/CLI.md 和生成的 cli.schema.json 为准。运行 `eazyqq_cli schema --json` 获取当前构建的命令参数；MCP 使用 tools/list 获取实际工具定义，不根据历史示例猜参数。
+适用于 0.6.0。修改前阅读 AGENTS.md、docs/ARCHITECTURE.md 和最新中文开发记录。接口以 docs/api/IPC.md、docs/api/CLI.md 和生成的 cli.schema.json 为准。运行 `eazyqq_cli schema --json` 获取当前构建的命令参数；MCP 使用 tools/list 获取实际工具定义，不根据历史示例猜参数。
 
 ## 运行约束
 
@@ -12,7 +12,7 @@ GUI 选择只保存启动目标，旧进程的 active 身份保持至退出；�
 
 Windows Job 收据只授权本次创建的协议进程树。独立监督进程保持控制能力；禁止按 QQ.exe 名或未验证 PID 清理。恢复保留已登录、外部管理和正在运行的会话。安装不会批量结束 QQ。
 
-0.5.6 的脱离进程文件交接使用句柄解析的物理路径；不能硬编码宿主包名或把调用者 AppData 视图交给 QQ。napcat-doctor 与诊断 ZIP 包含当前启动尝试、加载器进入和模块导入凭证，缺失或陈旧凭证保持未知，不能代表登录失败或成功。
+0.6.0 的脱离进程文件交接使用句柄解析的物理路径；不能硬编码宿主包名或把调用者 AppData 视图交给 QQ。napcat-doctor 与诊断 ZIP 包含当前启动尝试、加载器进入和模块导入凭证，缺失或陈旧凭证保持未知，不能代表登录失败或成功。
 
 未知健康表示尚无当前验证，不等于失败。普通监控不发起模型推理。health --deep 与 ai-test 是显式调用。免费 OpenCode 使用原生运行时、私有会话和非交互工具权限；兼容服务使用 HTTP。目录 metadata 不等于推理可用性。
 
@@ -41,6 +41,8 @@ EAZYQQ_ROOT 指定隔离安装/数据根目录。EAZYQQ_OPENCODE_BIN 指定原�
 桌面安装包包含 eazyqq_cli.exe；CLI ZIP 提供 bin/eazyqq_cli.exe、bin/ezq.exe、协议资源和中文文档。窗口命令需要运行中的桌面。MCP stdout 只含 JSON-RPC，通知不回复。
 
 ## 开发与验收
+
+`ai-free-models --json` 只读取当前目录，`--probe --stream --json` 才验证免凭据调用。不要用模型名后缀、价格为零或缓存存在宣称模型无需账号可用；网络失败也不能解释为已下架。检测不改变当前选择，不发送 QQ 消息，不进入周期推理监控。
 
 pnpm version:check
 pnpm contracts:check

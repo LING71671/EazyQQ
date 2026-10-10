@@ -234,6 +234,10 @@ export interface ModelInfoDto {
   costOutput?: number;
 }
 
+export interface FreeModelCheck { id: string; name: string; state: 'candidate' | 'available' | 'retired' | 'removed_from_catalogue' | 'unconfirmed' | 'requires_conditions'; detail: string; observedAtMs: number }
+export interface FreeModelsReport { runtimeVersion: string; observedAtMs: number; catalogueIds: string[]; models: FreeModelCheck[]; credentialsUsed: boolean; source: string }
+export interface FreeModelProgress { requestId: string; completed: number; total: number; model: FreeModelCheck }
+
 export interface AccountInfoDto { uin: string; nickname?: string | null; httpPort: number; wsPort: number; webuiPort: number; autoStart: boolean; processManaged: boolean }
 export interface AccountReport {
   instance: AccountInfoDto;

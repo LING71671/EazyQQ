@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Sparkles, RefreshCw, AlertCircle, CheckCircle2, Send } from 'lucide-react';
 import type { AiProviderId, ModelInfoDto } from '@/api/contracts';
 import { api } from '@/api/client';
+import { FreeModelDiscovery } from './models/FreeModelDiscovery';
 
 export const AI_PRESETS: Record<
   AiProviderId,
@@ -83,6 +84,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
   onRefreshModels,
 }) => {
   const [onlyFreeFilter, setOnlyFreeFilter] = useState(false);
+  const [verifiedFreeModels, setVerifiedFreeModels] = useState<string[]>([]);
   const [testingModel, setTestingModel] = useState(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
@@ -95,7 +97,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
   const isLocal = isLocalEndpoint(baseUrl);
 
   const isModelFree = (m: ModelInfoDto) => {
-    return isLocal || m.isFree;
+    return provider === 'opencode' ? verifiedFreeModels.includes(m.id) : isLocal || m.isFree;
   };
 
   const freeModelsCount = fetchedModels.filter(isModelFree).length;
@@ -250,7 +252,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
                 <span className="font-semibold text-slate-700 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                   <span>
-                    接口实时可用模型 ({onlyFreeFilter ? `筛选 ${modelsToDisplay.length}/共 ${fetchedModels.length} 个` : `共 ${fetchedModels.length} 个`} · 点击选用)：
+                    当前模型目录 ({onlyFreeFilter ? `筛选 ${modelsToDisplay.length}/共 ${fetchedModels.length} 个` : `共 ${fetchedModels.length} 个`} · 点击选用)：
                   </span>
                 </span>
                 <div className="flex items-center gap-1.5">
@@ -289,7 +291,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
                     >
                       {isFree && (
                         <span className="text-[9px] bg-emerald-600 text-white px-1 py-px rounded font-semibold">
-                          {isLocal ? '本地' : '免费'}
+                          {isLocal ? '本地' : provider === 'opencode' ? '检测通过' : '零定价'}
                         </span>
                       )}
                       {!isFree && idx === 0 && (
@@ -306,7 +308,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
               <p className="text-[10px] text-slate-400 leading-tight">
                 {isLocal
                   ? '当前为本地推理服务，所有模型均在宿主机离线计算，不产生 token 费用。'
-                  : '提示：带「免费」徽章为平台公开免配额测试通道；其余商用模型（如 Claude, GPT, Gemini）需在供应方平台拥有调用额度。'}
+                  : '目录和价格不能保证可调用。OpenCode 的免凭据资格通过下方检测确认；其他模型遵循供应方条件。'}
               </p>
             </div>
           )}
@@ -319,6 +321,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
           )}
 
           {/* API Key */}
+          {provider === 'opencode' && <FreeModelDiscovery selectedModel={model} onChoose={onChangeModel} onVerified={setVerifiedFreeModels} />}
           {isLocalEndpoint(baseUrl) ? (
             <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-100 text-[11px] text-emerald-900 leading-relaxed">
               本地端点无需 API Key，请求不会离开本机，适合用来节省 token 费用。

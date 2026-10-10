@@ -7,6 +7,7 @@ pub const COMMANDS: &[&str] = &[
     "ai-config",
     "ai-detect",
     "ai-models",
+    "ai-free-models",
     "ai-set",
     "ai-test",
     "ask",

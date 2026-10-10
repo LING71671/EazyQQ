@@ -1,6 +1,6 @@
 # 桌面 IPC 契约
 
-适用于 0.5.6，传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`，私有登记文件使用 `snake_case`。
+适用于 0.6.0，传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`，私有登记文件使用 `snake_case`。
 
 ## 返回与错误
 
@@ -63,6 +63,14 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 
 ## 其他业务接口
 
+### OpenCode 免凭据检测
+
+`detect_free_models({probe?,requestId?})` 返回统一 `ApiResponse<FreeModelsReport>`。`probe=false` 只刷新原生目录，不发起推理；`probe=true` 对显式零定价候选逐一发送隔离的中性请求。`requestId` 最长 128 字符，用于过滤进度，不作为权限凭据。
+
+报告字段为 `runtimeVersion`、`observedAtMs`、`catalogueIds`、`models`、`credentialsUsed` 和 `source`。每模型包含 `id`、`name`、`state`、`detail`、`observedAtMs`；状态为 `candidate`、`available`、`requires_conditions`、`retired`、`removed_from_catalogue`、`unconfirmed`。`available` 仅证明本次未借用用户账号/API Key 的请求成功，价格为零或名称含 free 不足以成立。目录移除只描述本次原生目录，不能从网络错误推出供应方永久下架。
+
+`free-model-progress` 事件字段为 `{requestId,completed,total,model}`。调用前订阅，结束后释放，丢弃不匹配编号；检测不自动保存模型选择、不改变 QQ 会话或规则。周期健康监控不调用显式推理检测。
+
 | 领域 | 主要参数与返回 |
 | --- | --- |
 | 联系人 | `get_contacts({params?})` 返回 `{list,total}`；`params` 可含 `type`、`searchKeyword` |
@@ -77,9 +85,9 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 | 更新 | `check_app_update()`、`check_napcat_update()` 返回更新信息；`get_napcat_version()` 返回版本；`upgrade_app` / `upgrade_napcat` 接受 `{downloadUrl?}` |
 | QQ 路径 | `get_qq_path()` 返回路径；`set_qq_path({path})` 验证文件并更新引导 |
 
-0.5.6 的诊断 ZIP 新增 `protocol/startup-trace.json`，包含实际私有目录、入口解析、资源散列、本次启动编号及加载器执行凭证。阶段状态 `passed`、`failed`、`unknown` 分别表示该检查成立、该检查失败或缺乏证据；端口开放不代表认证成立。凭证只记录阶段、PID、运行时版本、时间、错误类型/代码，不记录 token、消息或完整环境。旧版 0.5.3 不包含该能力。
+0.6.0 的诊断 ZIP 新增 `protocol/startup-trace.json`，包含实际私有目录、入口解析、资源散列、本次启动编号及加载器执行凭证。阶段状态 `passed`、`failed`、`unknown` 分别表示该检查成立、该检查失败或缺乏证据；端口开放不代表认证成立。凭证只记录阶段、PID、运行时版本、时间、错误类型/代码，不记录 token、消息或完整环境。旧版 0.5.3 不包含该能力。
 
-0.5.6 的加载入口和更新安装助手使用最终物理路径跨进程交接，现有参数与 DTO 不变；真实 QQ 的执行凭证仍是加载验收依据。详见 `docs/development/2026-10-09-physical-path-handoff.md`，旧版 0.5.3 安装包不包含该修复。
+0.6.0 的加载入口和更新安装助手使用最终物理路径跨进程交接，现有参数与 DTO 不变；真实 QQ 的执行凭证仍是加载验收依据。详见 `docs/development/2026-10-09-physical-path-handoff.md`，旧版 0.5.3 安装包不包含该修复。
 
 完整命令清单由 [覆盖矩阵](COVERAGE.md) 生成。所有 DTO 的精确字段以 `src/api/contracts.ts` 和 Rust 命令返回类型为准。
 

@@ -75,10 +75,40 @@ pub fn write_json<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), Str
             .and_then(|_| file.sync_all())
             .map_err(|e| e.to_string())?;
         drop(file);
-        std::fs::rename(&temp, path).map_err(|e| e.to_string())
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(750);
+        loop {
+            match std::fs::rename(&temp, path) {
+                Ok(()) => return Ok(()),
+                Err(error) => {
+                    // Readers without FILE_SHARE_DELETE can briefly prevent replacement.
+                    let transient = cfg!(windows) && matches!(error.raw_os_error(), Some(5 | 32 | 33));
+                    if !transient || std::time::Instant::now() >= deadline {
+                        return Err(error.to_string());
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(15));
+                }
+            }
+        }
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(temp);
     }
     result
+}
+
+#[cfg(all(test,windows))]
+mod tests {
+    #[test]
+    fn atomic_json_replacement_survives_a_short_lived_reader() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let root=crate::services::logging::workspace_root().join("json-reader-sharing");
+        std::fs::create_dir_all(&root).unwrap();
+        let path=root.join("state.json");
+        super::write_json(&path,&serde_json::json!({"selected":"10001"})).unwrap();
+        let reader=std::fs::OpenOptions::new().read(true).share_mode(3).open(&path).unwrap();
+        let release=std::thread::spawn(move || {std::thread::sleep(std::time::Duration::from_millis(90));drop(reader);});
+        super::write_json(&path,&serde_json::json!({"selected":"10002"})).unwrap();
+        release.join().unwrap();
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&std::fs::read(path).unwrap()).unwrap()["selected"],"10002");
+    }
 }

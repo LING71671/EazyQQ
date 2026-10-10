@@ -72,6 +72,14 @@ pub async fn fetch_models_with_metadata(
     base_url: &str,
     api_key: Option<&str>,
 ) -> Result<Vec<ModelInfoDto>, String> {
+    if provider == "opencode" {
+        let root=crate::services::accounts::active_data_dir().join("ai-runtime/model-catalogue");
+        let values=super::free_models::catalogue_with_key(&root,api_key).await?;
+        return Ok(values.into_iter().filter(|value|!matches!(value["status"].as_str(),Some("deprecated"|"retired"))).map(|value|ModelInfoDto {
+            id:value["id"].as_str().unwrap().into(),name:value["name"].as_str().unwrap_or(value["id"].as_str().unwrap()).into(),
+            is_free:false,cost_input:value["cost"]["input"].as_f64(),cost_output:value["cost"]["output"].as_f64(),
+        }).collect());
+    }
     let is_local = is_local_endpoint(base_url);
 
     // 1. If provider is OpenCode or base_url targets opencode.ai, leverage dynamic models.json metadata
@@ -164,11 +172,7 @@ pub async fn fetch_models_with_metadata(
                     if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
                         for item in data {
                             if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
-                                let lower = id.to_lowercase();
-                                let is_free = is_local
-                                    || lower.contains("-free")
-                                    || lower.contains(":free")
-                                    || lower.contains("_free");
+                                let is_free = is_local;
                                 result_models.push(ModelInfoDto {
                                     id: id.to_string(),
                                     name: id.to_string(),
@@ -181,11 +185,7 @@ pub async fn fetch_models_with_metadata(
                     } else if let Some(models) = json.get("models").and_then(|m| m.as_array()) {
                         for item in models {
                             if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
-                                let lower = name.to_lowercase();
-                                let is_free = is_local
-                                    || lower.contains("-free")
-                                    || lower.contains(":free")
-                                    || lower.contains("_free");
+                                let is_free = is_local;
                                 result_models.push(ModelInfoDto {
                                     id: name.to_string(),
                                     name: name.to_string(),

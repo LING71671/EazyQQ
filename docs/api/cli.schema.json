@@ -1,6 +1,6 @@
 {
   "name": "eazyqq_cli",
-  "version": "0.5.6",
+  "version": "0.6.0",
   "globalFlags": {
     "account": {
       "type": "string",
@@ -90,6 +90,28 @@
             "pattern": "^[1-9][0-9]{4,19}$"
           },
           "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ai-free-models",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "probe": {
+            "type": "boolean"
+          },
+          "stream": {
             "type": "boolean"
           }
         },
@@ -1244,6 +1266,10 @@
     {
       "ipc": "delete_summary",
       "cli": "summary-delete"
+    },
+    {
+      "ipc": "detect_free_models",
+      "cli": "ai-free-models"
     },
     {
       "ipc": "dismiss_draft",

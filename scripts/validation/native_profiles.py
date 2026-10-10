@@ -107,6 +107,24 @@ class CDP:
         length = len(data)
         header = bytes([0x80 | opcode, 0x80 | length]) if length < 126 else bytes([0x80 | opcode, 0x80 | 126]) + struct.pack("!H", length)
         self.socket.sendall(header + mask + bytes(value ^ mask[index % 4] for index, value in enumerate(data)))
+    def screenshot(self, path):
+        self.sequence += 1
+        self.frame(1,json.dumps({"id":self.sequence,"method":"Page.captureScreenshot","params":{"format":"png"}}).encode())
+        while True:
+            head=self.read(2); opcode,length=head[0]&15,head[1]&127
+            if length==126: length=struct.unpack("!H",self.read(2))[0]
+            elif length==127: length=struct.unpack("!Q",self.read(8))[0]
+            mask=self.read(4) if head[1]&128 else None
+            data=self.read(length)
+            if mask: data=bytes(value^mask[index%4] for index,value in enumerate(data))
+            if opcode==9: self.frame(10,data); continue
+            if opcode==8: raise EOFError("CDP closed during screenshot")
+            if opcode!=1: continue
+            response=json.loads(data)
+            if response.get("id")==self.sequence:
+                assert "error" not in response,response
+                path.write_bytes(base64.b64decode(response["result"]["data"]))
+                return
     def evaluate(self, expression):
         self.sequence += 1
         payload = {"id": self.sequence, "method": "Runtime.evaluate", "params": {"expression": expression, "awaitPromise": True, "returnByValue": True}}
@@ -172,6 +190,9 @@ try:
     bootstrap = ROOT / "EazyQQ_Data/bootstrap.json"
     hosted = os.environ.get("GITHUB_ACTIONS") == "true"
     bootstrap.write_text(json.dumps({"lastAccount": "10001", "webviewCompatMode": not hosted}))
+    opencode_fixture = ROOT / "opencode-fixture.exe"
+    subprocess.run(["pwsh","-NoProfile","-File",str(PROJECT / "scripts/validation/build-opencode-fixture.ps1"),"-Target",str(opencode_fixture)],check=True,timeout=60)
+    ENV["EAZYQQ_OPENCODE_BIN"] = str(opencode_fixture)
     config = ROOT / "fixture-config.json"
     config.write_text(json.dumps({"ai": {"activeProvider": "opencode", "model": "big-pickle"}, "summary": {"enabled": False}, "napcat": {"autoRestart": False, "heartbeatIntervalSec": 15}, "storage": {"autoSyncFiles": False}, "window": {"closeToTray": False}}))
     for uin in ["10001", "10002"]: run("set-config", "--account", uin, "--key", "app_config", "--file", str(config))
@@ -201,6 +222,25 @@ try:
     assert client.evaluate("(async () => { window.dispatchEvent(new KeyboardEvent('keydown', {key:'F1'})); await new Promise(resolve => setTimeout(resolve, 240)); return !document.querySelector('button[aria-label=\"关闭使用说明书\"]'); })()") is True
     assert client.evaluate("window.__TAURI_INTERNALS__.invoke('app_toggle_maximize_window')") is True
     assert client.evaluate("window.__TAURI_INTERNALS__.invoke('app_toggle_maximize_window')") is False
+    # Validate discovery and selected-model preservation through the rendered settings.
+    client.evaluate("[...document.querySelectorAll('button')].find(button=>button.textContent.includes('系统设置')).click(); true")
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        if client.evaluate("!!document.querySelector('section[aria-label=\"OpenCode 免费模型检测\"]') && [...document.querySelectorAll('button')].some(button=>button.textContent==='自动检测免费模型' && !button.disabled)"):
+            break
+        time.sleep(.1)
+    else: raise AssertionError("Free model discovery did not render its ready state")
+    original_config = run("ai-config", "--account", "10001")
+    client.evaluate("[...document.querySelectorAll('button')].find(button=>button.textContent==='自动检测免费模型').click(); true")
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        if client.evaluate("document.querySelector('section[aria-label=\"OpenCode 免费模型检测\"]')?.textContent.includes('免凭据可用') && document.querySelector('section[aria-label=\"OpenCode 免费模型检测\"]')?.textContent.includes('明确停用')"):
+            break
+        time.sleep(.1)
+    else: raise AssertionError("Free model detection did not distinguish verified and retired models")
+    assert run("ai-config", "--account", "10001")["model"] == original_config["model"], "Detection silently changed the model"
+    client.evaluate("document.querySelector('section[aria-label=\"OpenCode 免费模型检测\"]').scrollIntoView({block:'center'}); true")
+    client.screenshot(ROOT / "free-model-discovery.png")
     assert client.evaluate("localStorage.getItem('eazyqq_profile_validation')") is None
     client.evaluate("localStorage.setItem('eazyqq_profile_validation', '10001'); true")
     assert (registry_path.parent / "10001/webview/main/EBWebView").exists(), "The primary account used a shared browser profile"
@@ -235,7 +275,7 @@ try:
         time.sleep(0.1)
     else: raise AssertionError("The test desktop did not shut down")
     assert json.loads(bootstrap.read_text())["lastAccount"] == "10001", "An old status response reversed selection"
-    print(json.dumps({"passed": True, "accountRoundTrip": True, "delayedStatusSelectionPreserved": True, "privateProfiles": True, "maximizeRoundTrip": True, "manualShortcut": True, "realQQTouched": False, "fixture": str(ROOT)}))
+    print(json.dumps({"passed": True, "freeModelDiscovery": True, "accountRoundTrip": True, "delayedStatusSelectionPreserved": True, "privateProfiles": True, "maximizeRoundTrip": True, "manualShortcut": True, "realQQTouched": False, "fixture": str(ROOT)}))
 except Exception:
     print(json.dumps({"fixture": str(ROOT), "debugPort": globals().get("debug_port"), "guiExitCode": gui.poll() if gui else None, "systemProxyConfigured": bool(getproxies())}), flush=True)
     browser_state = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process -Filter \"Name='msedgewebview2.exe'\" | ForEach-Object { [pscustomobject]@{pid=$_.ProcessId;parent=$_.ParentProcessId;debug=[regex]::Match($_.CommandLine,'--remote-debugging-port=\\d+').Value} } | ConvertTo-Json -Compress"], capture_output=True, text=True, errors="replace", timeout=15)

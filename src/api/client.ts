@@ -24,9 +24,13 @@ import type {
   AppUpdateProgress,
   NapCatUpdateInfo,
   ModelInfoDto,
+  FreeModelsReport,
+  FreeModelProgress,
 } from './contracts';
 
 export const api = {
+  detectFreeModels: (probe: boolean, requestId: string): Promise<ApiResponse<FreeModelsReport>> => invoke('detect_free_models', { probe, requestId }),
+  onFreeModelProgress: (callback: (progress: FreeModelProgress) => void): Promise<UnlistenFn> => listen<FreeModelProgress>('free-model-progress', event => callback(event.payload)),
   getAccountStatus: (uin: string): Promise<ApiResponse<AccountReport>> => invoke('get_account_status', { uin }),
   listAccounts: (): Promise<ApiResponse<AccountReport[]>> => invoke('list_accounts'),
   registerAccount: (uin: string): Promise<ApiResponse<AccountInfoDto>> => invoke('register_account', { uin }),

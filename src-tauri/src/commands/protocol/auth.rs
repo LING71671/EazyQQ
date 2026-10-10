@@ -18,15 +18,15 @@ pub fn qq_avatar(uin: Option<&String>) -> Option<String> {
 /// have. So record the account and restart, which recomputes every path.
 ///
 /// The restart happens once: after it, the recorded account matches the observed one.
-pub fn reconcile_account(app: &tauri::AppHandle, observed: &str) {
+pub fn reconcile_account(app: &tauri::AppHandle, observed: &str) -> Result<(),String> {
     let observed = observed.trim();
     if observed.is_empty() {
-        return;
+        return Ok(());
     }
 
-    match crate::services::accounts::select_for_restart(observed) {
-        Ok(false) => {}
-        Ok(true) => {
+    match crate::services::accounts::select_for_restart(observed)? {
+        false => {}
+        true => {
             tracing::info!(
                 "adopting account {} so its data is isolated from other accounts (hot reloading webview)",
                 observed
@@ -37,8 +37,8 @@ pub fn reconcile_account(app: &tauri::AppHandle, observed: &str) {
             std::env::set_var("EAZYQQ_ACCOUNT_RESTART", "1");
             app.restart();
         }
-        Err(error) => tracing::warn!("could not record the account selection: {}", error),
     }
+    Ok(())
 }
 
 #[command]
@@ -128,8 +128,10 @@ pub async fn quick_login(app: tauri::AppHandle, uin: String) -> Result<ApiRespon
     let source = crate::services::napcat_boot::locate_napcat_dir();
     match crate::services::protocol::accounts::login(&source, &uin).await {
         Ok(_) => {
-            reconcile_account(&app, &uin);
-            Ok(ApiResponse::ok(()))
+            match reconcile_account(&app, &uin) {
+                Ok(()) => Ok(ApiResponse::ok(())),
+                Err(error) => Ok(ApiResponse::err(1002,format!("目标身份已确认，但保存账号选择失败：{error}"),Some("请重试切换；当前账号上下文保持".into()))),
+            }
         }
         Err(e) => {
             let code = if e.starts_with("QR_REQUIRED:") {

@@ -116,6 +116,7 @@ async fn main() -> ExitCode {
                 "accounts" => commands::instances::cmd_instances(&svc, &args).await,
                 "repair" => commands::system::cmd_repair(&svc, &args).await,
                 "ai-models" => commands::system::cmd_models(&svc, &args).await,
+                "ai-free-models" => commands::ai::cmd_free_models(&svc, &args).await,
                 "folder" => {
                     let response = eazyqq_lib::commands::chat::open_folder(
                         args.flag("path").unwrap_or(".").into(),
