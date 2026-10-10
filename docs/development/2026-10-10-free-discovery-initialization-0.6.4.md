@@ -19,3 +19,11 @@ FreeModelDiscovery 初始 busy=false，首次渲染后目录刷新 effect 尚未
 ## 本地最终验收
 
 33前端、135库+2CLI Rust、26CLI、类型/54-59契约/版本/展示门禁通过。Tauri构建与六项分发打包完成。native-profiles-hk7ks4f5中免费目录检测、模型诊断同步、免Key隔离、已保存/未保存与显式Key预览、账号往返/迟到状态、私有浏览器缓存、窗口及F1均通过，realQQTouched=false。ai-health-synchronized.png已直接查看，大模型绿灯且没有免费通道切换按钮；日志release-0.6.4-native.log、release-0.6.4-rust.log、release-0.6.4-smoke.log、release-0.6.4-build.log、release-0.6.4-package.log。公开资产仍需提交后的云端完整构建，不使用本地候选清单冒充提交来源。
+
+## 正式发布与本机升级回执
+
+完整工作流 [38043841728](https://github.com/LING71671/EazyQQ/actions/runs/38043841728) 成功，应用与验证来源均为716f3e80dd2c926740769ea135133d598226e84c；2026-10-10 18:20:15（北京时间）公开[v0.6.4](https://github.com/LING71671/EazyQQ/releases/tag/v0.6.4)。33前端、135库+2CLI Rust、26CLI、安装/映射DLL重装与数据保留、旧受管理Job恢复、IPv6独占HTTP/WebSocket、首屏、免费检测、模型健康同步、免Key隔离、账号往返/迟到选择、私有缓存、窗口/F1全部通过。初始化修复在此前连续失败的云端原生断言处通过，没有调整期限或跳过断言；日志release-0.6.4-cloud-complete.log。
+
+下载六项公开分发，核验SHA256SUMS五条、manifest来源/大小及ZIP内CLI 0.6.4。安装包SHA256为eb4e90778a9850d9cc73d7fd4c216ffe5968719d172b50d07b29a7887e33b0b2。公开安装包经缓存校验和原0.6.2 CLI的updates install-app --confirm交给原生助手，A:/EazyQQ的GUI文件版本与CLI均为0.6.4，窗口PID2224在18:21:08打开。安装CLI散列AB4B4DFE315A0DD4105E03F10CD02434DA8008C24B178325DF5481A87F421EEE与公开资产一致；回执published-0.6.4-verification.json、local-upgrade-0.6.4-verification.json、finish-0.6.4.log。
+
+模型仍为opencode/fledge-alpha-free，没有自动替换或将预览保存为生效配置。升级后只读诊断载荷、入口、加载器、模块导入、受管理进程、WebUI等八阶段通过，认证unknown；实际状态未登录、等待二维码。此状态不能写成登录成功；没有执行快速登录、刷新二维码或恢复协议。QQ PID29952（B:/Program Files/Tencent/QQNT/QQ.exe，2026-10-09 22:53:02）和21948（A:/NTQQ/QQ.exe，2026-10-10 08:54:39）的路径/启动时间保持，未发送真实QQ消息。真实免凭据SDK调用成功证据沿用0.6.3记录，本次只修改界面初始化状态，不宣称免费名单永久有效。登录保持/内存方案继续留待讨论，黑屏原因仍未确认。
