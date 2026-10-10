@@ -1,6 +1,6 @@
 # 接口规范总览
 
-适用于 EazyQQ 0.5.5。接口入口分为桌面 IPC、CLI 和 stdio MCP；账号、登录、协议运行时、模型和存储逻辑由共享服务提供。
+适用于 EazyQQ 0.5.6。接口入口分为桌面 IPC、CLI 和 stdio MCP；账号、登录、协议运行时、模型和存储逻辑由共享服务提供。
 
 ## 契约入口
 
@@ -33,4 +33,4 @@ CLI 的 `--json` 输出不混入日志；流式输出为逐行 JSON。MCP stdout
 
 0.5.3 的 get_protocol_status 对离线协议返回 qrcodeError，查询有时间上限；restart_napcat 和 CLI restart 复用旧目录私有迁移，repair_chain 仅对损坏受管理旧目录增加恢复分支，详细语义见 docs/api/IPC.md 和 docs/api/CLI.md。
 
-0.5.5 的 `napcat-doctor --json` 新增只读 `startupTrace`，诊断 ZIP 新增 `protocol/startup-trace.json`；包含尝试编号、入口和物理路径、执行凭证及首个失败/未确认阶段。加载、TCP 与身份保持独立证据，不增加状态探测的副作用。
+0.5.6 的 `napcat-doctor --json` 新增只读 `startupTrace`，诊断 ZIP 新增 `protocol/startup-trace.json`；包含尝试编号、入口和物理路径、执行凭证及首个失败/未确认阶段。加载、TCP 与身份保持独立证据，不增加状态探测的副作用。

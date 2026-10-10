@@ -26,11 +26,13 @@ pub async fn cmd_status(svc: &Services, args: &Args) -> Result<(), String> {
     println!("EazyQQ 运行状态");
     hr();
     println!(
-        "NapCat WebUI (6099) : {}",
+        "NapCat WebUI ({}) : {}",
+        svc.napcat.endpoint(),
         if napcat_alive { "在线" } else { "离线" }
     );
     println!(
-        "OneBot HTTP (3000)  : {}",
+        "OneBot HTTP ({})  : {}",
+        svc.onebot.endpoint(),
         match &login_info {
             Ok(_) => "可达".to_string(),
             Err(e) => format!("不可达 ({})", e),
@@ -77,6 +79,15 @@ pub async fn cmd_login_info(svc: &Services, args: &Args) -> Result<(), String> {
 }
 
 pub async fn cmd_qr(svc: &Services, args: &Args) -> Result<(), String> {
+    let evidence=eazyqq_lib::services::protocol::session::probe(&svc.napcat,&svc.onebot).await;
+    if evidence.logged_in {
+        if args.json() {
+            print_json(&serde_json::json!({"loggedIn":true,"uin":evidence.uin,"nickname":evidence.nickname}));
+        } else {
+            println!("账号 {} 已登录，无需获取二维码。",evidence.uin.as_deref().unwrap_or(""));
+        }
+        return Ok(());
+    }
     let (qr, maybe_url) = if args.has("refresh") {
         (svc.napcat.refresh_qrcode().await?, None)
     } else {

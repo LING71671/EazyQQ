@@ -1,6 +1,6 @@
 # CLI 使用与契约
 
-适用于 0.5.5。源码构建：`pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli`。桌面安装包包含同名 CLI；独立压缩包还提供 `ezq.exe` 兼容名。
+适用于 0.5.6。源码构建：`pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli`。桌面安装包包含同名 CLI；独立压缩包还提供 `ezq.exe` 兼容名。
 
 ```powershell
 .\src-tauri\target\debug\eazyqq_cli.exe --account 10001 status --json
@@ -43,11 +43,13 @@ eazyqq_cli accounts forget --uin 10001 --json
 
 阶段按私有载荷、文件系统入口解析、加载文件、启动请求、加载器执行、模块导入、受管理进程、WebUI TCP 和认证证据排列。文件及 TCP 检查通过不能推出登录成功；该只读快照不主动执行认证，因此 `authenticated_session` 保持未知，`ready` 不作为账号退出或登录依据。旧版本启动收据使用 `legacy_launch_request`，缺少执行凭证不会冒充加载成功。
 
-诊断不启动 QQ、不刷新二维码、不快速登录、不重启，也不执行 AI 推理。0.5.5 新增追踪能力，旧版 0.5.3 二进制不包含它；故障记录见 `docs/development/2026-10-09-startup-provenance.md`。
+诊断不启动 QQ、不刷新二维码、不快速登录、不重启，也不执行 AI 推理。0.5.6 新增追踪能力，旧版 0.5.3 二进制不包含它；故障记录见 `docs/development/2026-10-09-startup-provenance.md`。
 
-0.5.5 修正加载桥、监督进程及更新助手的物理路径交接，命令与输出契约保持。记录见 `docs/development/2026-10-09-physical-path-handoff.md`；不能据此宣称已发布 0.5.3 安装包包含修复。
+0.5.6 修正加载桥、监督进程及更新助手的物理路径交接，命令与输出契约保持。记录见 `docs/development/2026-10-09-physical-path-handoff.md`；不能据此宣称已发布 0.5.3 安装包包含修复。
 
 ## 常驻工作进程
+
+`qr` 在只读身份探测确认已登录时，JSON 返回 `{loggedIn:true,uin,nickname}`，不请求或刷新二维码、不保存扫码文件或打开扫码页。未登录时保持原有二维码返回格式。文本 `status` 使用实际端点，不固定显示默认端口。
 
 ```powershell
 eazyqq_cli --account 10001 run

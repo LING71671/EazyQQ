@@ -165,7 +165,8 @@ pub fn capture(dir: &Path) -> StartupTrace {
     let patch = read_json(&dir.join("qqnt.json"));
     let main = patch.as_ref().and_then(|p|p["main"].as_str());
     let app_dir = super::patch::configured_qq_path(dir).ok()
-        .and_then(|qq|super::patch::package_metadata_path(&qq).ok()).and_then(|p|p.parent().map(Path::to_path_buf));
+        .and_then(|qq|super::patch::package_metadata_path(&qq).ok())
+        .and_then(|p|p.parent().and_then(|dir|crate::services::infra::filesystem::physical_path(dir).ok()));
     let expected = dir.join("loadNapCat.cjs");
     let resolved = app_dir.as_ref().zip(main).map(|(app,main)|app.join(main));
     let actual = resolved.as_ref().and_then(|path|std::fs::canonicalize(path).ok());

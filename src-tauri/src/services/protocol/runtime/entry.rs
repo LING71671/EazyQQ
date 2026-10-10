@@ -219,6 +219,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn diagnostic_resolves_relative_main_from_physical_app_directory() {
+        let root=crate::services::logging::workspace_root().join("diagnostic-app-alias");
+        let qq=root.join("physical/qq");
+        let app=qq.join("resources/app");
+        let dir=root.join("private-runtime");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::create_dir_all(dir.join("config")).unwrap();
+        std::fs::write(qq.join("QQ.exe"),b"fixture never executed").unwrap();
+        std::fs::write(app.join("package.json"),br#"{"name":"fixture","version":"9.9.99"}"#).unwrap();
+        let alias=root.join("logical/deeper/qq");
+        std::fs::create_dir_all(alias.parent().unwrap()).unwrap();
+        junction(&alias,&qq).unwrap();
+        let loader=dir.join("loadNapCat.cjs");
+        std::fs::write(&loader,b"private module").unwrap();
+        std::fs::write(dir.join("config/qq_path.txt"),alias.join("QQ.exe").to_string_lossy().as_bytes()).unwrap();
+        let main=package_main(&alias.join("resources/app"),&loader).unwrap();
+        std::fs::write(dir.join("qqnt.json"),serde_json::json!({"main":main}).to_string()).unwrap();
+        let trace=crate::services::protocol::startup_trace::capture(&dir);
+        let entry=trace.stages.iter().find(|stage|stage.code=="entry_resolution").unwrap();
+        assert_eq!(entry.state,"passed","{}",entry.evidence);
+        assert_eq!(entry.evidence["appDir"],physical_path(&app).unwrap().to_string_lossy().as_ref());
+    }
+
+    #[test]
     fn detached_loader_reader() {
         let Some(request) = std::env::args_os().find(|arg| {
             Path::new(arg)

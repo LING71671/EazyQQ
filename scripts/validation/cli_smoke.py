@@ -114,6 +114,8 @@ try:
             threading.Thread(target=server.serve_forever, daemon=True).start()
     status = run("status", "--account", "10001")
     assert status["loggedIn"] and status["qqNumber"] == "10001"
+    assert run("qr","--account","10001")["loggedIn"] is True
+    assert run("qr","--account","10001","--refresh")["uin"] == "10001"
     status = run("status", "--account", "10002")
     assert status["loggedIn"] and status["qqNumber"] == "10002"
     health = run("health", "--account", "10002")
