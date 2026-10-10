@@ -1,6 +1,6 @@
 # 桌面 IPC 契约
 
-适用于 0.6.2，传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`，私有登记文件使用 `snake_case`。
+适用于 0.6.3，传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`，私有登记文件使用 `snake_case`。
 
 ## 返回与错误
 
@@ -108,3 +108,12 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 app-update-progress、napcat-update-progress 的 payload 为 {phase,downloadedBytes,totalBytes}，阶段包含 checking、downloading、verifying、installing、ready。调用前订阅，成功、失败和卸载后释放。ready 只表示包就绪，不表示安装结束。
 
 主程序升级只接受当前稳定版本的明确安装包及官方 SHA256；显式 downloadUrl 不能绕过选择。桌面退出后助手安装并重开，CLI 不退出另一个桌面。核心只接受官方 Shell 包，存活会话阻止覆盖，配置与备份保留；成功后按需启动账号。
+
+
+## 0.6.3 推理验证状态
+
+`test_ai_connection` 的成功数据新增 `matchesActiveConfig`，表示本次测试目标是否与完成时的生效供应方、模型、端点、Key一致。显式 `apiKey:""` 保持空值，不自动借用旧 Key。测试不保存配置；未保存预览不能替代生效模型的健康状态。保存与已验证预览一致的目标后复用该证据，不额外发送测试请求。
+
+当前进程/账号的实际推理和显式测试记录按目标隔离的结果。普通轮询只读取/发布证据，不发起模型请求；成功不会被启动检查覆盖。更换目标或Key后没有匹配证据则为 unknown，最新失败为 failed。进程重建后重新验证，不把历史记录当作新推理成功。unknown 在界面显示“待验证”，不计为异常。
+
+OpenCode 空Key使用账号私有 no-key 目录和匿名环境；不导入本机 auth.json 或Key环境变量。填写Key只在配置区管理，诊断不切换供应方。独立免费目录检测仍按其本次结果显示资格，普通目录刷新不宣称已验证全部模型。

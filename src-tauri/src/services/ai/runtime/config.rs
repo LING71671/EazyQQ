@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::auth::{detect_api_key, detect_opencode_auth_key};
+use super::auth::detect_api_key;
 
 pub const PRESET_OPENCODE: &str = "https://opencode.ai/zen/v1";
 pub const DEFAULT_MODEL_OPENCODE: &str = "fledge-alpha-free";
@@ -81,7 +81,6 @@ impl AiRuntimeConfig {
         let mut cfg = AiRuntimeConfig::default();
 
         let Some(ai) = ai else {
-            cfg.api_key = detect_opencode_auth_key().unwrap_or_default();
             return cfg;
         };
 
@@ -135,7 +134,7 @@ impl AiRuntimeConfig {
             .get("apiKey")
             .and_then(|v| v.as_str())
             .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
+            .filter(|key| provider == "opencode" || provider == "opencode-go" || !key.is_empty())
             .or(p_key)
             .unwrap_or_else(|| {
                 if provider == "opencode" || provider == "opencode-go" {
@@ -145,14 +144,8 @@ impl AiRuntimeConfig {
                 }
             });
 
-        if key.is_empty() {
-            if provider == "opencode" || provider == "opencode-go" {
-                if let Some(auto_k) = detect_opencode_auth_key() {
-                    key = auto_k;
-                }
-            } else if let Some(auto_k) = detect_api_key() {
-                key = auto_k;
-            }
+        if key.is_empty() && provider != "opencode" && provider != "opencode-go" {
+            if let Some(auto_k) = detect_api_key() { key = auto_k; }
         }
         cfg.api_key = key;
 

@@ -1,4 +1,5 @@
-use std::sync::RwLock;
+use std::sync::{Mutex, RwLock};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use reqwest::Client;
@@ -20,6 +21,8 @@ pub struct AiService {
     /// Ignores the environment proxy - used for local endpoints.
     client_direct: Client,
     config: RwLock<AiRuntimeConfig>,
+    evidence: Mutex<super::health::InferenceEvidence>,
+    inference_sequence: AtomicU64,
     runtime_dir: std::path::PathBuf,
 }
 
@@ -42,6 +45,8 @@ impl AiService {
             client_proxied,
             client_direct,
             config: RwLock::new(config),
+            evidence: Mutex::new(Default::default()),
+            inference_sequence: AtomicU64::new(1),
             runtime_dir: crate::services::accounts::active_data_dir().join("ai-runtime"),
         }
     }
@@ -50,6 +55,32 @@ impl AiService {
         let mut service = Self::new(config);
         service.runtime_dir = dir.join("ai-runtime");
         service
+    }
+
+    pub fn matches_active_target(&self, config: &AiRuntimeConfig) -> bool {
+        super::health::same_target(&self.current(), config)
+    }
+
+    pub fn inference_health(&self) -> super::health::InferenceHealth {
+        let Ok(config) = self.config.read() else { return super::health::InferenceHealth { verified: Some(false), detail: "无法读取模型配置".into() }; };
+        if let Err(error) = config.validate() {
+            return super::health::InferenceHealth { verified: Some(false), detail: error };
+        }
+        if config.requires_api_key() && config.api_key.trim().is_empty() {
+            return super::health::InferenceHealth { verified: Some(false), detail: "所选供应方需要 Key，请在模型配置中填写".into() };
+        }
+        if config.uses_opencode_runtime() && super::opencode::binary().is_none() {
+            return super::health::InferenceHealth { verified: Some(false), detail: "未找到本机 OpenCode 运行时".into() };
+        }
+        self.evidence.lock().map(|evidence| evidence.current(&config)).unwrap_or(super::health::InferenceHealth { verified: None, detail: "验证状态暂不可用".into() })
+    }
+
+    fn record_inference(&self, tested: &AiRuntimeConfig, sequence: u64, result: &Result<(String, Option<String>), String>) {
+        if let Ok(config) = self.config.read() {
+            if let Ok(mut evidence) = self.evidence.lock() {
+                evidence.record(&config, tested, sequence, result.as_ref().err().map(String::as_str));
+            }
+        }
     }
 
     /// The client appropriate for the given endpoint.
@@ -65,6 +96,7 @@ impl AiService {
     pub fn reconfigure(&self, config: AiRuntimeConfig) {
         info!("AI service reconfigured: {}", config.describe());
         if let Ok(mut guard) = self.config.write() {
+            if let Ok(mut evidence) = self.evidence.lock() { evidence.reconfigure(&guard, &config); }
             *guard = config;
         } else {
             error!("AI config lock poisoned; keeping the previous configuration");
@@ -88,7 +120,14 @@ impl AiService {
     ///
     /// Returns `(content, reasoning_content)`.
     /// Single place that talks to the OpenAI-compatible endpoint with a specified config.
-    pub async fn post_chat_with_config(
+    pub async fn post_chat_with_config(&self, cfg: &AiRuntimeConfig, payload: Value) -> Result<(String, Option<String>), String> {
+        let sequence = self.inference_sequence.fetch_add(1, Ordering::Relaxed);
+        let result = self.send_chat_with_config(cfg, payload).await;
+        self.record_inference(cfg, sequence, &result);
+        result
+    }
+
+    async fn send_chat_with_config(
         &self,
         cfg: &AiRuntimeConfig,
         mut payload: Value,
@@ -208,13 +247,22 @@ impl AiService {
     /// Stream chat response token by token via Server-Sent Events.
     pub async fn stream_chat<F>(
         &self,
-        mut payload: Value,
-        mut on_chunk: F,
+        payload: Value,
+        on_chunk: F,
     ) -> Result<(String, Option<String>), String>
     where
         F: FnMut(&str) + Send + 'static,
     {
         let cfg = self.current();
+        let sequence = self.inference_sequence.fetch_add(1, Ordering::Relaxed);
+        let result = self.stream_chat_with_config(&cfg, payload, on_chunk).await;
+        self.record_inference(&cfg, sequence, &result);
+        result
+    }
+
+    async fn stream_chat_with_config<F>(&self, cfg: &AiRuntimeConfig, mut payload: Value, mut on_chunk: F) -> Result<(String, Option<String>), String>
+    where F: FnMut(&str) + Send + 'static,
+    {
         cfg.validate()?;
         if cfg.uses_opencode_runtime() {
             return super::opencode::complete(

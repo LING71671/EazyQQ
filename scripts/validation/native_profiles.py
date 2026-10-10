@@ -21,6 +21,7 @@ sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 PROJECT = Path(os.environ.get("EAZYQQ_TEST_PROJECT_ROOT", Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(PROJECT / 'scripts/validation'))
 from login_layout import validate_login_layout
+from ai_health_ui import validate_ai_health
 GUI = Path(os.environ.get("EAZYQQ_TEST_GUI", PROJECT / "src-tauri/target/release/eazyqq.exe"))
 CLI = Path(os.environ.get("EAZYQQ_TEST_CLI", PROJECT / "src-tauri/target/release/eazyqq_cli.exe"))
 FIXTURES = PROJECT / ".test-runtime"
@@ -203,6 +204,8 @@ try:
     opencode_fixture = ROOT / "opencode-fixture.exe"
     subprocess.run(["pwsh","-NoProfile","-File",str(PROJECT / "scripts/validation/build-opencode-fixture.ps1"),"-Target",str(opencode_fixture)],check=True,timeout=60)
     ENV["EAZYQQ_OPENCODE_BIN"] = str(opencode_fixture)
+    ENV["OPENCODE_API_KEY"] = "host-fixture-key"
+    ENV["OPENAI_API_KEY"] = "unrelated-fixture-key"
     config = ROOT / "fixture-config.json"
     config.write_text(json.dumps({"ai": {"activeProvider": "opencode", "model": "big-pickle"}, "summary": {"enabled": False}, "napcat": {"autoRestart": False, "heartbeatIntervalSec": 15}, "storage": {"autoSyncFiles": False}, "window": {"closeToTray": False}}))
     for uin in ["10001", "10002"]: run("set-config", "--account", uin, "--key", "app_config", "--file", str(config))
@@ -237,14 +240,13 @@ try:
     login_fixture = False
     # Validate discovery and selected-model preservation through the rendered settings.
     client.evaluate("[...document.querySelectorAll('button')].find(button=>button.textContent.includes('系统设置')).click(); true")
+    original_config = run("ai-config", "--account", "10001")
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
-        if client.evaluate("!!document.querySelector('section[aria-label=\"OpenCode 免费模型检测\"]') && [...document.querySelectorAll('button')].some(button=>button.textContent==='自动检测免费模型' && !button.disabled)"):
+        if client.evaluate("(()=>{const button=[...document.querySelectorAll('button')].find(button=>button.textContent==='自动检测免费模型' && !button.disabled);if(!button)return false;button.click();return true;})()"):
             break
         time.sleep(.1)
     else: raise AssertionError("Free model discovery did not render its ready state")
-    original_config = run("ai-config", "--account", "10001")
-    client.evaluate("[...document.querySelectorAll('button')].find(button=>button.textContent==='自动检测免费模型').click(); true")
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
         if client.evaluate("document.querySelector('section[aria-label=\"OpenCode 免费模型检测\"]')?.textContent.includes('免凭据可用') && document.querySelector('section[aria-label=\"OpenCode 免费模型检测\"]')?.textContent.includes('明确停用')"):
@@ -254,6 +256,7 @@ try:
     assert run("ai-config", "--account", "10001")["model"] == original_config["model"], "Detection silently changed the model"
     client.evaluate("document.querySelector('section[aria-label=\"OpenCode 免费模型检测\"]').scrollIntoView({block:'center'}); true")
     client.screenshot(ROOT / "free-model-discovery.png")
+    validate_ai_health(client, ROOT)
     assert client.evaluate("localStorage.getItem('eazyqq_profile_validation')") is None
     client.evaluate("localStorage.setItem('eazyqq_profile_validation', '10001'); true")
     assert (registry_path.parent / "10001/webview/main/EBWebView").exists(), "The primary account used a shared browser profile"
@@ -291,8 +294,13 @@ try:
         time.sleep(0.1)
     else: raise AssertionError("The test desktop did not shut down")
     assert json.loads(bootstrap.read_text())["lastAccount"] == "10001", "An old status response reversed selection"
-    print(json.dumps({"passed": True, "loginFirstViewport": True, "freeModelDiscovery": True, "accountRoundTrip": True, "delayedStatusSelectionPreserved": True, "privateProfiles": True, "maximizeRoundTrip": True, "manualShortcut": True, "realQQTouched": False, "fixture": str(ROOT)}))
+    print(json.dumps({"passed": True, "loginFirstViewport": True, "freeModelDiscovery": True, "modelHealthSynchronized": True, "noKeyChannelIsolated": True, "accountRoundTrip": True, "delayedStatusSelectionPreserved": True, "privateProfiles": True, "maximizeRoundTrip": True, "manualShortcut": True, "realQQTouched": False, "fixture": str(ROOT)}))
 except Exception:
+    if client:
+        try:
+            print(json.dumps({'visibleButtons': client.evaluate("[...document.querySelectorAll('button')].filter(button=>button.checkVisibility()).map(button=>button.textContent)" )},ensure_ascii=False),flush=True)
+            client.screenshot(ROOT / 'native-failure.png')
+        except (OSError, EOFError, AssertionError): pass
     print(json.dumps({"fixture": str(ROOT), "debugPort": globals().get("debug_port"), "guiExitCode": gui.poll() if gui else None, "systemProxyConfigured": bool(getproxies())}), flush=True)
     browser_state = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process -Filter \"Name='msedgewebview2.exe'\" | ForEach-Object { [pscustomobject]@{pid=$_.ProcessId;parent=$_.ParentProcessId;debug=[regex]::Match($_.CommandLine,'--remote-debugging-port=\\d+').Value} } | ConvertTo-Json -Compress"], capture_output=True, text=True, errors="replace", timeout=15)
     print(f"Browser processes: {browser_state.stdout.strip()}", flush=True)

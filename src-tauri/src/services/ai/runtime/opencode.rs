@@ -61,7 +61,9 @@ pub async fn complete<F>(
 where
     F: FnMut(&str) + Send,
 {
-    complete_mode(runtime_dir, model, api_key, payload, false, on_chunk).await
+    if api_key.trim().is_empty() {
+        complete_mode(&runtime_dir.join("no-key"), model, "", payload, true, on_chunk).await
+    } else { complete_mode(runtime_dir, model, api_key, payload, false, on_chunk).await }
 }
 
 pub(crate) fn anonymous_environment(command: &mut tokio::process::Command, root: &std::path::Path) {

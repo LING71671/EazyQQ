@@ -25,3 +25,6 @@ pub use models::{fetch_models_with_metadata, ModelInfoDto};
 
 #[path = "runtime/sse.rs"]
 pub mod sse;
+
+#[path = "runtime/health.rs"]
+pub mod health;

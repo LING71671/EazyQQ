@@ -1,5 +1,23 @@
 use serde_json::json;
 
+#[test]
+fn explicitly_blank_opencode_key_does_not_reuse_another_saved_key() {
+    let cfg = AiRuntimeConfig::from_app_config(Some(&json!({
+        "activeProvider": "opencode", "apiKey": "",
+        "providers": {"opencode": {"apiKey": "previous-paid-key"}}
+    })), "unrelated-fallback");
+    assert!(cfg.api_key.is_empty());
+    assert!(!cfg.requires_api_key());
+}
+
+#[test]
+fn explicit_opencode_key_remains_a_configured_choice() {
+    let cfg = AiRuntimeConfig::from_app_config(Some(&json!({
+        "activeProvider": "opencode", "apiKey": "selected-key"
+    })), "unrelated-fallback");
+    assert_eq!(cfg.api_key, "selected-key");
+}
+
 use super::client::AiService;
 use super::config::{
     known_providers, provider_preset, AiRuntimeConfig, DEFAULT_MODEL_OPENCODE, PRESET_OPENCODE,

@@ -139,6 +139,8 @@ jobs:
             .test-runtime/native-profiles-*/gui-stderr.log
             .test-runtime/native-profiles-*/login-layout*.png
             .test-runtime/native-profiles-*/login-layout.json
+            .test-runtime/native-profiles-*/ai-health-synchronized.png
+            .test-runtime/native-profiles-*/native-failure.png
             .test-runtime/native-profiles-*/EazyQQ_Data/accounts/*/*/logs/*.log
           if-no-files-found: ignore
 

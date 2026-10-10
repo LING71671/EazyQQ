@@ -8,13 +8,22 @@ $source = Join-Path $directory 'opencode-fixture.cpp'
 @'
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 int main(int count,char** args) {
   for(int i=1;i<count;i++) {
     if(!strcmp(args[i],"--version")){puts("fixture-native");return 0;}
     if(!strcmp(args[i],"models")){
       puts("opencode/fixture-free\n{\"id\":\"fixture-free\",\"providerID\":\"opencode\",\"name\":\"Fixture free\",\"status\":\"active\",\"cost\":{\"input\":0,\"output\":0}}\nopencode/fixture-retired\n{\"id\":\"fixture-retired\",\"providerID\":\"opencode\",\"name\":\"Fixture retired\",\"status\":\"deprecated\",\"cost\":{\"input\":0,\"output\":0}}");return 0;
     }
-    if(!strcmp(args[i],"run")){puts("{\"type\":\"text\",\"part\":{\"text\":\"OK\"}}");return 0;}
+    if(!strcmp(args[i],"run")){
+      while(getchar()!=EOF){}
+      const char* config=getenv("OPENCODE_CONFIG_CONTENT");
+      bool keyed=config && strstr(config,"selected-fixture-key");
+      if(!keyed && (!getenv("OPENCODE_TEST_HOME") || getenv("OPENCODE_API_KEY") || getenv("OPENAI_API_KEY"))){
+        puts("{\"type\":\"error\",\"error\":{\"data\":{\"message\":\"Anonymous environment inherited credentials\"}}}");return 1;
+      }
+      puts(keyed?"{\"type\":\"text\",\"part\":{\"text\":\"PAID-FIXTURE-OK\"}}":"{\"type\":\"text\",\"part\":{\"text\":\"OK\"}}");return 0;
+    }
   }
   return 1;
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   X,
   Cpu,
@@ -7,11 +7,11 @@ import {
   AlertCircle,
   HelpCircle,
   ExternalLink,
-  Zap,
   FileDown,
 } from 'lucide-react';
 import type { DependencyHealthReport } from '@/api/contracts';
 import { api } from '@/api/client';
+import { useChainStatus } from '@/features/health/useChainStatus';
 
 export type ChainLink = {
   link: string;
@@ -24,7 +24,6 @@ export type ChainLink = {
 interface DiagnosticsCardProps {
   health: DependencyHealthReport;
   onCheckHealth: () => void;
-  onQuickSwitchOpenCode: () => void;
   onExportDiagnostics: () => void;
   diagnosticsPath?: string;
 }
@@ -32,34 +31,12 @@ interface DiagnosticsCardProps {
 export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
   health,
   onCheckHealth,
-  onQuickSwitchOpenCode,
   onExportDiagnostics,
   diagnosticsPath,
 }) => {
-  const [chainLinks, setChainLinks] = useState<ChainLink[]>([]);
-  const [chainFirstBreak, setChainFirstBreak] = useState<{
-    label: string;
-    detail: string;
-    impact: string;
-  } | null>(null);
-  const [chainLoading, setChainLoading] = useState(false);
+  const { links: chainLinks, firstBreak: chainFirstBreak, isLoading: chainLoading, error: chainError, refresh: loadChain } = useChainStatus();
   const [isRestartingNapcat, setIsRestartingNapcat] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
-
-  const loadChain = async () => {
-    setChainLoading(true);
-    try {
-      const res = await api.getChainStatus();
-      if (res.success && res.data) {
-        setChainLinks(res.data.links as ChainLink[]);
-        setChainFirstBreak(res.data.firstBreak ?? null);
-      }
-    } catch (e) {
-      console.error('Failed to load chain status', e);
-    } finally {
-      setChainLoading(false);
-    }
-  };
 
   const handleRestartProtocol = async () => {
     setIsRestartingNapcat(true);
@@ -86,9 +63,6 @@ export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
     window.open('https://im.qq.com/pcqq/index.shtml', '_blank');
   };
 
-  useEffect(() => {
-    loadChain();
-  }, []);
 
   return (
     <div className="space-y-6">
@@ -139,20 +113,12 @@ export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
               <span className="font-semibold block text-slate-800">本地 OpenCode</span>
               <span className="text-slate-400 text-[11px] block">
                 {health.openCode?.ready
-                  ? '推理服务已就绪'
+                  ? '运行环境可用，推理状态见下方链路'
                   : health.openCode?.path?.includes('未配置')
                   ? '已检测到 CLI (需配置 API 凭证)'
                   : '未运行本地服务'}
               </span>
-              {!health.openCode?.ready && (
-                <button
-                  onClick={onQuickSwitchOpenCode}
-                  className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-700 font-medium hover:underline cursor-pointer"
-                >
-                  <span>一键切换 Zen 云端免费通道</span>
-                  <Zap className="w-3 h-3 text-amber-500" />
-                </button>
-              )}
+
             </div>
             {health.openCode?.ready ? (
               <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
@@ -184,7 +150,7 @@ export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
             <div>
               <span className="font-semibold block text-slate-800">整体就绪状态</span>
               <span className="text-slate-400 text-[11px]">
-                {health.isAllReady ? '全部前置条件已满足' : '存在未就绪项，点击各条目一键修复'}
+                {health.isAllReady ? '全部前置条件已满足' : '存在未满足的运行条件，请查看对应说明'}
               </span>
             </div>
             {health.isAllReady ? (
@@ -202,7 +168,7 @@ export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
           <div>
             <h4 className="text-xs font-semibold text-slate-900">全链路状态检测与一键修复</h4>
             <p className="text-[11px] text-slate-400">
-              从协议端到界面的 8 个环节逐个体检。若链路断裂，可直接点击一键唤醒或切换，杜绝未知故障。
+              逐项检查 8 个环节；按故障原因恢复，模型与 Key 在配置区管理。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -249,36 +215,21 @@ export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
               >
                 一键启动/重启
               </button>
-            ) : chainFirstBreak.label.includes('大模型') ? (
-              chainFirstBreak.detail.includes('@ opencode') ? (
-                <button
-                  onClick={onCheckHealth}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-medium text-xs shrink-0 shadow-xs transition-colors cursor-pointer"
-                >
-                  重新嗅探连通性
-                </button>
-              ) : (
-                <button
-                  onClick={onQuickSwitchOpenCode}
-                  className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-medium text-xs shrink-0 shadow-xs transition-colors cursor-pointer"
-                >
-                  切至官方免费通道
-                </button>
-              )
             ) : null}
           </div>
         ) : chainLinks.length > 0 ? (
-          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-[11px] text-emerald-900">
-            全链路通畅，未发现断点。
-            {chainLinks.some((l) => l.health === 'unknown') &&
-              ' 其中部分环节尚未被验证（需要对应组件运行才能确认）。'}
+          <div className={`p-3 rounded-xl border text-[11px] ${chainLinks.some(link => link.health === 'unknown') ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-emerald-50 border-emerald-100 text-emerald-900'}`}>
+            {chainLinks.some(link => link.health === 'unknown') ? '未发现已确认的故障，部分环节尚待验证。' : '全链路已验证，未发现断点。'}
           </div>
         ) : null}
 
+        {chainError && <p role="alert" className="text-sm text-rose-700">{chainError}</p>}
         <div className="space-y-1.5">
           {chainLinks.map((link) => (
             <div
               key={link.link}
+              data-chain-link={link.link}
+              data-health={link.health}
               className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0 gap-3"
             >
               <div className="flex items-start gap-2.5 min-w-0 flex-1">
@@ -314,23 +265,7 @@ export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
                       一键拉起
                     </button>
                   )}
-                  {link.link.includes('ai_provider') && (
-                    link.detail.includes('@ opencode') ? (
-                      <button
-                        onClick={onCheckHealth}
-                        className="px-2.5 py-1 text-[11px] rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 font-medium transition-colors cursor-pointer"
-                      >
-                        重新检测
-                      </button>
-                    ) : (
-                      <button
-                        onClick={onQuickSwitchOpenCode}
-                        className="px-2.5 py-1 text-[11px] rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 font-medium transition-colors cursor-pointer"
-                      >
-                        切免费通道
-                      </button>
-                    )
-                  )}
+
                 </div>
               )}
             </div>

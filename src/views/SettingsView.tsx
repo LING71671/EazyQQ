@@ -151,9 +151,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const saved = savedMap[curProvider];
     const preset = AI_PRESETS[curProvider] || AI_PRESETS.opencode;
 
-    const curBaseUrl = saved?.baseUrl || config.ai?.baseUrl || preset.baseUrl;
-    const curModel = saved?.model || config.ai?.model || '';
-    const curKey = saved?.apiKey !== undefined ? saved.apiKey : config.ai?.apiKey || '';
+    const curBaseUrl = config.ai?.baseUrl || saved?.baseUrl || preset.baseUrl;
+    const curModel = config.ai?.model || saved?.model || '';
+    const curKey = config.ai?.apiKey !== undefined ? config.ai.apiKey : saved?.apiKey || '';
 
     setProvider(curProvider);
     setModel(curModel);
@@ -220,7 +220,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-base font-semibold text-slate-900">系统与自动化配置</h2>
-            <p className="text-xs text-slate-500">零命令行图形化配置，所有参数即时写入本地 SQLite</p>
+            <p className="text-xs text-slate-500">零命令行图形化配置，编辑后点击保存，测试模型不会自动保存设置</p>
           </div>
           <button
             onClick={handleSaveAll}
@@ -257,6 +257,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {/* 3. AI Model Provider Selector Card */}
         <AiProviderCard
           provider={provider}
+          isDraft={provider !== (config.ai?.activeProvider || 'opencode') || model.trim() !== (config.ai?.model || '').trim() || baseUrl.trim() !== (config.ai?.baseUrl || AI_PRESETS[provider].baseUrl).trim() || apiKey.trim() !== (config.ai?.apiKey || '').trim()}
           onSelectProvider={handleSelectProvider}
           baseUrl={baseUrl}
           onChangeBaseUrl={setBaseUrl}
@@ -274,7 +275,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <DiagnosticsCard
           health={health}
           onCheckHealth={onCheckHealth}
-          onQuickSwitchOpenCode={() => handleSelectProvider('opencode')}
           onExportDiagnostics={onExportDiagnostics}
           diagnosticsPath={diagnosticsPath}
         />

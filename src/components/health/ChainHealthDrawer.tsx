@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { usePresence } from '@/hooks/usePresence';
 import {
   Activity,
@@ -19,6 +19,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { api } from '@/api/client';
+import { notifyAiTestFinished, useChainStatus } from '@/features/health/useChainStatus';
 import type { DependencyHealthReport } from '@/api/contracts';
 
 interface ChainLink {
@@ -42,16 +43,7 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
   onClose,
   onOpenSettings,
 }) => {
-  const [links, setLinks] = useState<ChainLink[]>([]);
-  const [firstBreak, setFirstBreak] = useState<{
-    link: string;
-    label: string;
-    impact: string;
-    detail: string;
-  } | null>(null);
-  const [hasFailure, setHasFailure] = useState(false);
-  const [uptimeSecs, setUptimeSecs] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
+  const { links, firstBreak, hasFailure, uptimeSecs, isLoading, refresh: fetchStatus } = useChainStatus(isOpen);
 
   // 1-Click Repair states
   const [isRestarting, setIsRestarting] = useState(false);
@@ -65,31 +57,6 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
   // AI Quick ping test
   const [isTestingAi, setIsTestingAi] = useState(false);
   const [aiTestResult, setAiTestResult] = useState<{ isSuccess: boolean; latencyMs: number } | null>(null);
-
-  const fetchStatus = async () => {
-    setIsLoading(true);
-    try {
-      const res = await api.getChainStatus();
-      if (res.success && res.data) {
-        setLinks(res.data.links as ChainLink[]);
-        setFirstBreak(res.data.firstBreak);
-        setHasFailure(res.data.hasFailure);
-        setUptimeSecs(res.data.uptimeSecs);
-      }
-    } catch (e) {
-      console.error('Failed to load chain status', e);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (isOpen) {
-      fetchStatus();
-      const interval = setInterval(fetchStatus, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [isOpen]);
 
   const handleRestartNapCat = async () => {
     setIsRestarting(true);
@@ -142,10 +109,7 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
     setIsTestingAi(true);
     setAiTestResult(null);
     try {
-      const cfgRes = await api.getConfig();
-      const provider = cfgRes.data?.ai?.activeProvider || 'opencode';
-      const model = cfgRes.data?.ai?.model;
-      const res = await api.testAiConnection(provider, model);
+      const res = await api.testAiConnection();
       if (res.success && res.data) {
         setAiTestResult(res.data);
       } else {
@@ -155,6 +119,7 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
       setAiTestResult({ isSuccess: false, latencyMs: 0 });
     } finally {
       setIsTestingAi(false);
+      notifyAiTestFinished();
     }
   };
 
@@ -249,7 +214,7 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
               <div>
                 <h3 className="font-bold text-emerald-900 text-xs">{links.length > 0 && links.every(link => link.health === 'ok') ? '全链路已验证' : '等待完成链路检测'}</h3>
                 <p className="text-[11px] text-emerald-700 mt-0.5">
-                  查看各项检测结果；未就绪表示尚未验证。
+                  未验证不代表异常；模型测试成功后会同步显示健康。
                 </p>
               </div>
             </div>
@@ -275,7 +240,7 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
                         ? 'bg-slate-50/60 border-slate-200/80'
                         : isFailed
                         ? 'bg-red-50/50 border-red-200'
-                        : 'bg-amber-50/40 border-amber-200'
+                        : 'bg-slate-50/60 border-slate-200'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
@@ -286,7 +251,7 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
                               ? 'bg-emerald-500 ring-2 ring-emerald-200'
                               : isFailed
                               ? 'bg-red-500 ring-2 ring-red-200'
-                              : 'bg-amber-400'
+                              : 'bg-slate-400'
                           }`}
                         />
                         <span className="font-semibold text-slate-800 text-xs">{link.label}</span>
@@ -297,10 +262,10 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
                             ? 'bg-emerald-100 text-emerald-700'
                             : isFailed
                             ? 'bg-red-100 text-red-700'
-                            : 'bg-amber-100 text-amber-700'
+                            : 'bg-slate-100 text-slate-600'
                         }`}
                       >
-                        {isOk ? '健康' : isFailed ? '异常' : '未就绪'}
+                        {isOk ? '健康' : isFailed ? '异常' : '待验证'}
                       </span>
                     </div>
 
@@ -309,7 +274,7 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
                     </p>
 
                     {/* Specific Node Actions */}
-                    {link.link === 'ai' && (
+                    {link.link === 'ai_provider' && (
                       <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between pl-4">
                         <span className="text-[10px] text-slate-400">大模型推理</span>
                         <div className="flex items-center gap-1.5">
@@ -319,7 +284,7 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
                             className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors text-[10px] font-medium cursor-pointer"
                           >
                             <Zap className={`w-3 h-3 text-amber-500 ${isTestingAi ? 'animate-spin' : ''}`} />
-                            <span>{isTestingAi ? '测试中...' : '快速测速'}</span>
+                            <span>{isTestingAi ? '测试中...' : '测试生效模型'}</span>
                           </button>
                           {onOpenSettings && (
                             <button
@@ -336,7 +301,7 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
                       </div>
                     )}
 
-                    {link.link === 'ai' && aiTestResult && (
+                    {link.link === 'ai_provider' && aiTestResult && (
                       <div className="mt-1.5 pl-4 text-[10px] flex items-center gap-1 text-slate-600">
                         {aiTestResult.isSuccess ? (
                           <span className="text-emerald-600 font-medium">

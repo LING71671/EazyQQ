@@ -168,6 +168,7 @@ export const api = {
     modelIdLegacy?: string
   ): Promise<ApiResponse<{
     isSuccess: boolean;
+    matchesActiveConfig?: boolean;
     latencyMs: number;
     provider?: string;
     model?: string;

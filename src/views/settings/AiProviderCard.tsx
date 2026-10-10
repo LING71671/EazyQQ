@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Cpu, RefreshCw, AlertCircle, CheckCircle2, Send } from 'lucide-react';
 import type { AiProviderId, ModelInfoDto } from '@/api/contracts';
 import { api } from '@/api/client';
+import { notifyAiTestFinished } from '@/features/health/useChainStatus';
 import { FreeModelDiscovery } from './models/FreeModelDiscovery';
 
 export const AI_PRESETS: Record<
@@ -56,6 +57,7 @@ export function isLocalEndpoint(url: string): boolean {
 
 interface AiProviderCardProps {
   provider: AiProviderId;
+  isDraft?: boolean;
   onSelectProvider: (id: AiProviderId) => void;
   baseUrl: string;
   onChangeBaseUrl: (url: string) => void;
@@ -71,6 +73,7 @@ interface AiProviderCardProps {
 
 export const AiProviderCard: React.FC<AiProviderCardProps> = ({
   provider,
+  isDraft = false,
   onSelectProvider,
   baseUrl,
   onChangeBaseUrl,
@@ -92,9 +95,15 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
     reply?: string;
     reasoning?: string;
     error?: string;
+    matchesActiveConfig?: boolean;
   } | null>(null);
 
+  const generation = useRef(0);
+  useEffect(() => { generation.current++; setTestResult(null); setTestingModel(false); }, [provider, model, baseUrl, apiKey]);
+  useEffect(() => () => { generation.current++; }, []);
+
   const isLocal = isLocalEndpoint(baseUrl);
+  const usesNativeOpenCode = provider === 'opencode' && (() => { try { return new URL(baseUrl).hostname === 'opencode.ai'; } catch { return false; } })();
 
   const isModelFree = (m: ModelInfoDto) => {
     return provider === 'opencode' ? verifiedFreeModels.includes(m.id) : isLocal || m.isFree;
@@ -111,6 +120,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
       });
       return;
     }
+    const current = ++generation.current;
     setTestingModel(true);
     setTestResult(null);
     try {
@@ -121,10 +131,12 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
         apiKey: apiKey.trim(),
         prompt: '你好',
       });
+      if (current !== generation.current) return;
       if (res.success && res.data) {
         setTestResult({
           success: true,
           latencyMs: res.data.latencyMs,
+          matchesActiveConfig: res.data.matchesActiveConfig,
           reply: res.data.reply || '(无文字回复)',
           reasoning: res.data.reasoning,
         });
@@ -135,12 +147,14 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
         });
       }
     } catch (err: any) {
+      if (current !== generation.current) return;
       setTestResult({
         success: false,
         error: String(err?.message || err),
       });
     } finally {
-      setTestingModel(false);
+      if (current === generation.current) setTestingModel(false);
+      notifyAiTestFinished();
     }
   };
 
@@ -150,12 +164,12 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
         <h3 className="text-sm font-semibold text-slate-900">大模型推理供应源</h3>
         <span
           className={`text-[10px] px-2 py-0.5 rounded-full border ${
-            isLocalEndpoint(baseUrl)
+            usesNativeOpenCode ? 'bg-sky-50 text-sky-700 border-sky-200' : isLocalEndpoint(baseUrl)
               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
               : 'bg-amber-50 text-amber-700 border-amber-200'
           }`}
         >
-          {isLocalEndpoint(baseUrl) ? '本地端点 · 不消耗云端 token' : '云端端点 · 消耗 token'}
+          {usesNativeOpenCode ? apiKey.trim() ? 'OpenCode · 已配置 Key' : 'OpenCode · 默认免 Key 通道' : isLocalEndpoint(baseUrl) ? '本地端点 · 不消耗云端 token' : '云端端点 · 按供应方规则使用'}
         </span>
       </div>
 
@@ -321,12 +335,12 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
           )}
 
           {/* API Key */}
-          {provider === 'opencode' && <FreeModelDiscovery selectedModel={model} onChoose={onChangeModel} onVerified={setVerifiedFreeModels} />}
+          {usesNativeOpenCode && <FreeModelDiscovery selectedModel={model} onChoose={onChangeModel} onVerified={setVerifiedFreeModels} />}
           {isLocalEndpoint(baseUrl) ? (
             <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-100 text-[11px] text-emerald-900 leading-relaxed">
               本地端点无需 API Key，请求不会离开本机，适合用来节省 token 费用。
             </div>
-          ) : provider === 'opencode' ? (
+          ) : usesNativeOpenCode ? (
             <div className="p-3 rounded-xl bg-sky-50/50 border border-sky-100 space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-slate-800">
@@ -345,7 +359,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
                 className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
               />
               <div className="text-[11px] text-slate-500 leading-relaxed">
-                通过本机 OpenCode 运行模型，免费通道沿用其登录状态与限制。
+                未填写 Key 时使用默认免 Key 通道；填写 Key 后按模型与供应方规则使用。免凭据资格由上方独立检测确认。
               </div>
             </div>
           ) : (
@@ -367,7 +381,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
           <div className="pt-3 border-t border-slate-100 space-y-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="text-[11px] text-slate-500">
-                测试连通性：向当前模型发送 <span className="px-1.5 py-0.5 rounded bg-slate-100 font-mono text-[10px] text-slate-700 font-medium">"你好"</span> 验证端点可用性与回复内容
+                {isDraft ? '测试未保存设置：向编辑中的模型发送' : '测试当前生效模型：发送'} <span className="px-1.5 py-0.5 rounded bg-slate-100 font-mono text-[10px] text-slate-700 font-medium">"你好"</span> 验证端点可用性与回复内容
               </div>
               <button
                 type="button"
@@ -383,6 +397,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
             {/* Test Result Display */}
             {testResult && (
               <div
+                role="status" aria-live="polite"
                 className={`p-3 rounded-xl border text-xs transition-all ${
                   testResult.success
                     ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
@@ -410,6 +425,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
                   )}
                 </div>
 
+                {testResult.success && <p className="mb-2 text-sm">{isDraft ? '这次验证的是未保存设置；保存后才用于实际任务。' : testResult.matchesActiveConfig === false ? '本次模型测试成功；链路按当前生效配置显示验证状态。' : '当前生效配置已通过验证，诊断状态已同步。'}</p>}
                 {testResult.success ? (
                   <div className="space-y-1.5">
                     <div className="text-[11px] text-slate-600 flex items-start gap-1.5">

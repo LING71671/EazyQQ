@@ -7,6 +7,8 @@ use tauri::{command, State};
 pub async fn get_chain_status(
     state: State<'_, AppState>,
 ) -> Result<ApiResponse<serde_json::Value>, String> {
+    crate::services::infra::runtime_config::refresh_ai(&state.db, &state.ai);
+    crate::services::chain::refresh_ai_status(&state.ai);
     crate::services::protocol::health::refresh(&state.napcat, &state.onebot).await;
     crate::services::chain::record_ok(crate::services::chain::Link::Frontend, "界面交互连接正常");
     let links = crate::services::chain::snapshot();

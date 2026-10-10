@@ -227,12 +227,8 @@ pub fn spawn_monitor(
                 Err(e) => record_error(Link::Database, format!("{}", e)),
             }
 
-            if crate::services::infra::runtime_config::refresh_ai(&db, &ai) {
-                record_unknown(
-                    Link::AiProvider,
-                    "Configuration changed; inference needs revalidation",
-                );
-            }
+            crate::services::infra::runtime_config::refresh_ai(&db, &ai);
+            refresh_ai_status(&ai);
             crate::services::protocol::health::refresh(&napcat, &onebot).await;
             let account_enabled = crate::services::accounts::active()
                 .and_then(|uin| {
@@ -264,23 +260,19 @@ pub fn spawn_monitor(
                 .await;
             }
 
-            if tick == 1 {
-                let cfg = ai.current();
-                if cfg.uses_opencode_runtime() && crate::services::ai::opencode::binary().is_none()
-                {
-                    record_error(
-                        Link::AiProvider,
-                        "OpenCode native runtime was not found on PATH",
-                    );
-                } else if cfg.requires_api_key() && cfg.api_key.trim().is_empty() {
-                    record_error(Link::AiProvider, "API key is missing");
-                } else {
-                    record_unknown(
-                        Link::AiProvider,
-                        "Configured; use the explicit model test to verify inference",
-                    );
-                }
-            }
+
         }
     });
+}
+
+
+pub fn refresh_ai_status(ai: &crate::services::ai::AiService) {
+    let evidence = ai.inference_health();
+    let health = match evidence.verified { Some(true) => Health::Ok, Some(false) => Health::Failed, None => Health::Unknown };
+    if snapshot().iter().any(|entry| entry.link == Link::AiProvider && entry.health == health && entry.detail == evidence.detail) { return; }
+    match health {
+        Health::Ok => record_ok(Link::AiProvider, evidence.detail),
+        Health::Failed => record_error(Link::AiProvider, evidence.detail),
+        Health::Unknown => record_unknown(Link::AiProvider, evidence.detail),
+    }
 }

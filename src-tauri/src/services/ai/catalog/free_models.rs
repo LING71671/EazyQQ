@@ -188,7 +188,7 @@ where
             name: value["name"].as_str().unwrap_or(&id).into(),
             id,
             state: "candidate".into(),
-            detail: "当前目录标价为零，尚未确认无需凭据可调用".into(),
+            detail: "目录标价为零；本次目录刷新尚未进行免凭据调用验证".into(),
             observed_at_ms: now(),
         };
         if value["status"] == "deprecated" || value["status"] == "retired" {
