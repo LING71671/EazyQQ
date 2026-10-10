@@ -252,7 +252,16 @@ try:
         if client.evaluate("document.querySelector('section[aria-label=\"OpenCode 免费模型检测\"]')?.textContent.includes('免凭据可用') && document.querySelector('section[aria-label=\"OpenCode 免费模型检测\"]')?.textContent.includes('明确停用')"):
             break
         time.sleep(.1)
-    else: raise AssertionError("Free model detection did not distinguish verified and retired models")
+    else:
+        discovery = client.evaluate("(()=>{const section=document.querySelector('section[aria-label=\"OpenCode 免费模型检测\"]');return {text:section?.textContent,busy:section?.getAttribute('aria-busy')};})()")
+        reports = []
+        for path in ROOT.glob('EazyQQ_Data/accounts/*/*/ai-runtime/free-model-report.json'):
+            reports.append({'path': str(path.relative_to(ROOT)), 'report': json.loads(path.read_text(encoding='utf-8-sig'))})
+        evidence = {'discovery': discovery, 'reports': reports}
+        (ROOT / 'free-model-failure.json').write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding='utf-8')
+        print(json.dumps(evidence, ensure_ascii=False), flush=True)
+        client.evaluate("document.querySelector('section[aria-label=\"OpenCode 免费模型检测\"]')?.scrollIntoView({block:'center'});true")
+        raise AssertionError("Free model detection did not distinguish verified and retired models")
     assert run("ai-config", "--account", "10001")["model"] == original_config["model"], "Detection silently changed the model"
     client.evaluate("document.querySelector('section[aria-label=\"OpenCode 免费模型检测\"]').scrollIntoView({block:'center'}); true")
     client.screenshot(ROOT / "free-model-discovery.png")
