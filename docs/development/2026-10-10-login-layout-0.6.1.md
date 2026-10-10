@@ -25,3 +25,15 @@ scripts/validation/presentation.mjs 扫描自有文本源码、中文文档、CI
 128 项 Rust（126 库、2 CLI）、29 项前端、26 项 CLI 冒烟、54/59 IPC/CLI 覆盖、类型与展示规范检查通过。原生确认日志 `.test-runtime/release-0.6.1-native-confirm.log` 返回 loginFirstViewport、免费检测、账号往返、迟到状态选择保持、独立浏览器缓存与窗口回归全部为 true，realQQTouched=false。直接查看 `.test-runtime/native-profiles-a52zp4q4/login-layout-1100x740.png` 与 `login-layout-900x600.png`，几何结果 login-layout.json 的四项可见性检查成立；不继续开放式视觉修改。
 
 安装包与六项分发资产已生成，资源698文件检查通过；本地候选来源为提交前 HEAD，不公开上传。公开门禁、下载散列与本机升级结果待追加；旧 0.6.0 标签和资产保留。两个真实 QQ 主进程 29952、21948 未结束；本轮只关闭已核对身份的 EazyQQ 窗口以解除本机测试单实例冲突。
+
+
+## 云端失败溯源
+
+作业 38022566059 的前端、Rust、构建、实际安装、26 CLI 与旧 Job 恢复通过，原生脚本初始化失败：ModuleNotFoundError: login_layout。CI 将 native_profiles.py 复制到 RUNNER_TEMP 再提升执行，但新子模块仍在项目目录；本机原位执行未覆盖这个边界。这是新增验证脚本的路径假设错误，不能称 CI 通过，也没有发布或本机升级。
+
+修复从 EAZYQQ_TEST_PROJECT_ROOT 确定 scripts/validation 导入目录，在复制后的入口解析子模块。0.6.1 未公开标签保留，修复进入 0.6.2；本机增加与 CI 相同的临时复制 + 项目根变量验证，不扩大超时或删减断言。
+
+
+## 0.6.2 临时入口补验
+
+本机完整构建与打包通过；将修正后的 native_profiles.py 复制到 .test-runtime/native_profiles-relocated.py，显式 EAZYQQ_TEST_PROJECT_ROOT=B:/EazyQQ，以发布二进制执行，报告所有原生断言通过、realQQTouched=false。日志 .test-runtime/release-0.6.2-relocated-native.log，隔离目录 native-profiles-mevp5z2g。布局源码未再次修改，前端29/Rust128/CLI26的0.6.1行为证据保留，0.6.2完整CI仍需独立通过。没有把复制执行成功替代尚未完成的云端安装与公开分发。
