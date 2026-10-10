@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { FreeModelDiscovery } from '../settings/models/FreeModelDiscovery';
 import type { FreeModelsReport } from '@/api/contracts';
 
@@ -10,6 +11,14 @@ const report: FreeModelsReport = {
   runtimeVersion: 'fixture', observedAtMs: 1, catalogueIds: ['plain'], credentialsUsed: false, source: 'fixture',
   models: [{ id: 'plain', name: 'Plain model', state: 'candidate', detail: '待验证', observedAtMs: 1 }],
 };
+
+it('blocks a probe in the first render before the catalogue effect starts', () => {
+  const initial = document.createElement('div');
+  initial.innerHTML = renderToStaticMarkup(<FreeModelDiscovery selectedModel="plain" onChoose={vi.fn()} onVerified={vi.fn()} />);
+  expect(initial.querySelector('button')?.disabled).toBe(true);
+  expect(initial.querySelector('section')?.getAttribute('aria-busy')).toBe('true');
+  expect(mocks.detect).not.toHaveBeenCalled();
+});
 
 it('loads current candidates without inference and keeps a removed selection unchanged', async () => {
   mocks.detect.mockResolvedValue({ success: true, data: report });

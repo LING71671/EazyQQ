@@ -12,7 +12,8 @@ interface Props {
 export function FreeModelDiscovery({ selectedModel, onChoose, onVerified }: Props) {
   const [report, setReport] = useState<FreeModelsReport | null>(null);
   const [progress, setProgress] = useState<FreeModelProgress | null>(null);
-  const [busy, setBusy] = useState(false);
+  // The initial catalogue effect must finish before an explicit probe can start.
+  const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const request = useRef<string | null>(null);
   const verified = useRef(onVerified);

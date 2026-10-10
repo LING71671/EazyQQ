@@ -1,6 +1,6 @@
 {
   "name": "eazyqq_cli",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "globalFlags": {
     "account": {
       "type": "string",

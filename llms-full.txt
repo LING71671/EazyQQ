@@ -1,6 +1,6 @@
 # EazyQQ 智能体操作指南
 
-适用于 0.6.3。修改前阅读 AGENTS.md、docs/ARCHITECTURE.md 和最新中文开发记录。接口以 docs/api/IPC.md、docs/api/CLI.md 和生成的 cli.schema.json 为准。运行 `eazyqq_cli schema --json` 获取当前构建的命令参数；MCP 使用 tools/list 获取实际工具定义，不根据历史示例猜参数。
+适用于 0.6.4。修改前阅读 AGENTS.md、docs/ARCHITECTURE.md 和最新中文开发记录。接口以 docs/api/IPC.md、docs/api/CLI.md 和生成的 cli.schema.json 为准。运行 `eazyqq_cli schema --json` 获取当前构建的命令参数；MCP 使用 tools/list 获取实际工具定义，不根据历史示例猜参数。
 
 ## 运行约束
 

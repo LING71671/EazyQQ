@@ -2,7 +2,7 @@
 
 <!-- impeccable:product-schema 1 -->
 
-本文描述 0.6.3 已实现的能力和验收边界。接口细节以 [接口文档](API_SPECIFICATION.md) 和生成的 CLI schema 为准。
+本文描述 0.6.4 已实现的能力和验收边界。接口细节以 [接口文档](API_SPECIFICATION.md) 和生成的 CLI schema 为准。
 
 ## 使用者与平台
 

@@ -1,6 +1,6 @@
 # CLI 使用与契约
 
-适用于 0.6.3。源码构建：`pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli`。桌面安装包包含同名 CLI；独立压缩包还提供 `ezq.exe` 兼容名。
+适用于 0.6.4。源码构建：`pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli`。桌面安装包包含同名 CLI；独立压缩包还提供 `ezq.exe` 兼容名。
 
 ```powershell
 .\src-tauri\target\debug\eazyqq_cli.exe --account 10001 status --json
