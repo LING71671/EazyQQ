@@ -61,7 +61,7 @@ export function AccountManager({ onSelect, switching }: { onSelect?: (uin: strin
     if (alive.current) setQr({ uin, image });
   });
 
-  return <section aria-label="多账号管理" className="mt-6 w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 text-left dark:border-slate-700 dark:bg-slate-900">
+  return <section aria-label="多账号管理" className="w-full border-t border-slate-200 p-4 text-left dark:border-slate-700">
     <div className="flex items-center justify-between gap-3">
       <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">账号管理</h3>
       <button type="button" onClick={() => void refresh()} disabled={busy} className="rounded-lg px-3 py-2 text-sm text-sky-700 hover:bg-sky-50 focus-visible:outline-2 focus-visible:outline-sky-600 disabled:opacity-50">刷新</button>

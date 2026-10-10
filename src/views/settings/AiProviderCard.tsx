@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, RefreshCw, AlertCircle, CheckCircle2, Send } from 'lucide-react';
+import { Cpu, RefreshCw, AlertCircle, CheckCircle2, Send } from 'lucide-react';
 import type { AiProviderId, ModelInfoDto } from '@/api/contracts';
 import { api } from '@/api/client';
 import { FreeModelDiscovery } from './models/FreeModelDiscovery';
@@ -250,7 +250,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
               <div className="flex items-center justify-between text-[11px] gap-2 flex-wrap">
                 <span className="font-semibold text-slate-700 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <Cpu className="w-3.5 h-3.5 text-slate-500" />
                   <span>
                     当前模型目录 ({onlyFreeFilter ? `筛选 ${modelsToDisplay.length}/共 ${fetchedModels.length} 个` : `共 ${fetchedModels.length} 个`} · 点击选用)：
                   </span>

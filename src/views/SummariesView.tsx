@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Clock, Sparkles, Trash2, Cpu, Activity } from 'lucide-react';
+import { FileText, Clock, RefreshCw, Trash2, Cpu, Activity } from 'lucide-react';
 import type { GroupSummaryDto, ContactItemDto } from '@/api/contracts';
 import { api } from '@/api/client';
 
@@ -131,7 +131,7 @@ export const SummariesView: React.FC<SummariesViewProps> = ({
             >
               {groups.map((g) => (
                 <option key={g.targetId} value={g.targetId}>
-                  {g.rule.isSummaryWhitelist ? '⭐ [白名单] ' : ''}
+                  {g.rule.isSummaryWhitelist ? '[白名单] ' : ''}
                   {g.name}
                 </option>
               ))}
@@ -158,7 +158,7 @@ export const SummariesView: React.FC<SummariesViewProps> = ({
             disabled={isGenerating || !activeTargetId}
             className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white shadow-xs transition-colors disabled:opacity-50"
           >
-            <Sparkles className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
             <span>{isGenerating ? '流式提炼中...' : '立即提炼简报'}</span>
           </button>
         </div>

@@ -14,6 +14,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.request import ProxyHandler, build_opener, getproxies
 from urllib.parse import urlsplit
+from login_layout import validate_login_layout
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -30,6 +31,7 @@ LOCAL_HTTP = build_opener(ProxyHandler({}))
 delayed_probe_account = None
 delayed_probe_started = threading.Event()
 delayed_probe_release = threading.Event()
+login_fixture = False
 
 
 class Protocol(BaseHTTPRequestHandler):
@@ -68,8 +70,11 @@ class Protocol(BaseHTTPRequestHandler):
                 delayed_probe_started.set()
                 delayed_probe_release.wait(timeout=3)
             body = {"status": "ok", "retcode": 0, "data": {"user_id": self.server.uin, "nickname": "Native fixture"}}
+            if login_fixture: body = {"status": "failed", "retcode": 1, "data": {}}
         elif self.path == "/api/auth/login": body = {"code": 0, "data": {"Credential": "fixture"}}
-        elif self.path == "/api/QQLogin/CheckLoginStatus": body = {"code": 0, "data": {"isLogin": True, "uin": self.server.uin}}
+        elif self.path == "/api/QQLogin/CheckLoginStatus": body = {"code": 0, "data": {"isLogin": not login_fixture, "uin": self.server.uin}}
+        elif self.path == "/api/QQLogin/GetQuickLoginListNew": body = {"code": 0, "data": [{"uin": uin, "nickName": f"Remembered {uin}"} for uin in ["10001", "10002", "10003"]]}
+        elif self.path == "/api/QQLogin/GetQQLoginQrcode": body = {"code": 0, "data": {"qrcode": "https://example.invalid/native-login-fixture"}}
         elif self.path == "/get_version_info": body = {"status": "ok", "retcode": 0, "data": {"app_version": "7.8.9"}}
         elif self.path.startswith("/api/"): body = {"code": 0, "data": []}
         else: body = {"status": "ok", "retcode": 0, "data": []}
@@ -125,9 +130,9 @@ class CDP:
                 assert "error" not in response,response
                 path.write_bytes(base64.b64decode(response["result"]["data"]))
                 return
-    def evaluate(self, expression):
+    def command(self, method, params):
         self.sequence += 1
-        payload = {"id": self.sequence, "method": "Runtime.evaluate", "params": {"expression": expression, "awaitPromise": True, "returnByValue": True}}
+        payload = {"id": self.sequence, "method": method, "params": params}
         self.frame(1, json.dumps(payload).encode())
         while True:
             head = self.read(2)
@@ -144,7 +149,10 @@ class CDP:
             if response.get("id") == self.sequence:
                 assert "error" not in response, response
                 assert "exceptionDetails" not in response["result"], response
-                return response["result"]["result"].get("value")
+                return response["result"]
+
+    def evaluate(self, expression):
+        return self.command('Runtime.evaluate', {"expression": expression, "awaitPromise": True, "returnByValue": True})["result"].get("value")
 
 
 def connect(uin, timeout=90):
@@ -222,6 +230,9 @@ try:
     assert client.evaluate("(async () => { window.dispatchEvent(new KeyboardEvent('keydown', {key:'F1'})); await new Promise(resolve => setTimeout(resolve, 240)); return !document.querySelector('button[aria-label=\"关闭使用说明书\"]'); })()") is True
     assert client.evaluate("window.__TAURI_INTERNALS__.invoke('app_toggle_maximize_window')") is True
     assert client.evaluate("window.__TAURI_INTERNALS__.invoke('app_toggle_maximize_window')") is False
+    login_fixture = True
+    validate_login_layout(client, ROOT)
+    login_fixture = False
     # Validate discovery and selected-model preservation through the rendered settings.
     client.evaluate("[...document.querySelectorAll('button')].find(button=>button.textContent.includes('系统设置')).click(); true")
     deadline = time.monotonic() + 15
@@ -275,7 +286,7 @@ try:
         time.sleep(0.1)
     else: raise AssertionError("The test desktop did not shut down")
     assert json.loads(bootstrap.read_text())["lastAccount"] == "10001", "An old status response reversed selection"
-    print(json.dumps({"passed": True, "freeModelDiscovery": True, "accountRoundTrip": True, "delayedStatusSelectionPreserved": True, "privateProfiles": True, "maximizeRoundTrip": True, "manualShortcut": True, "realQQTouched": False, "fixture": str(ROOT)}))
+    print(json.dumps({"passed": True, "loginFirstViewport": True, "freeModelDiscovery": True, "accountRoundTrip": True, "delayedStatusSelectionPreserved": True, "privateProfiles": True, "maximizeRoundTrip": True, "manualShortcut": True, "realQQTouched": False, "fixture": str(ROOT)}))
 except Exception:
     print(json.dumps({"fixture": str(ROOT), "debugPort": globals().get("debug_port"), "guiExitCode": gui.poll() if gui else None, "systemProxyConfigured": bool(getproxies())}), flush=True)
     browser_state = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process -Filter \"Name='msedgewebview2.exe'\" | ForEach-Object { [pscustomobject]@{pid=$_.ProcessId;parent=$_.ParentProcessId;debug=[regex]::Match($_.CommandLine,'--remote-debugging-port=\\d+').Value} } | ConvertTo-Json -Compress"], capture_output=True, text=True, errors="replace", timeout=15)

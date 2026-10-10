@@ -41,3 +41,9 @@
 CLI 26 项冒烟、版本校验和 698 文件资源检查通过。最终候选安装包 26766618 字节，六项分发文件已生成；候选在提交来源确定前生成，公开资产必须以完整 CI 再生成的 manifest 与 SHA256 为准。日志为 `.test-runtime/release-0.6.0-final-rust.log`、`release-0.6.0-final-frontend.log`、`release-0.6.0-confirm-native.log`、`release-0.6.0-final-smoke.log` 和 `release-0.6.0-final-package.log`。
 
 本机仍为 0.5.5，发布门禁、公开下载验证和升级仍待完成。已经测试的行为不能替代尚未执行的发布与安装结果。
+
+## 公开发布与安装补证
+
+完整 CI 作业 38017741476 成功，来源 a8f9861512c971e8c37f01dbcf10b5ede971611a；2026-10-10 10:51:12 发布 v0.6.0。六项公开资产下载、五条 SHA256 和 manifest 来源核验通过；安装包散列 ebd13ba0d599f37db5847a29cff39fc1b1cbebd3ee68293e3134dac4294285e9。通过已安装 CLI 的更新流程自动升级 A:/EazyQQ，GUI/CLI 均为 0.6.0；证据 `.test-runtime/published-0.6.0-verification.json` 和 `local-upgrade-0.6.0-*`。
+
+安装后只读诊断的加载、模块、进程、WebUI 阶段通过，认证仍未知；原生目录为 1.18.30、11 候选、credentialsUsed=false，未执行 probe，因此没有新验证可用结果。模型仍为 fledge-alpha-free，不静默替换。真实协议在 09:59 已离线并进入等待扫码，既有主进程 29952 与外部 QQ 主进程 21948 保留，不能沿用早前登录证据宣称当前已登录。

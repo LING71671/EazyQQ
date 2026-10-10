@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, ShieldAlert, Clock, Sliders, Send } from 'lucide-react';
+import { FileText, ShieldAlert, Clock, Sliders, Send } from 'lucide-react';
 import type { SummaryIntervalType } from '@/api/contracts';
 
 interface SummaryConfigCardProps {
@@ -35,7 +35,7 @@ export const SummaryConfigCard: React.FC<SummaryConfigCardProps> = ({
     <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-4">
       <div className="flex items-center justify-between pb-2 border-b border-slate-100">
         <span className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-sky-600" />
+          <FileText className="w-4 h-4 text-sky-600" />
           <span>群聊自动定时总结与滑动窗口</span>
         </span>
         <label className="flex items-center gap-2 cursor-pointer">

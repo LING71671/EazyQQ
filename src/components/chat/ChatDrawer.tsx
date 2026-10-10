@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePresence } from '@/hooks/usePresence';
-import { 
-  X, Send, Sparkles, Bot, Shield, User, Copy, Check, 
+import {
+  X, Send, Bot, Shield, User, Copy, Check,
   ArrowDownCircle, RefreshCw, MessageSquare, FileText
 } from 'lucide-react';
 import type { ContactItemDto, MessageItemDto, RoutingRuleDto } from '@/api/contracts';
@@ -343,15 +343,15 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   return (
     <div aria-hidden={!isOpen} inert={!isOpen} className="fixed inset-0 z-50 overflow-hidden flex justify-end">
       {/* Backdrop */}
-      <div 
+      <div
         data-open={isOpen}
         className="motion-overlay fixed inset-0 bg-slate-900/20"
-        onClick={onClose} 
+        onClick={onClose}
       />
 
       {/* Slide-over panel */}
       <div data-open={isOpen} className="motion-drawer relative w-full max-w-lg bg-white dark:bg-slate-900 h-full shadow-2xl flex flex-col z-10 border-l border-slate-200 dark:border-slate-800">
-        
+
         {/* Header */}
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
           <div className="flex items-center gap-3 min-w-0">
@@ -421,8 +421,8 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
               const isAiDraft = msg.aiReplyStatus === 'draft_pending' || (msg as any).msgType === 'ai_draft_sent';
 
               return (
-                <div 
-                  key={msg.id} 
+                <div
+                  key={msg.id}
                   className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} gap-1`}
                 >
                   {/* Sender & Badge Info */}
@@ -438,7 +438,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                     </span>
                     {isAiAuto && (
                       <span className="bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400 font-semibold px-1 py-0.2 rounded text-[9px] border border-sky-200/60 dark:border-sky-800 flex items-center gap-0.5">
-                        <Sparkles className="w-2.5 h-2.5" /> AI 秒回
+                        AI 秒回
                       </span>
                     )}
                     {isAiDraft && (
@@ -450,11 +450,11 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                   </div>
 
                   {/* Message Bubble */}
-                  <div 
+                  <div
                     className={`max-w-[85%] rounded-2xl p-3 text-xs leading-relaxed shadow-xs select-text ${
-                      isMe 
-                        ? isAiAuto 
-                          ? 'bg-sky-600 text-white rounded-tr-xs' 
+                      isMe
+                        ? isAiAuto
+                          ? 'bg-sky-600 text-white rounded-tr-xs'
                           : isAiDraft
                             ? 'bg-emerald-600 text-white rounded-tr-xs'
                             : 'bg-sky-600 text-white rounded-tr-xs'
@@ -553,9 +553,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                                       (e.target as HTMLElement).style.display = 'none';
                                     }}
                                   />
-                                ) : (
-                                  <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                )}
+                                ) : null}
                                 <span className={`text-[10px] font-semibold truncate ${isMe ? 'text-white/80' : 'text-slate-500'}`}>
                                   {seg.title || 'QQ小程序'}
                                 </span>
@@ -606,8 +604,8 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
               disabled={isAiDrafting}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/50 hover:bg-sky-100 dark:hover:bg-sky-900/50 border border-sky-200/60 dark:border-sky-800 transition-colors disabled:opacity-50"
             >
-              <Sparkles className={`w-3.5 h-3.5 ${isAiDrafting ? 'animate-spin' : ''}`} />
-              <span>{isAiDrafting ? 'AI 正在推演拟答...' : '✨ 让 AI 替我构思一条回复'}</span>
+
+              <span>{isAiDrafting ? 'AI 正在推演拟答...' : '让 AI 替我构思一条回复'}</span>
             </button>
 
             <span className="text-[10px] text-slate-400 font-mono">

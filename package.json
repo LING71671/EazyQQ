@@ -1,13 +1,13 @@
 {
   "name": "eazyqq",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "packageManager": "pnpm@11.14.0",
   "description": "Zero-CLI out-of-the-box personal QQ AI assistant client",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "prepare:resources": "node scripts/sync-napcat-resources.mjs",
-    "build": "node scripts/version/check.mjs && node scripts/contracts/check.mjs && node scripts/sync-napcat-resources.mjs && tsc && vite build",
+    "build": "node scripts/version/check.mjs && node scripts/validation/presentation.mjs && node scripts/contracts/check.mjs && node scripts/sync-napcat-resources.mjs && tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "pwsh -NoProfile -File scripts/tauri.ps1 dev",
@@ -20,7 +20,8 @@
     "test:native": "python scripts/validation/native_profiles.py",
     "release:package": "pwsh -NoProfile -File scripts/release/package.ps1",
     "contracts:check": "node scripts/contracts/check.mjs",
-    "contracts:write": "node scripts/contracts/check.mjs --write"
+    "contracts:write": "node scripts/contracts/check.mjs --write",
+    "presentation:check": "node scripts/validation/presentation.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.2.0",

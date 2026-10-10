@@ -2,13 +2,15 @@
 
 <!-- impeccable:product-schema 1 -->
 
-本文描述 0.6.0 已实现的能力和验收边界。接口细节以 [接口文档](API_SPECIFICATION.md) 和生成的 CLI schema 为准。
+本文描述 0.6.1 已实现的能力和验收边界。接口细节以 [接口文档](API_SPECIFICATION.md) 和生成的 CLI schema 为准。
 
 ## 使用者与平台
 
 面向个人 QQ 用户、群运营者、中国开发者及通过 CLI/MCP 接入的智能体。运行平台为 Windows x64；需要官方 QQNT，协议层使用 NapCat / OneBot 11。桌面端使用 Tauri/WebView2，后台能力由共享 Rust 服务提供。
 
 ## 账号生命周期
+
+扫码、记忆账号及诊断在登录工作区首屏展示；多账号登记和批量操作可直接展开。页面排版和图标调整不修改快速登录、身份确认与会话保持策略。
 
 1. 登记 QQ 号，分配独立 HTTP、WebSocket 和 WebUI 端口；登记不等于启动。
 2. 支持批量启动、登录、停止及逐账号结果查看。

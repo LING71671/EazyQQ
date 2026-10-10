@@ -87,6 +87,7 @@ jobs:
       - name: Check types, interfaces and frontend behavior
         shell: pwsh
         run: |
+          pnpm presentation:check
           pnpm typecheck
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm contracts:check
@@ -130,6 +131,8 @@ jobs:
           include-hidden-files: true
           path: |
             .test-runtime/native-profiles-*/gui-stderr.log
+            .test-runtime/native-profiles-*/login-layout*.png
+            .test-runtime/native-profiles-*/login-layout.json
             .test-runtime/native-profiles-*/EazyQQ_Data/accounts/*/*/logs/*.log
           if-no-files-found: ignore
 

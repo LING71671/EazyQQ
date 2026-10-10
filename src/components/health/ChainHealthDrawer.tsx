@@ -340,10 +340,10 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
                       <div className="mt-1.5 pl-4 text-[10px] flex items-center gap-1 text-slate-600">
                         {aiTestResult.isSuccess ? (
                           <span className="text-emerald-600 font-medium">
-                            ✓ 连通正常，延迟 {aiTestResult.latencyMs}ms
+                            连通正常，延迟 {aiTestResult.latencyMs}ms
                           </span>
                         ) : (
-                          <span className="text-red-500 font-medium">✗ 接口测试未响应</span>
+                          <span className="text-red-500 font-medium">接口测试未响应</span>
                         )}
                       </div>
                     )}

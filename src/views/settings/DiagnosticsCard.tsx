@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  X,
   Cpu,
   RefreshCw,
   CheckCircle2,
@@ -227,7 +228,7 @@ export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
         {actionNotice && (
           <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 text-xs text-sky-800 flex items-center justify-between animate-in fade-in">
             <span>{actionNotice}</span>
-            <button onClick={() => setActionNotice(null)} className="text-sky-500 hover:text-sky-700 font-bold ml-2 cursor-pointer">✕</button>
+            <button onClick={() => setActionNotice(null)} aria-label="关闭操作提示" className="text-sky-500 hover:text-sky-700 ml-2 cursor-pointer"><X className="h-4 w-4" /></button>
           </div>
         )}
 

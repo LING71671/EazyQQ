@@ -139,7 +139,7 @@ fn noise_filter_drops_emoji() {
     assert!(is_noise(""));
     assert!(is_noise("   "));
     assert!(is_noise("。。。"));
-    assert!(is_noise("🎉🎉🎉"));
+    assert!(is_noise("\u{1f389}\u{1f389}\u{1f389}"));
     assert!(!is_noise("好的"));
     assert!(!is_noise("这个方案我同意"));
 }

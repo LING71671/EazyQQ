@@ -1,6 +1,6 @@
 # EazyQQ 发布流程
 
-当前源码版本 0.6.0。公开发布须对应完整验收的 Git 标签；本地安装包生成不等于已经发布。
+当前源码版本 0.6.1。公开发布须对应完整验收的 Git 标签；本地安装包生成不等于已经发布。
 
 0.5.3 的已知 QQ 加载入口故障见 `docs/development/2026-10-09-startup-provenance.md`。0.6.0 源码修复已通过隔离真实 QQ 的跨盘模块导入与 WebUI 验收；打包、安装和分发仍须通过本流程。不能将证据收集、假引导器回归或文件存在替代真实 QQ 加载及身份确认。
 
@@ -18,6 +18,7 @@
 
 ```powershell
 pnpm install --frozen-lockfile
+pnpm presentation:check
 pnpm typecheck
 pnpm test
 pnpm test:rust
@@ -51,9 +52,9 @@ git diff --check
 发布工作流由 `v*` 标签或带标签参数的手动触发启动。它确认标签与清单版本相同，准备官方协议资源，执行类型/单元/CLI/原生测试，构建及打包后才建立并发布 Release。
 
 ```powershell
-git tag -a v0.6.0 -m "Release 0.6.0"
+git tag -a v0.6.1 -m "Release 0.6.1"
 git push origin main
-git push origin v0.6.0
+git push origin v0.6.1
 gh run list --workflow release.yml
 ```
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Filter, Sparkles, Shield, Clock, Check, MessageSquare } from 'lucide-react';
+import { Search, Filter, FileText, Shield, Clock, Check, MessageSquare } from 'lucide-react';
 import type { ContactItemDto, RoutingRuleDto } from '@/api/contracts';
 
 /** Patch shape for the trigger/cooldown controls. */
@@ -310,7 +310,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                           }`}
                           title={isSummaryWhitelisted ? '点击移出总结白名单' : '点击加入总结白名单'}
                         >
-                          <Sparkles className={`w-3 h-3 ${isSummaryWhitelisted ? 'text-sky-600' : 'text-slate-400'}`} />
+                          <FileText className={`w-3 h-3 ${isSummaryWhitelisted ? 'text-sky-600' : 'text-slate-400'}`} />
                           <span>{isSummaryWhitelisted ? `简报白名单 (${summaryLabel})` : '+ 简报白名单'}</span>
                         </button>
                       </div>

@@ -79,13 +79,13 @@ if ($NeedsNapCat) {
             Invoke-WebRequest -Uri $shellAsset.browser_download_url -OutFile $shellZip
             Expand-Archive -Path $shellZip -DestinationPath $NapCatDir -Force
             Remove-Item -Path $shellZip -Force -ErrorAction SilentlyContinue
-            Write-Host "    ✓ NapCat Shell 补齐完毕" -ForegroundColor Green
+            Write-Host "    [OK] NapCat Shell 补齐完毕" -ForegroundColor Green
         }
     } catch {
         Write-Warning "NapCat 在线拉取受限，如运行异常可手动将 napcat 目录置于 $InstallDir\napcat"
     }
 } else {
-    Write-Host "    ✓ NapCat 核心组件齐全" -ForegroundColor Green
+    Write-Host "    [OK] NapCat 核心组件齐全" -ForegroundColor Green
 }
 
 # 5. 自动探测宿主机 QQNT 路径
@@ -135,7 +135,7 @@ if (-not $DetectedQQ) {
 $QQPathTxt = "$ConfigDir\qq_path.txt"
 if ($DetectedQQ) {
     Set-Content -Path $QQPathTxt -Value $DetectedQQ -Encoding UTF8
-    Write-Host "    ✓ 自动绑定 QQ 路径: $DetectedQQ" -ForegroundColor Green
+    Write-Host "    [OK] 自动绑定 QQ 路径: $DetectedQQ" -ForegroundColor Green
 } else {
     Write-Warning "    未在系统注册表或默认路径中检测到 QQ.exe。"
     Write-Host "    提示：如果你尚未安装最新官方 QQNT，请前往 https://im.qq.com/pcqq 下载安装；" -ForegroundColor White
@@ -175,9 +175,9 @@ Write-Host "==> [5/5] 注册全局 PATH 环境变量..." -ForegroundColor Yellow
 $UserPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
 if ($UserPath -notlike "*$BinDir*") {
     [Environment]::SetEnvironmentVariable("Path", "$BinDir;$UserPath", [EnvironmentVariableTarget]::User)
-    Write-Host "    ✓ 已将 $BinDir 加入系统 PATH" -ForegroundColor Green
+    Write-Host "    [OK] 已将 $BinDir 加入系统 PATH" -ForegroundColor Green
 } else {
-    Write-Host "    ✓ PATH 中已包含 $BinDir" -ForegroundColor Green
+    Write-Host "    [OK] PATH 中已包含 $BinDir" -ForegroundColor Green
 }
 $env:Path = "$BinDir;$env:Path"
 

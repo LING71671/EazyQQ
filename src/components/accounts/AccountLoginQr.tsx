@@ -66,7 +66,7 @@ export function AccountLoginQr({ pending, onConfirmed, onCancel }: {
     finally { if (isCurrent()) { refreshInFlight.current = false; setRefreshing(false); } }
   };
 
-  return <section aria-label="目标账号扫码" className="mt-6 w-full max-w-lg rounded-2xl border border-sky-200 bg-white p-5 text-center dark:border-slate-700 dark:bg-slate-900">
+  return <section aria-label="目标账号扫码" className="w-full rounded-2xl border border-sky-200 bg-white p-5 text-center dark:border-slate-700 dark:bg-slate-900">
     <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">账号 {pending.uin} 扫码登录</h3>
     <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">当前账号保持连接，扫码确认后自动切换</p>
     {image && <img src={image} alt={`QQ ${pending.uin} 登录二维码`} width={256} height={256} className="mx-auto mt-3" />}

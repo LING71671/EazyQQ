@@ -196,10 +196,10 @@ pub fn cmd_ai_set(svc: &Services, args: &Args) -> Result<(), String> {
     println!("已更新: {}", changed.join(", "));
     println!("实际生效: {}", effective.describe());
     if let Err(e) = effective.validate() {
-        println!("⚠ 配置尚不完整: {}", e);
+        println!("警告：配置尚不完整: {}", e);
     }
     if custom_provider {
-        println!("⚠ 自定义供应商没有内置默认端点，请用 --base-url 与 --model 指定。");
+        println!("警告：自定义供应商没有内置默认端点，请用 --base-url 与 --model 指定。");
     }
     println!();
     println!("提示: 已运行的客户端需要重启，或在设置页保存一次配置以热生效。");

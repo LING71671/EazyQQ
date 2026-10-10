@@ -36,3 +36,14 @@ it('keeps an available QR and refresh action after a successful protocol respons
   fireEvent.click(screen.getByRole('button', { name: '刷新二维码' }));
   expect(refresh).toHaveBeenCalledTimes(1);
 });
+
+it('keeps quick login explicit and exposes batch management beside the QR workspace', () => {
+  const login = vi.fn();
+  render(<LoginView status={{ isConnected: true, loginStatus: 'waiting_scan', quickLoginAccounts: [{ uin: '10001', nickname: 'Remembered account' }] }} isLoading={false} onRefreshQr={vi.fn()} onQuickLogin={login} />);
+  const button = screen.getByRole('button', { name: '一键登录 10001' });
+  expect(button.querySelector('svg')).toBeNull();
+  expect(login).not.toHaveBeenCalled();
+  expect(screen.getByText('账号管理与批量操作').closest('details')?.open).toBe(false);
+  fireEvent.click(button);
+  expect(login).toHaveBeenCalledWith('10001');
+});
