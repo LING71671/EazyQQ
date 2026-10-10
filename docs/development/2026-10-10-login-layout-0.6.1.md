@@ -46,3 +46,14 @@ scripts/validation/presentation.mjs 扫描自有文本源码、中文文档、CI
 仅修正验证驱动：发现与关闭验证同时检查IPv4/IPv6，WebSocket Host保留括号authority；90秒总期限和账号/缓存断言不变。新增真实IPv6独占HTTP/WebSocket回归 webview_ipv6.py，验证fallback与Host实际交换，本机通过。完整临时入口原生回归 release-0.6.2-dual-stack-native.log 全部通过，realQQTouched=false。
 
 应用二进制及公开标签80b6ecba7c0c9f265d1a51dd11363feb5b0335ab不变。既有工作流已经规定验证工具跟随工作流修订、应用源码保持标签；修正的主分支验证脚本经显式手动dispatch重跑v0.6.2，避免移动标签或给验证工具修订再次增加应用版本。发布门禁必须重新完整通过。
+
+
+## 正式交付回执
+
+完整工作流38030446368成功，应用来源80b6ecba7c0c9f265d1a51dd11363feb5b0335ab、验证流程来源6afc7dc063bfe86abdd155d60e36947d3471f7c0；2026-10-10 14:29:33（北京时间）公开v0.6.2。29前端、126库+2CLI Rust、26CLI冒烟、类型/54-59契约/展示门禁、实际映射DLL重装、账号数据保留、旧受管理Job恢复、IPv6独占HTTP/WebSocket、首屏、账号往返、迟到状态选择、私有缓存、窗口和F1全部通过；日志 .test-runtime/release-0.6.2-cloud-complete.log。
+
+六项公开分发文件已下载，SHA256SUMS五条及manifest来源/大小通过，ZIP内CLI为0.6.2。安装包SHA256：d81940b437fba0fd1602a3dccb0b36a844b481dd50b02aab93bbe08a85ae9ba9。下载父进程180秒观察超时后，gh子进程仍在传输，未重复或终止；观察实际文件完整和进程退出后复用同目录验证。不是以超时推断工作停止。验证日志 .test-runtime/published-0.6.2-verification.log。
+
+安装包复制到原更新暂存目录作为已验证缓存，再通过原0.6.0 CLI updates install-app --confirm调用原生助手；缓存和安装助手均再次校验。A:/EazyQQ的GUI/CLI均为0.6.2，新窗口PID19580已打开，安装CLI散列与公开资产相同。模型仍为opencode/fledge-alpha-free，未自动替换。收据 local-upgrade-0.6.2-verification.json、local-upgrade-0.6.2-resume.log。
+
+升级后只读诊断载荷、入口、加载器、模块、受管理进程、WebUI八阶段通过；认证未知，实际status loggedIn=false，仍等待扫码，不能写成已登录。真实QQ主进程29952（B:/Program Files/Tencent/QQNT/QQ.exe）与21948（A:/NTQQ/QQ.exe）的创建时间保持，未执行真实发消息、快速登录或统一重启。黑屏原因与登录态/内存未来方案保持上述边界。
