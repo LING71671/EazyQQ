@@ -94,7 +94,7 @@ class CDP:
         self.socket = socket.create_connection((url.hostname, url.port), timeout=10)
         self.socket.settimeout(10)
         key = base64.b64encode(os.urandom(16)).decode()
-        request = f"GET {url.path} HTTP/1.1\r\nHost: {url.hostname}:{url.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
+        request = f"GET {url.path} HTTP/1.1\r\nHost: {url.netloc}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
         self.socket.sendall(request.encode())
         response = b""
         while not response.endswith(b"\r\n\r\n"): response += self.socket.recv(1)
@@ -161,14 +161,15 @@ def connect(uin, timeout=90):
     last_error = None
     while time.monotonic() < deadline:
         client = None
-        try:
-            with LOCAL_HTTP.open(f"http://127.0.0.1:{debug_port}/json/list", timeout=2) as response: pages = json.load(response)
-            page = next(item for item in pages if item.get("type") == "page" and "tauri.localhost" in item.get("url", ""))
-            client = CDP(page["webSocketDebuggerUrl"])
-            value = client.evaluate("(async () => { if (!window.__TAURI_INTERNALS__) return null; const r = await window.__TAURI_INTERNALS__.invoke('get_protocol_status'); return r.data?.qqNumber; })()")
-            if value == uin: return client
-        except (OSError, EOFError, StopIteration, AssertionError) as error: last_error = str(error)
-        if client: client.close()
+        for host in ['127.0.0.1', '[::1]']:
+            try:
+                with LOCAL_HTTP.open(f"http://{host}:{debug_port}/json/list", timeout=2) as response: pages = json.load(response)
+                page = next(item for item in pages if item.get("type") == "page" and "tauri.localhost" in item.get("url", ""))
+                client = CDP(page["webSocketDebuggerUrl"])
+                value = client.evaluate("(async () => { if (!window.__TAURI_INTERNALS__) return null; const r = await window.__TAURI_INTERNALS__.invoke('get_protocol_status'); return r.data?.qqNumber; })()")
+                if value == uin: return client
+            except (OSError, EOFError, StopIteration, AssertionError) as error: last_error = f'{host}: {error}'
+            if client: client.close(); client = None
         time.sleep(0.25)
     raise AssertionError(f"Native frontend for {uin} was not ready: {last_error}")
 
@@ -281,9 +282,12 @@ try:
     client = None
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
-        try:
-            with LOCAL_HTTP.open(f"http://127.0.0.1:{debug_port}/json/list", timeout=1): pass
-        except OSError: break
+        alive = False
+        for host in ['127.0.0.1', '[::1]']:
+            try:
+                with LOCAL_HTTP.open(f"http://{host}:{debug_port}/json/list", timeout=1): alive = True
+            except OSError: pass
+        if not alive: break
         time.sleep(0.1)
     else: raise AssertionError("The test desktop did not shut down")
     assert json.loads(bootstrap.read_text())["lastAccount"] == "10001", "An old status response reversed selection"

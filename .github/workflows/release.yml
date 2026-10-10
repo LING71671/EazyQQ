@@ -120,6 +120,12 @@ jobs:
           $validator = Join-Path $env:RUNNER_TEMP 'native_profiles.py'
           [IO.File]::WriteAllBytes($validator, [Convert]::FromBase64String(($content -join '')))
           $env:EAZYQQ_TEST_PROJECT_ROOT = (Get-Location).Path
+          $content = gh api "repos/$env:GITHUB_REPOSITORY/contents/scripts/validation/webview_ipv6.py?ref=$env:GITHUB_SHA" --jq .content
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $ipv6Validator = Join-Path $env:RUNNER_TEMP 'webview_ipv6.py'
+          [IO.File]::WriteAllBytes($ipv6Validator, [Convert]::FromBase64String(($content -join '')))
+          python $ipv6Validator $validator
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python $validator
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

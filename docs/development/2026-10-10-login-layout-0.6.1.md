@@ -37,3 +37,12 @@ scripts/validation/presentation.mjs 扫描自有文本源码、中文文档、CI
 ## 0.6.2 临时入口补验
 
 本机完整构建与打包通过；将修正后的 native_profiles.py 复制到 .test-runtime/native_profiles-relocated.py，显式 EAZYQQ_TEST_PROJECT_ROOT=B:/EazyQQ，以发布二进制执行，报告所有原生断言通过、realQQTouched=false。日志 .test-runtime/release-0.6.2-relocated-native.log，隔离目录 native-profiles-mevp5z2g。布局源码未再次修改，前端29/Rust128/CLI26的0.6.1行为证据保留，0.6.2完整CI仍需独立通过。没有把复制执行成功替代尚未完成的云端安装与公开分发。
+
+
+## 0.6.2 云端调试地址溯源与修正
+
+完整作业 38023862888 的类型、29前端、128Rust、构建、重装、26CLI、旧Job恢复、首屏与免费模型检查通过；账号10002建立后，CDP发现超时。下载失败日志和诊断包证明新账号独立 WebView 与前端IPC已运行，netstat显示 [::1]:59596 LISTENING（PID888），而127.0.0.1没有监听。验证器把IPv4视为唯一调试地址，错误地把调试连接失败报告为原生账号未就绪；不是身份或缓存隔离失败。
+
+仅修正验证驱动：发现与关闭验证同时检查IPv4/IPv6，WebSocket Host保留括号authority；90秒总期限和账号/缓存断言不变。新增真实IPv6独占HTTP/WebSocket回归 webview_ipv6.py，验证fallback与Host实际交换，本机通过。完整临时入口原生回归 release-0.6.2-dual-stack-native.log 全部通过，realQQTouched=false。
+
+应用二进制及公开标签80b6ecba7c0c9f265d1a51dd11363feb5b0335ab不变。既有工作流已经规定验证工具跟随工作流修订、应用源码保持标签；修正的主分支验证脚本经显式手动dispatch重跑v0.6.2，避免移动标签或给验证工具修订再次增加应用版本。发布门禁必须重新完整通过。
