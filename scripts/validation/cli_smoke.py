@@ -188,6 +188,7 @@ try:
         supervisors[1].wait(timeout=5)
         assert unrelated.poll() is None
         checks.append("account process trees isolated; unrelated process preserved")
+    assert run("updates", "history")["data"] == [], "A fresh isolated root inherited update receipts"
     run("accounts", "forget", "--uin", "10002")
     assert (machine_dir / "10002").exists()
     registry_path.write_text("{")

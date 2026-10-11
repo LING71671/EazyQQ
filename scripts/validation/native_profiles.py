@@ -22,6 +22,7 @@ PROJECT = Path(os.environ.get("EAZYQQ_TEST_PROJECT_ROOT", Path(__file__).resolve
 sys.path.insert(0, str(PROJECT / 'scripts/validation'))
 from login_layout import validate_login_layout
 from ai_health_ui import validate_ai_health
+from update_history_ui import seed_update_history, validate_update_history
 GUI = Path(os.environ.get("EAZYQQ_TEST_GUI", PROJECT / "src-tauri/target/release/eazyqq.exe"))
 CLI = Path(os.environ.get("EAZYQQ_TEST_CLI", PROJECT / "src-tauri/target/release/eazyqq_cli.exe"))
 FIXTURES = PROJECT / ".test-runtime"
@@ -209,6 +210,7 @@ try:
     config = ROOT / "fixture-config.json"
     config.write_text(json.dumps({"ai": {"activeProvider": "opencode", "model": "big-pickle"}, "summary": {"enabled": False}, "napcat": {"autoRestart": False, "heartbeatIntervalSec": 15}, "storage": {"autoSyncFiles": False}, "window": {"closeToTray": False}}))
     for uin in ["10001", "10002"]: run("set-config", "--account", uin, "--key", "app_config", "--file", str(config))
+    seed_update_history(ROOT)
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
         debug_port = reservation.getsockname()[1]
@@ -266,6 +268,7 @@ try:
     client.evaluate("document.querySelector('section[aria-label=\"OpenCode 免费模型检测\"]').scrollIntoView({block:'center'}); true")
     client.screenshot(ROOT / "free-model-discovery.png")
     validate_ai_health(client, ROOT)
+    validate_update_history(client, ROOT, run)
     assert client.evaluate("localStorage.getItem('eazyqq_profile_validation')") is None
     client.evaluate("localStorage.setItem('eazyqq_profile_validation', '10001'); true")
     assert (registry_path.parent / "10001/webview/main/EBWebView").exists(), "The primary account used a shared browser profile"
@@ -303,7 +306,7 @@ try:
         time.sleep(0.1)
     else: raise AssertionError("The test desktop did not shut down")
     assert json.loads(bootstrap.read_text())["lastAccount"] == "10001", "An old status response reversed selection"
-    print(json.dumps({"passed": True, "loginFirstViewport": True, "freeModelDiscovery": True, "modelHealthSynchronized": True, "noKeyChannelIsolated": True, "accountRoundTrip": True, "delayedStatusSelectionPreserved": True, "privateProfiles": True, "maximizeRoundTrip": True, "manualShortcut": True, "realQQTouched": False, "fixture": str(ROOT)}))
+    print(json.dumps({"passed": True, "loginFirstViewport": True, "freeModelDiscovery": True, "modelHealthSynchronized": True, "noKeyChannelIsolated": True, "updateHistoryEvidence": True, "accountRoundTrip": True, "delayedStatusSelectionPreserved": True, "privateProfiles": True, "maximizeRoundTrip": True, "manualShortcut": True, "realQQTouched": False, "fixture": str(ROOT)}))
 except Exception:
     if client:
         try:

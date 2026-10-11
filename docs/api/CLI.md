@@ -108,6 +108,8 @@ eazyqq_cli repair --json
 
 ## 更新边界
 
+后续开发接口（公开0.6.4不包含）：`updates history --json`返回统一`ApiResponse`及最多50条主程序安装回执，与桌面`get_update_history`一致。命令只读取当前更新暂存上下文，不安装、不登录。更新交接字符串保留兼容返回格式并给出编号；助手随后持久记录等待、校验、安装、退出码及失败。安装程序退出0不表示已证明新程序版本；下载与核心更新的回执仍待后续接入。
+
 updates install-app|install-napcat --confirm 只接受当前官方稳定资产，--url 不能绕过校验。主程序精确匹配 EazyQQ_<version>_x64-setup.exe，核心精确匹配 NapCat.Shell.zip；校验大小与 SHA256，更新跨进程互斥。CLI 安装助手等待本次命令退出，不强制关闭另一个桌面或 QQ。协议更新要求相关会话停机，保留配置和备份。JSON stdout 只输出最终结果。
 
 

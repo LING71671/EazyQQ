@@ -37,6 +37,7 @@ pub async fn cmd_updates(svc: &Services, args: &Args) -> Result<(), String> {
         "check-app" => {
             serde_json::to_value(updater::check_app_update().await?).map_err(|e| e.to_string())?
         }
+        "history" => serde_json::to_value(updater::get_update_history().await?).map_err(|error| error.to_string())?,
         "check-napcat" => {
             serde_json::to_value(updater::check_napcat_update_for(&svc.onebot).await?)
                 .map_err(|e| e.to_string())?
@@ -57,7 +58,7 @@ pub async fn cmd_updates(svc: &Services, args: &Args) -> Result<(), String> {
         .map_err(|e| e.to_string())?,
         _ => {
             return Err(
-                "Use updates versions|check-app|check-napcat|install-app|install-napcat".into(),
+                "Use updates versions|check-app|check-napcat|history|install-app|install-napcat".into(),
             )
         }
     };

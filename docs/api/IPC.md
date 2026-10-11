@@ -103,6 +103,10 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 
 ## 更新状态与事件
 
+后续开发新增接口（未进入已公开0.6.4）：`get_update_history({})`返回`ApiResponse<UpdateReceipt[]>`，与CLI `updates history`读取同一暂存上下文的回执，按开始时间倒序最多50条。读取不创建目录、不运行安装、不改变QQ。当前阶段仅记录主程序安装交接；尚不覆盖下载与核心更新。
+
+回执字段为`schemaVersion=1`、`operationId`、`component=app`、`targetVersion?`、`phase`、`startedAtMs`、`updatedAtMs`、`installerExitCode?`、`error?`。阶段为`handoff`、`waiting_parent`、`verifying`、`installing`、`installer_succeeded`、`failed`。`installer_succeeded`只证明安装程序在安装阶段退出0，不能代替新程序版本验证。未结束的记录保持原阶段，不凭时间推断失败。损坏/身份不符回执会报错，不伪装为成功。
+
 主程序信息新增 status、installerName、downloadSize、checksumSha256。状态为 available、up_to_date、newer_local、no_release、installer_missing；核心状态为 available、up_to_date、newer_local、version_unknown、asset_missing。可选值可能为 null。
 
 app-update-progress、napcat-update-progress 的 payload 为 {phase,downloadedBytes,totalBytes}，阶段包含 checking、downloading、verifying、installing、ready。调用前订阅，成功、失败和卸载后释放。ready 只表示包就绪，不表示安装结束。

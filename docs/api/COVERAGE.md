@@ -38,6 +38,7 @@
 | `get_qq_path` | `qq-path` |
 | `get_quick_login_accounts` | `quick-login-list` |
 | `get_summary_history` | `summaries` |
+| `get_update_history` | `updates history` |
 | `list_accounts` | `accounts list` |
 | `logout` | `logout` |
 | `mark_read` | `mark-read` |

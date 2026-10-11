@@ -559,6 +559,7 @@ pub fn run() {
             app_show_window,
             app_get_window_behavior,
             check_app_update,
+            get_update_history,
             get_qq_path,
             set_qq_path,
             get_napcat_version,

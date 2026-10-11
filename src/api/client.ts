@@ -22,6 +22,7 @@ import type {
   QuickLoginAccountDto,
   AppUpdateInfo,
   AppUpdateProgress,
+  UpdateReceipt,
   NapCatUpdateInfo,
   ModelInfoDto,
   FreeModelsReport,
@@ -251,6 +252,7 @@ export const api = {
     return invoke('app_get_window_behavior');
   },
   // Remote Updater
+  getUpdateHistory: (): Promise<ApiResponse<UpdateReceipt[]>> => invoke('get_update_history'),
   checkAppUpdate: async (): Promise<ApiResponse<AppUpdateInfo>> => {
     return invoke('check_app_update');
   },

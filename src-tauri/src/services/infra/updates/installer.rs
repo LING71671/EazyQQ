@@ -3,10 +3,13 @@ use super::download::PreparedUpdate;
 use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use super::receipts::{Journal, Phase, UpdateReceipt};
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Request {
+    #[serde(default)]
+    operation_id: Option<String>,
     parent_id: u32,
     installer: PathBuf,
     sha256: String,
@@ -30,8 +33,12 @@ pub(super) fn run_helper(request_path: &Path) -> Result<(),String> {
     if std::fs::canonicalize(request_path.parent().ok_or("Request has no directory")?).map_err(|e|e.to_string())?
         != std::fs::canonicalize(root).map_err(|e|e.to_string())? {return Err("Update request is outside the helper directory".into());}
     let request:Request=serde_json::from_slice(&std::fs::read(request_path).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+    let journal = request.operation_id.as_deref().map(|id| Journal::resume(root, id)).transpose()?;
+    let mut exit_code = None;
     let result=(|| {
+        if let Some(journal) = &journal { journal.update(Phase::WaitingParent, None, None)?; }
         wait_parent(request.parent_id)?;
+        if let Some(journal) = &journal { journal.update(Phase::Verifying, None, None)?; }
         if std::fs::canonicalize(request.installer.parent().ok_or("Installer has no directory")?).map_err(|e|e.to_string())?
             != std::fs::canonicalize(root).map_err(|e|e.to_string())? {return Err("Installer is outside the verified update directory".into());}
         let bytes=std::fs::read(&request.installer).map_err(|e|e.to_string())?;
@@ -46,11 +53,15 @@ pub(super) fn run_helper(request_path: &Path) -> Result<(),String> {
             }
         }
         if let Some(root)=&request.root_override {installer.env("EAZYQQ_ROOT",root);}
+        if let Some(journal) = &journal { journal.update(Phase::Installing, None, None)?; }
         let status=installer.status().map_err(|e|e.to_string())?;
-        if !status.success() {return Err(format!("Installer exited with code {:?}",status.code()));}
+        exit_code = status.code();
+        if !status.success() {return Err(format!("安装程序未成功结束，退出码 {}",status.code().map(|value| value.to_string()).unwrap_or_else(|| "未提供".into())));}
+        if let Some(journal) = &journal { journal.update(Phase::InstallerSucceeded, exit_code, None)?; }
         Ok(())
     })();
     if let Err(error)=&result {
+        if let Some(journal) = &journal { let _ = journal.update(Phase::Failed, exit_code, Some(error)); }
         let _=std::fs::write(request_path.with_extension("error.log"),error);
         if let Some(previous)=&request.previous_executable {
             let mut app=std::process::Command::new(previous);
@@ -76,15 +87,37 @@ fn wait_parent(pid:u32)->Result<(),String> {
         return if error.raw_os_error()==Some(87) {Ok(())} else {Err(error.to_string())};
     }
     let result=unsafe {WaitForSingleObject(handle,90_000)};
+    let wait_error = (result == u32::MAX).then(std::io::Error::last_os_error);
     unsafe {CloseHandle(handle);}
-    if result==0 {Ok(())} else {Err("The calling EazyQQ process did not exit before installation".into())}
+    match result {
+        0 => Ok(()),
+        258 => Err("调用更新的 EazyQQ 未在90秒内退出，安装未执行".into()),
+        u32::MAX => Err(format!("等待调用程序失败：{}", wait_error.unwrap())),
+        value => Err(format!("等待调用程序返回未知状态：{value}")),
+    }
 }
 #[cfg(not(windows))]
 fn wait_parent(_:u32)->Result<(),String> {Err("Native installation is supported only on Windows".into())}
 
-pub fn launch(prepared:&PreparedUpdate,desktop:bool)->Result<(),String> {
+pub fn launch(prepared: &PreparedUpdate, desktop: bool) -> Result<UpdateReceipt, String> {
     #[cfg(not(windows))]
-    {let _=(prepared,desktop);return Err("自动安装仅支持 Windows x64".into());}
+    { let _ = (prepared, desktop); return Err("自动安装仅支持 Windows x64".into()); }
+    #[cfg(windows)]
+    {
+        let path = crate::services::infra::filesystem::physical_path(&prepared.path)?;
+        let root = path.parent().ok_or("安装包目录无效")?;
+        let (journal, receipt) = Journal::begin(root, prepared.target_version.clone())?;
+        if let Err(error) = launch_inner(prepared, desktop, &journal) {
+            let _ = journal.update(Phase::Failed, None, Some(&error));
+            return Err(format!("更新 {} 交接失败：{error}", journal.id()));
+        }
+        Ok(receipt)
+    }
+}
+
+fn launch_inner(prepared:&PreparedUpdate,desktop:bool,journal:&Journal)->Result<(),String> {
+    #[cfg(not(windows))]
+    {let _=(prepared,desktop,journal);return Err("自动安装仅支持 Windows x64".into());}
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -97,8 +130,9 @@ pub fn launch(prepared:&PreparedUpdate,desktop:bool)->Result<(),String> {
         let source_bytes=std::fs::read(&source).map_err(|e|e.to_string())?;
         let helper=root.join(format!("eazyqq-update-helper-{:x}.exe",Sha256::digest(source_bytes)));
         if !helper.exists() {std::fs::copy(&source,&helper).map_err(|e|e.to_string())?;}
-        let request=root.join(format!("handoff-{}.json",std::process::id()));
+        let request=root.join(format!("handoff-{}.json",journal.id()));
         crate::services::infra::persistence::write_json(&request,&Request {
+            operation_id: Some(journal.id().into()),
             parent_id:std::process::id(),installer:installer_path.clone(),sha256:prepared.sha256.clone(),size:prepared.size,
             install_directory:if desktop {source.parent().map(Path::to_path_buf)} else {None},
             previous_executable:desktop.then_some(source),root_override:std::env::var_os("EAZYQQ_ROOT")

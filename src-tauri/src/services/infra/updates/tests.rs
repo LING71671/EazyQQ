@@ -12,7 +12,7 @@ fn handoff_worker() {
     let Some(path)=std::env::var_os("EAZYQQ_TEST_HANDOFF") else { return; };
     let path=std::path::PathBuf::from(path);
     let bytes=std::fs::read(&path).unwrap();
-    let prepared=super::download::PreparedUpdate {path,sha256:format!("{:x}",Sha256::digest(&bytes)),size:bytes.len() as u64};
+    let prepared=super::download::PreparedUpdate {path,sha256:format!("{:x}",Sha256::digest(&bytes)),size:bytes.len() as u64,target_version:Some("9.8.7".into())};
     super::installer::launch(&prepared,false).unwrap();
 }
 
@@ -27,9 +27,9 @@ fn installer_handoff_survives_caller_exit_and_handles_unicode_paths() {
 #include <windows.h>
 #include <wchar.h>
 int WINAPI WinMain(HINSTANCE a,HINSTANCE b,LPSTR command,int show){
-  wchar_t file[32768];GetModuleFileNameW(NULL,file,32768);*wcsrchr(file,L'\\')=0;wcscat(file,L"\\installed.flag");
+  wchar_t file[32768];GetModuleFileNameW(NULL,file,32768);int fail=wcsstr(file,L"fixture-failure.exe")!=0;*wcsrchr(file,L'\\')=0;wcscat(file,L"\\installed.flag");
   HANDLE h=CreateFileW(file,GENERIC_WRITE,0,NULL,CREATE_ALWAYS,0,NULL);if(h==INVALID_HANDLE_VALUE)return 2;
-  DWORD n;const wchar_t* args=GetCommandLineW();WriteFile(h,args,(DWORD)(wcslen(args)*2),&n,NULL);CloseHandle(h);return 0;
+  DWORD n;const wchar_t* args=GetCommandLineW();WriteFile(h,args,(DWORD)(wcslen(args)*2),&n,NULL);CloseHandle(h);return fail?9:0;
 }
 "#).unwrap();
     let compiled=std::process::Command::new("cl.exe").args(["/nologo","/MT"])
@@ -45,6 +45,32 @@ int WINAPI WinMain(HINSTANCE a,HINSTANCE b,LPSTR command,int show){
     assert!(flag.exists(),"Detached installer did not run after caller exit: {:?}",std::fs::read_dir(&root).unwrap().map(|e|e.unwrap().file_name()).collect::<Vec<_>>());
     let bytes=std::fs::read(flag).unwrap();let wide=bytes.chunks_exact(2).map(|b|u16::from_le_bytes([b[0],b[1]])).collect::<Vec<_>>();
     let command=String::from_utf16(&wide).unwrap();assert!(command.contains("/P /R"));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let final_receipt = loop {
+        let values = super::receipts::history(&root).unwrap();
+        if let Some(value) = values.into_iter().find(|value| value.phase == super::receipts::Phase::InstallerSucceeded) { break value; }
+        assert!(std::time::Instant::now() < deadline, "Installer exited without a durable success receipt");
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    assert_eq!(final_receipt.target_version.as_deref(), Some("9.8.7"));
+    assert_eq!(final_receipt.installer_exit_code, Some(0));
+    let failure_root = root.join("failure only");
+    std::fs::create_dir_all(&failure_root).unwrap();
+    let failure_executable = failure_root.join("fixture-failure.exe");
+    std::fs::copy(executable, &failure_executable).unwrap();
+    let child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "services::infra::updates::tests::handoff_worker", "--nocapture"])
+        .env("EAZYQQ_TEST_HANDOFF", &failure_executable).creation_flags(0x08000000).output().unwrap();
+    assert!(child.status.success(), "Caller could not hand off the simulated failure");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    let failed = loop {
+        let values = super::receipts::history(&failure_root).unwrap();
+        if let Some(value) = values.into_iter().find(|value| value.phase == super::receipts::Phase::Failed) { break value; }
+        assert!(std::time::Instant::now() < deadline, "Installer failure did not leave a durable result");
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    assert_eq!(failed.installer_exit_code, Some(9));
+    assert!(failed.error.unwrap().contains("9"));
 }
 
 #[test]

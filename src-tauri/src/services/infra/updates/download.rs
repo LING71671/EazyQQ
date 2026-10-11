@@ -17,6 +17,7 @@ pub struct PreparedUpdate {
     pub path: PathBuf,
     pub sha256: String,
     pub size: u64,
+    pub target_version: Option<String>,
 }
 
 pub(super) fn verified_file(path: &Path, artifact: &Artifact) -> Result<(), String> {
@@ -88,5 +89,5 @@ pub async fn prepare(download_url: Option<String>, report: &(dyn Fn(UpdateProgre
         return Err("下载链接已过期或不属于当前正式安装包，请重新检查更新".into());
     }
     let path = download(&client, &artifact, &root, report).await?;
-    Ok(PreparedUpdate { path, sha256:artifact.sha256, size:artifact.size })
+    Ok(PreparedUpdate { path, sha256:artifact.sha256, size:artifact.size, target_version: Some(version.trim_start_matches('v').into()) })
 }

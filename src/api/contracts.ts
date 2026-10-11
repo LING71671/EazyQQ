@@ -216,6 +216,18 @@ export interface AppUpdateProgress {
   totalBytes: number;
 }
 
+export interface UpdateReceipt {
+  schemaVersion: number;
+  operationId: string;
+  component: 'app';
+  targetVersion: string | null;
+  phase: 'handoff' | 'waiting_parent' | 'verifying' | 'installing' | 'installer_succeeded' | 'failed';
+  startedAtMs: number;
+  updatedAtMs: number;
+  installerExitCode: number | null;
+  error: string | null;
+}
+
 export interface NapCatUpdateInfo {
   currentVersion: string;
   latestVersion: string;

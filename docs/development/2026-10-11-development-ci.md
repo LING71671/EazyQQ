@@ -19,3 +19,7 @@ Node回归覆盖公开拒绝、错误分类、返回身份、草稿创建/恢复
 ## 本地检查结果
 
 7项发布驱动回归通过；复制到独立目录后的驱动及相对测试导入再次通过，覆盖CI从工作流修订下载到临时目录的执行方式（publisher-driver-check.log）。33前端、类型、展示、54/59契约和git diff --check通过。actionlint 1.7.12验证两个工作流语义通过，日志development-actionlint.log。本机对公开v0.6.4执行node scripts/release/publish.mjs --check，退出1并明确already public；只读查询，无上传/编辑操作，published-release-guard.log。下一步提交并验证自动触发的云端开发CI。
+
+## 云端回执
+
+8916e0c已推送，Development checks 38101562453的前端/契约/发布驱动和Windows Rust/CLI两个任务均成功。首次推送因环境GH_TOKEN属于无仓库写权限的Sidney-sunny被拒绝；核对本机已有LING71671凭据后仅在此次仓库命令进程中使用，经api user确认身份后推送成功，没有更改全局默认账号或泄露凭据。门禁基础设施第一阶段完成，后续重点转向可见的新功能与体验。

@@ -1348,6 +1348,10 @@
       "cli": "summaries"
     },
     {
+      "ipc": "get_update_history",
+      "cli": "updates history"
+    },
+    {
       "ipc": "list_accounts",
       "cli": "accounts list"
     },
@@ -1454,6 +1458,7 @@
       "versions",
       "check-app",
       "check-napcat",
+      "history",
       "install-app",
       "install-napcat"
     ],

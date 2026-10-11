@@ -2,6 +2,7 @@
 mod release;
 mod download;
 mod installer;
+pub mod receipts;
 pub mod core;
 #[cfg(test)]
 mod tests;

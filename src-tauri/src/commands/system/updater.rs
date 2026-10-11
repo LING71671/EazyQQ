@@ -7,14 +7,22 @@ pub use crate::services::infra::updates::AppUpdateInfo;
 pub use crate::services::infra::updates::core::NapCatUpdateInfo;
 
 #[command]
+pub async fn get_update_history() -> Result<ApiResponse<Vec<crate::services::infra::updates::receipts::UpdateReceipt>>, String> {
+    let root = crate::services::infra::updates::staging_root();
+    let values = tauri::async_runtime::spawn_blocking(move || crate::services::infra::updates::receipts::history(&root))
+        .await.map_err(|error| error.to_string())??;
+    Ok(ApiResponse::ok(values))
+}
+
+#[command]
 pub async fn check_app_update() -> Result<ApiResponse<AppUpdateInfo>, String> {
     Ok(ApiResponse::ok(crate::services::infra::updates::check().await?))
 }
 
 pub async fn upgrade_app_for(download_url: Option<String>) -> Result<ApiResponse<String>, String> {
     let prepared = crate::services::infra::updates::prepare(download_url, &|_| {}).await?;
-    crate::services::infra::updates::launch(&prepared, false)?;
-    Ok(ApiResponse::ok("安装包 SHA256 已校验，安装助手将在本次 CLI 退出后启动；若桌面仍在运行，安装向导会提示关闭。QQ 会话保持运行。".into()))
+    let receipt = crate::services::infra::updates::launch(&prepared, false)?;
+    Ok(ApiResponse::ok(format!("更新 {} 已交接；安装助手将在本次 CLI 退出后启动，最终结果可通过 updates history 查询。若桌面仍在运行，安装向导会提示关闭。QQ 会话保持运行。", receipt.operation_id)))
 }
 
 #[command]
@@ -22,12 +30,12 @@ pub async fn upgrade_app(app: tauri::AppHandle, download_url: Option<String>) ->
     use tauri::Emitter;
     let reporter = |progress| { let _ = app.emit("app-update-progress", progress); };
     let prepared = crate::services::infra::updates::prepare(download_url, &reporter).await?;
-    crate::services::infra::updates::launch(&prepared, true)?;
+    let receipt = crate::services::infra::updates::launch(&prepared, true)?;
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         app.exit(0);
     });
-    Ok(ApiResponse::ok("安装包已校验，EazyQQ 将退出并启动安装，完成后自动打开；QQ 会话保持运行。".into()))
+    Ok(ApiResponse::ok(format!("更新 {} 已交接，EazyQQ 将退出并启动安装；QQ 会话保持运行。交接成功不代表安装已经完成。", receipt.operation_id)))
 }
 
 pub use crate::services::infra::updates::core::{detect_local_napcat_version, current_napcat_version};
