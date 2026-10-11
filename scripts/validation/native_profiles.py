@@ -23,6 +23,7 @@ sys.path.insert(0, str(PROJECT / 'scripts/validation'))
 from login_layout import validate_login_layout
 from ai_health_ui import validate_ai_health
 from update_history_ui import seed_update_history, validate_update_history
+from sentry_live_ui import validate_sentry_live
 GUI = Path(os.environ.get("EAZYQQ_TEST_GUI", PROJECT / "src-tauri/target/release/eazyqq.exe"))
 CLI = Path(os.environ.get("EAZYQQ_TEST_CLI", PROJECT / "src-tauri/target/release/eazyqq_cli.exe"))
 FIXTURES = PROJECT / ".test-runtime"
@@ -269,6 +270,8 @@ try:
     client.screenshot(ROOT / "free-model-discovery.png")
     validate_ai_health(client, ROOT)
     validate_update_history(client, ROOT, run)
+    if os.environ.get('EAZYQQ_TEST_LIVE_TELEMETRY') == '1':
+        validate_sentry_live(client, ROOT)
     assert client.evaluate("localStorage.getItem('eazyqq_profile_validation')") is None
     client.evaluate("localStorage.setItem('eazyqq_profile_validation', '10001'); true")
     assert (registry_path.parent / "10001/webview/main/EBWebView").exists(), "The primary account used a shared browser profile"

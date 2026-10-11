@@ -21,12 +21,21 @@ use context::Services;
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> ExitCode {
     if let Some(code) = eazyqq_lib::services::infra::updates::run_helper_if_requested() {
+        eazyqq_lib::services::infra::telemetry::flush();
         return ExitCode::from(code as u8);
     }
     if let Some(code) = eazyqq_lib::services::protocol::ownership::run_supervisor_if_requested() {
         return ExitCode::from(code as u8);
     }
+    let _telemetry = eazyqq_lib::services::infra::telemetry::initialize("cli");
     let args = Args::parse();
+    if args.command == "telemetry" {
+        eazyqq_lib::services::logging::init(false);
+        return match commands::system::cmd_telemetry(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => { eprintln!("错误: {error}"); ExitCode::FAILURE }
+        };
+    }
 
     if args.command.is_empty() || args.command == "help" || args.has("help") {
         if args.json() {
@@ -185,6 +194,7 @@ async fn main() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
+            eazyqq_lib::services::infra::telemetry::capture_failure(&format!("cli.{}", args.command), None, None);
             eprintln!("错误: {}", e);
             ExitCode::FAILURE
         }

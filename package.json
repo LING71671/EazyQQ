@@ -25,6 +25,7 @@
     "presentation:check": "node scripts/validation/presentation.mjs"
   },
   "dependencies": {
+    "@sentry/react": "11.6.0",
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-dialog": "^2.2.0",
     "@tauri-apps/plugin-fs": "^2.2.0",

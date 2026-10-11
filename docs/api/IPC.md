@@ -103,6 +103,8 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 
 ## 更新状态与事件
 
+后续开发新增（未发布）：`get_telemetry_status()`返回`{enabled,configured,component,release}`；`test_telemetry()`发送合成诊断，返回`{eventId,flushed,release}`。状态读取不发送测试，测试由用户显式操作。flushed只证明队列处理完成，服务器接收需按eventId核对。配置与隐私范围见[接入文档](../observability/SENTRY.md)。
+
 后续开发新增接口（未进入已公开0.6.4）：`get_update_history({})`返回`ApiResponse<UpdateReceipt[]>`，与CLI `updates history`读取同一暂存上下文的回执，按开始时间倒序最多50条。读取不创建目录、不运行安装、不改变QQ。当前阶段仅记录主程序安装交接；尚不覆盖下载与核心更新。
 
 回执字段为`schemaVersion=1`、`operationId`、`component=app`、`targetVersion?`、`phase`、`startedAtMs`、`updatedAtMs`、`installerExitCode?`、`error?`。阶段为`handoff`、`waiting_parent`、`verifying`、`installing`、`installer_succeeded`、`failed`。`installer_succeeded`只证明安装程序在安装阶段退出0，不能代替新程序版本验证。未结束的记录保持原阶段，不凭时间推断失败。损坏/身份不符回执会报错，不伪装为成功。

@@ -4,6 +4,7 @@ use tauri::{command, State};
 use tauri::Emitter;
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.detect_free_models", skip_all, err)]
 pub async fn detect_free_models(app:tauri::AppHandle,state:State<'_,AppState>,probe:Option<bool>,request_id:Option<String>)
     ->Result<ApiResponse<crate::services::ai::free_models::FreeModelsReport>,String> {
     let request_id=request_id.unwrap_or_default();
@@ -16,6 +17,7 @@ pub async fn detect_free_models(app:tauri::AppHandle,state:State<'_,AppState>,pr
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.test_ai_connection", skip_all, err)]
 pub async fn test_ai_connection(
     state: State<'_, AppState>,
     provider: Option<String>,
@@ -70,6 +72,7 @@ pub async fn test_ai_connection(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.fetch_provider_models", skip_all, err)]
 pub async fn fetch_provider_models(
     provider: String,
     base_url: Option<String>,

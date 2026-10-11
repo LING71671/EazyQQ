@@ -4,6 +4,7 @@ use tauri::{command, State};
 
 /// Full end-to-end link report for the frontend.
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.get_chain_status", skip_all, err)]
 pub async fn get_chain_status(
     state: State<'_, AppState>,
 ) -> Result<ApiResponse<serde_json::Value>, String> {
@@ -23,6 +24,7 @@ pub async fn get_chain_status(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.check_dependencies", skip_all, err)]
 pub async fn check_dependencies(
     state: State<'_, AppState>,
 ) -> Result<ApiResponse<DependencyHealthReport>, String> {
@@ -112,6 +114,7 @@ pub async fn check_dependencies(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.export_diagnostics_bundle", skip_all, err)]
 pub async fn export_diagnostics_bundle(
     state: State<'_, AppState>,
 ) -> Result<ApiResponse<serde_json::Value>, String> {
@@ -131,6 +134,7 @@ pub async fn export_diagnostics_bundle(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.repair_chain", skip_all, err)]
 pub async fn repair_chain(
     app: tauri::AppHandle,
     state: State<'_, AppState>,

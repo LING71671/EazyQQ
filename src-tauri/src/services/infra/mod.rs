@@ -33,3 +33,4 @@ pub mod protocol_update;
 pub mod runtime_config;
 
 pub mod updates;
+pub mod telemetry;

@@ -228,6 +228,9 @@ export interface UpdateReceipt {
   error: string | null;
 }
 
+export interface TelemetryStatus { enabled: boolean; configured: boolean; component: string; release: string }
+export interface TelemetryTest { eventId: string; flushed: boolean; release: string }
+
 export interface NapCatUpdateInfo {
   currentVersion: string;
   latestVersion: string;

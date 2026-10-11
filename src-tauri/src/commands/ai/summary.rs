@@ -3,6 +3,7 @@ use crate::models::{ApiResponse, GroupSummaryDto};
 use tauri::{command, State};
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.generate_summary", skip_all, err)]
 pub async fn generate_summary(
     state: State<'_, AppState>,
     target_id: String,
@@ -38,6 +39,7 @@ pub async fn generate_summary(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.generate_summary_stream", skip_all, err)]
 pub async fn generate_summary_stream(
     window: tauri::Window,
     state: State<'_, AppState>,
@@ -82,6 +84,7 @@ pub async fn generate_summary_stream(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.get_summary_history", skip_all, err)]
 pub async fn get_summary_history(
     state: State<'_, AppState>,
     target_id: Option<String>,
@@ -94,6 +97,7 @@ pub async fn get_summary_history(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.delete_summary", skip_all, err)]
 pub async fn delete_summary(
     state: State<'_, AppState>,
     id: String,

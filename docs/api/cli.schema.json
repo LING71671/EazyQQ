@@ -1156,6 +1156,22 @@
       }
     },
     {
+      "name": "telemetry",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "version",
       "inputSchema": {
         "type": "object",
@@ -1348,6 +1364,10 @@
       "cli": "summaries"
     },
     {
+      "ipc": "get_telemetry_status",
+      "cli": "telemetry status"
+    },
+    {
       "ipc": "get_update_history",
       "cli": "updates history"
     },
@@ -1412,6 +1432,10 @@
       "cli": "ai-test"
     },
     {
+      "ipc": "test_telemetry",
+      "cli": "telemetry test"
+    },
+    {
       "ipc": "trigger_ai_reply",
       "cli": "ask"
     },
@@ -1463,6 +1487,13 @@
       "install-napcat"
     ],
     "installRequires": "--confirm"
+  },
+  "telemetry": {
+    "operations": [
+      "status",
+      "test"
+    ],
+    "testRequires": "--confirm"
   },
   "mcp": {
     "transport": "stdio",

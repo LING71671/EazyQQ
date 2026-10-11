@@ -10,6 +10,8 @@ use super::receipts::{Journal, Phase, UpdateReceipt};
 struct Request {
     #[serde(default)]
     operation_id: Option<String>,
+    #[serde(default)]
+    telemetry_dsn: Option<String>,
     parent_id: u32,
     installer: PathBuf,
     sha256: String,
@@ -33,6 +35,7 @@ pub(super) fn run_helper(request_path: &Path) -> Result<(),String> {
     if std::fs::canonicalize(request_path.parent().ok_or("Request has no directory")?).map_err(|e|e.to_string())?
         != std::fs::canonicalize(root).map_err(|e|e.to_string())? {return Err("Update request is outside the helper directory".into());}
     let request:Request=serde_json::from_slice(&std::fs::read(request_path).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+    let _telemetry = request.telemetry_dsn.as_deref().and_then(|dsn| crate::services::infra::telemetry::initialize_from_dsn("update-helper", dsn));
     let journal = request.operation_id.as_deref().map(|id| Journal::resume(root, id)).transpose()?;
     let mut exit_code = None;
     let result=(|| {
@@ -62,6 +65,7 @@ pub(super) fn run_helper(request_path: &Path) -> Result<(),String> {
     })();
     if let Err(error)=&result {
         if let Some(journal) = &journal { let _ = journal.update(Phase::Failed, exit_code, Some(error)); }
+        crate::services::infra::telemetry::capture_failure("update.installer", request.operation_id.as_deref(), exit_code);
         let _=std::fs::write(request_path.with_extension("error.log"),error);
         if let Some(previous)=&request.previous_executable {
             let mut app=std::process::Command::new(previous);
@@ -133,6 +137,7 @@ fn launch_inner(prepared:&PreparedUpdate,desktop:bool,journal:&Journal)->Result<
         let request=root.join(format!("handoff-{}.json",journal.id()));
         crate::services::infra::persistence::write_json(&request,&Request {
             operation_id: Some(journal.id().into()),
+            telemetry_dsn: crate::services::infra::telemetry::helper_dsn(),
             parent_id:std::process::id(),installer:installer_path.clone(),sha256:prepared.sha256.clone(),size:prepared.size,
             install_directory:if desktop {source.parent().map(Path::to_path_buf)} else {None},
             previous_executable:desktop.then_some(source),root_override:std::env::var_os("EAZYQQ_ROOT")

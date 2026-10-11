@@ -59,6 +59,7 @@ pub const COMMANDS: &[&str] = &[
     "summarize",
     "summary-delete",
     "updates",
+    "telemetry",
     "version",
     "whitelist-groups",
     "window",

@@ -3,6 +3,7 @@ use crate::models::{ApiResponse, FileSummaryResultDto, GroupFileItemDto};
 use tauri::{command, State};
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.get_group_files", skip_all, err)]
 pub async fn get_group_files(
     state: State<'_, AppState>,
     group_id: String,
@@ -38,6 +39,7 @@ pub async fn get_group_files(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.download_file", skip_all, err)]
 pub async fn download_file(
     state: State<'_, AppState>,
     group_id: String,
@@ -66,6 +68,7 @@ pub async fn download_file(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.summarize_file", skip_all, err)]
 pub async fn summarize_file(
     state: State<'_, AppState>,
     local_file_path: String,
@@ -75,6 +78,7 @@ pub async fn summarize_file(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.open_folder", skip_all, err)]
 pub async fn open_folder(target_path: String) -> Result<ApiResponse<()>, String> {
     let base_data = crate::services::logging::data_dir();
     let path = if target_path.is_empty() || target_path == "." {

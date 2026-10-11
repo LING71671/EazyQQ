@@ -129,6 +129,7 @@ async fn forward_summary_to_self(onebot: &Arc<OneBotClient>, outcome: &summarize
     }
 }
 
+#[tracing::instrument(name = "eazyqq.scheduler.tick", skip_all)]
 pub async fn tick(
     db: &Arc<Database>,
     ai: &Arc<AiService>,

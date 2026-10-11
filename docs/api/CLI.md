@@ -100,6 +100,8 @@ eazyqq_cli repair --json
 
 ## MCP 与环境
 
+后续开发新增（未发布）：`telemetry status --json`读取诊断状态；`telemetry test --confirm --json`向Sentry发送合成测试。没有confirm则拒绝发送。SDK在普通程序中默认关闭，具体变量与数据范围见[接入文档](../observability/SENTRY.md)。
+
 运行 `eazyqq_cli [--account QQ] mcp`，使用 JSON-RPC `initialize`、`tools/list`、`tools/call`。通知不返回响应，实际工具 schema 由服务返回，版本来自当前构建。
 
 `EAZYQQ_ROOT` 指定数据与资源根目录；默认根据安装/源码位置解析。普通云模型密钥可来自专用配置或通用兼容服务环境变量，免费 OpenCode 不自动采用这些密钥。Python 环境与包管理约束仍遵循 `AGENTS.md`。

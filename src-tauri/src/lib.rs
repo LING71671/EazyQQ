@@ -560,6 +560,8 @@ pub fn run() {
             app_get_window_behavior,
             check_app_update,
             get_update_history,
+            get_telemetry_status,
+            test_telemetry,
             get_qq_path,
             set_qq_path,
             get_napcat_version,

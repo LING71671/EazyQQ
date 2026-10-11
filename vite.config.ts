@@ -2,7 +2,7 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'path';
-import { appendFileSync } from 'fs';
+import { appendFileSync, readFileSync } from 'fs';
 
 // https://vitejs.dev/config/
 
@@ -34,6 +34,7 @@ const requestLogger = (): Plugin => ({
 });
 
 export default defineConfig({
+  define: { __EAZYQQ_RELEASE__: JSON.stringify(process.env.EAZYQQ_SENTRY_RELEASE || `eazyqq@${JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8')).version}`) },
   plugins: [requestLogger(), react(), tailwindcss()],
   resolve: {
     alias: {

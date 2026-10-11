@@ -34,11 +34,13 @@ GUI 通过 `select_for_restart` 保存目标，当前进程的身份保持至退
 | `services/ai/` | `runtime/` 调用与配置，`catalog/` 模型目录，`tests/` |
 | `services/storage/` | `database/` 连接与结构，`tables/` 各表操作，`tests/` |
 | `services/workflows/` | `files/` 文档和群文件，`summaries/` 简报，`monitoring/` 链路，`tests/` |
-| `services/infra/` | `system/` 配置、版本、持久化；`updates/` 选择、下载、安装交接与核心升级；`diagnostics/` 日志包 |
+| `services/infra/` | `system/` 配置、版本、持久化；`updates/` 选择、下载、安装交接与核心升级；`diagnostics/` 日志包；`telemetry/` 可选 Sentry 诊断与字段白名单 |
 | `bin/eazyqq_cli/commands/` | `protocol/`、`chat/`、`ai/`、`system/`、`integrations/` |
 | `src/` | `api/` 契约，`hooks/` 状态，`features/` 领域辅助，`components/` 与 `views/` 界面 |
 
 Rust 模块入口保留公共导出，具体文件按职责分类。增加文件时选择已有子目录；目录职责变宽时继续拆分，避免用一个服务文件承载账号、网络、模型和界面。
+
+开发分支新增可选 Sentry 接入，前端位于 `src/features/telemetry/`。启用方式、数据边界、事件验收及尚未配置的符号上传见 [Sentry 运维文档](observability/SENTRY.md)；此增量尚未进入公开 0.6.4 安装包。
 
 ## 数据与浏览器隔离
 

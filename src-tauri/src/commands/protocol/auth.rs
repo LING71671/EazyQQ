@@ -42,6 +42,7 @@ pub fn reconcile_account(app: &tauri::AppHandle, observed: &str) -> Result<(),St
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.get_protocol_status", skip_all, err)]
 pub async fn get_protocol_status(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
@@ -124,6 +125,7 @@ pub async fn get_protocol_status(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.quick_login", skip_all, err)]
 pub async fn quick_login(app: tauri::AppHandle, uin: String) -> Result<ApiResponse<()>, String> {
     let source = crate::services::napcat_boot::locate_napcat_dir();
     match crate::services::protocol::accounts::login(&source, &uin).await {
@@ -151,6 +153,7 @@ pub async fn quick_login(app: tauri::AppHandle, uin: String) -> Result<ApiRespon
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.get_quick_login_accounts", skip_all, err)]
 pub async fn get_quick_login_accounts(
     state: State<'_, AppState>,
 ) -> Result<ApiResponse<Vec<QuickLoginAccountDto>>, String> {
@@ -178,6 +181,7 @@ pub async fn get_quick_login_accounts(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.refresh_qrcode", skip_all, err)]
 pub async fn refresh_qrcode(
     state: State<'_, AppState>,
 ) -> Result<ApiResponse<serde_json::Value>, String> {
@@ -224,6 +228,7 @@ pub async fn refresh_qrcode(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.logout", skip_all, err)]
 pub async fn logout(state: State<'_, AppState>) -> Result<ApiResponse<()>, String> {
     tracing::info!("logout requested: stopping NapCat protocol session");
     crate::services::protocol::boot::set_auto_start(false);
@@ -243,6 +248,7 @@ pub async fn logout(state: State<'_, AppState>) -> Result<ApiResponse<()>, Strin
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.restart_napcat", skip_all, err)]
 pub async fn restart_napcat(
     app: tauri::AppHandle,
     state: State<'_, AppState>,

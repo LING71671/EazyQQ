@@ -76,6 +76,7 @@ impl AiService {
     }
 
     fn record_inference(&self, tested: &AiRuntimeConfig, sequence: u64, result: &Result<(String, Option<String>), String>) {
+        if result.is_err() { crate::services::infra::telemetry::capture_failure("ai.inference", None, None); }
         if let Ok(config) = self.config.read() {
             if let Ok(mut evidence) = self.evidence.lock() {
                 evidence.record(&config, tested, sequence, result.as_ref().err().map(String::as_str));
@@ -120,6 +121,7 @@ impl AiService {
     ///
     /// Returns `(content, reasoning_content)`.
     /// Single place that talks to the OpenAI-compatible endpoint with a specified config.
+    #[tracing::instrument(name = "eazyqq.ai.inference", skip_all)]
     pub async fn post_chat_with_config(&self, cfg: &AiRuntimeConfig, payload: Value) -> Result<(String, Option<String>), String> {
         let sequence = self.inference_sequence.fetch_add(1, Ordering::Relaxed);
         let result = self.send_chat_with_config(cfg, payload).await;
@@ -245,6 +247,7 @@ impl AiService {
     }
 
     /// Stream chat response token by token via Server-Sent Events.
+    #[tracing::instrument(name = "eazyqq.ai.stream", skip_all)]
     pub async fn stream_chat<F>(
         &self,
         payload: Value,

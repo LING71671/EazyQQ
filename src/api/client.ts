@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { observedInvoke as invoke } from '@/features/telemetry/client';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import type {
   ApiResponse,
@@ -23,6 +23,8 @@ import type {
   AppUpdateInfo,
   AppUpdateProgress,
   UpdateReceipt,
+  TelemetryStatus,
+  TelemetryTest,
   NapCatUpdateInfo,
   ModelInfoDto,
   FreeModelsReport,
@@ -30,6 +32,8 @@ import type {
 } from './contracts';
 
 export const api = {
+  getTelemetryStatus: (): Promise<ApiResponse<TelemetryStatus>> => invoke('get_telemetry_status'),
+  testTelemetry: (): Promise<ApiResponse<TelemetryTest>> => invoke('test_telemetry'),
   detectFreeModels: (probe: boolean, requestId: string): Promise<ApiResponse<FreeModelsReport>> => invoke('detect_free_models', { probe, requestId }),
   onFreeModelProgress: (callback: (progress: FreeModelProgress) => void): Promise<UnlistenFn> => listen<FreeModelProgress>('free-model-progress', event => callback(event.payload)),
   getAccountStatus: (uin: string): Promise<ApiResponse<AccountReport>> => invoke('get_account_status', { uin }),

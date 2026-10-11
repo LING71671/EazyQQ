@@ -12,8 +12,10 @@ const cliModule = read('src-tauri/src/bin/eazyqq_cli/commands/mod.rs');
 const cliFiles = new Map([...cliModule.matchAll(/#\[path = "([^"]+)"\]\s*pub mod (\w+);/g)].map(match => [match[2], match[1]]));
 const commands = [...read('src-tauri/src/bin/eazyqq_cli/commands/system/schema.rs').matchAll(/^\s+"([a-z-]+)",/gm)].map(match => match[1]);
 const route = new Map([...main.matchAll(/"([a-z-]+)"\s*=>\s*commands::(\w+)::(\w+)/g)].map(match => [match[1], [match[2], match[3]]]));
+for (const match of main.matchAll(/if args\.command == "([a-z-]+)"\s*\{\s*return match commands::(\w+)::(\w+)/g)) route.set(match[1], [match[2], match[3]]);
 const map = {
   detect_free_models: 'ai-free-models',
+  get_telemetry_status: 'telemetry status', test_telemetry: 'telemetry test',
   get_protocol_status: 'status', refresh_qrcode: 'qr --refresh', quick_login: 'quick-login', get_quick_login_accounts: 'quick-login-list', logout: 'logout',
   list_accounts: 'accounts list', get_account_status: 'accounts status', register_account: 'accounts add', batch_accounts: 'accounts start|stop|login', account_qrcode: 'accounts qr', configure_account: 'accounts configure', forget_account: 'accounts forget',
   get_contacts: 'contacts', get_chain_status: 'chain-status', repair_chain: 'repair', mark_read: 'mark-read', update_rule: 'rule', batch_update_mode: 'batch-mode',
@@ -51,6 +53,7 @@ const contract = { name: 'eazyqq_cli', version: JSON.parse(read('package.json'))
   ipcCoverage: ipc.map(name => ({ ipc: name, cli: map[name] })),
   accounts: { operations: ['list', 'status', 'add', 'select', 'qr', 'configure', 'forget', 'start', 'stop', 'login'], batchFlags: ['--uin', '--uins', '--all', '--dry-run'], dataDeletion: false },
   updates: { operations: ['versions', 'check-app', 'check-napcat', 'history', 'install-app', 'install-napcat'], installRequires: '--confirm' },
+  telemetry: { operations: ['status', 'test'], testRequires: '--confirm' },
   mcp: { transport: 'stdio', discovery: 'tools/list' }, documentation: 'docs/api/CLI.md' };
 const schema = JSON.stringify(contract, null, 2) + '\n';
 const matrix = '# 桌面接口与 CLI 覆盖矩阵\n\n根据已注册的桌面处理函数和 CLI 路由生成。修改任一适配层后运行 `pnpm contracts:check`；有意变更接口时运行 `pnpm contracts:write` 更新本文。\n\n| 桌面 IPC | CLI 对应操作 |\n| --- | --- |\n' + ipc.map(name => `| \`${name}\` | \`${map[name]}\` |`).join('\n') + '\n';

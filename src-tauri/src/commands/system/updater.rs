@@ -7,6 +7,7 @@ pub use crate::services::infra::updates::AppUpdateInfo;
 pub use crate::services::infra::updates::core::NapCatUpdateInfo;
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.get_update_history", skip_all, err)]
 pub async fn get_update_history() -> Result<ApiResponse<Vec<crate::services::infra::updates::receipts::UpdateReceipt>>, String> {
     let root = crate::services::infra::updates::staging_root();
     let values = tauri::async_runtime::spawn_blocking(move || crate::services::infra::updates::receipts::history(&root))
@@ -15,6 +16,7 @@ pub async fn get_update_history() -> Result<ApiResponse<Vec<crate::services::inf
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.check_app_update", skip_all, err)]
 pub async fn check_app_update() -> Result<ApiResponse<AppUpdateInfo>, String> {
     Ok(ApiResponse::ok(crate::services::infra::updates::check().await?))
 }
@@ -26,6 +28,7 @@ pub async fn upgrade_app_for(download_url: Option<String>) -> Result<ApiResponse
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.upgrade_app", skip_all, err)]
 pub async fn upgrade_app(app: tauri::AppHandle, download_url: Option<String>) -> Result<ApiResponse<String>, String> {
     use tauri::Emitter;
     let reporter = |progress| { let _ = app.emit("app-update-progress", progress); };
@@ -41,11 +44,13 @@ pub async fn upgrade_app(app: tauri::AppHandle, download_url: Option<String>) ->
 pub use crate::services::infra::updates::core::{detect_local_napcat_version, current_napcat_version};
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.get_napcat_version", skip_all, err)]
 pub async fn get_napcat_version(state: State<'_, AppState>) -> Result<ApiResponse<String>, String> {
     Ok(ApiResponse::ok(current_napcat_version(&state.onebot).await))
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.check_napcat_update", skip_all, err)]
 pub async fn check_napcat_update(state: State<'_, AppState>) -> Result<ApiResponse<NapCatUpdateInfo>, String> {
     check_napcat_update_for(&state.onebot).await
 }
@@ -59,6 +64,7 @@ pub async fn upgrade_napcat_for(download_url: Option<String>) -> Result<ApiRespo
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.upgrade_napcat", skip_all, err)]
 pub async fn upgrade_napcat(app: tauri::AppHandle, download_url: Option<String>) -> Result<ApiResponse<String>, String> {
     use tauri::Emitter;
     crate::services::infra::updates::core::upgrade(download_url, &|progress| { let _ = app.emit("napcat-update-progress",progress); }).await

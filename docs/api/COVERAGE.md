@@ -38,6 +38,7 @@
 | `get_qq_path` | `qq-path` |
 | `get_quick_login_accounts` | `quick-login-list` |
 | `get_summary_history` | `summaries` |
+| `get_telemetry_status` | `telemetry status` |
 | `get_update_history` | `updates history` |
 | `list_accounts` | `accounts list` |
 | `logout` | `logout` |
@@ -54,6 +55,7 @@
 | `set_qq_path` | `qq-path --set` |
 | `summarize_file` | `file-summarize` |
 | `test_ai_connection` | `ai-test` |
+| `test_telemetry` | `telemetry test` |
 | `trigger_ai_reply` | `ask` |
 | `update_config` | `set-config` |
 | `update_rule` | `rule` |

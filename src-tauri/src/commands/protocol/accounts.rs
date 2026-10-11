@@ -4,11 +4,13 @@ use crate::services::protocol::accounts;
 use tauri::{command, State};
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.list_accounts", skip_all, err)]
 pub async fn list_accounts() -> Result<ApiResponse<Vec<accounts::AccountReport>>, String> {
     Ok(ApiResponse::ok(accounts::list().await))
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.register_account", skip_all, err)]
 pub async fn register_account(
     uin: String,
     nickname: Option<String>,
@@ -18,6 +20,7 @@ pub async fn register_account(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.batch_accounts", skip_all, err)]
 pub async fn batch_accounts(
     operation: String,
     uins: Vec<String>,
@@ -29,6 +32,7 @@ pub async fn batch_accounts(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.account_qrcode", skip_all, err)]
 pub async fn account_qrcode(
     uin: String,
     refresh: Option<bool>,
@@ -76,12 +80,14 @@ pub async fn account_qrcode(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.configure_account", skip_all, err)]
 pub async fn configure_account(uin: String, auto_start: bool) -> Result<ApiResponse<()>, String> {
     crate::services::instances::configure_instance(&uin, auto_start)?;
     Ok(ApiResponse::ok(()))
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.forget_account", skip_all, err)]
 pub async fn forget_account(
     uin: String,
     state: State<'_, AppState>,
@@ -92,6 +98,7 @@ pub async fn forget_account(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.get_account_status", skip_all, err)]
 pub async fn get_account_status(
     uin: String,
 ) -> Result<ApiResponse<accounts::AccountReport>, String> {

@@ -8,6 +8,7 @@ use tauri::{command, State};
 /// `at` is a millisecond timestamp; the frontend passes the newest message it has
 /// rendered, and the database keeps the maximum so out-of-order calls cannot un-read.
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.mark_read", skip_all, err)]
 pub async fn mark_read(
     state: State<'_, AppState>,
     target_id: String,
@@ -30,6 +31,7 @@ pub async fn mark_read(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.get_contacts", skip_all, err)]
 pub async fn get_contacts(
     state: State<'_, AppState>,
 ) -> Result<ApiResponse<serde_json::Value>, String> {
@@ -187,6 +189,7 @@ pub async fn get_contacts(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.update_rule", skip_all, err)]
 pub async fn update_rule(
     state: State<'_, AppState>,
     rule: serde_json::Value,
@@ -306,6 +309,7 @@ pub async fn update_rule(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.batch_update_mode", skip_all, err)]
 pub async fn batch_update_mode(
     state: State<'_, AppState>,
     target_ids: Vec<String>,

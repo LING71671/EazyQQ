@@ -3,6 +3,7 @@ use crate::models::ApiResponse;
 use tauri::{command, State};
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.get_config", skip_all, err)]
 pub async fn get_config(
     state: State<'_, AppState>,
 ) -> Result<ApiResponse<serde_json::Value>, String> {
@@ -17,6 +18,7 @@ pub async fn get_config(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.update_config", skip_all, err)]
 pub async fn update_config(
     state: State<'_, AppState>,
     config: serde_json::Value,
@@ -46,6 +48,7 @@ pub async fn update_config(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.get_qq_path", skip_all, err)]
 pub async fn get_qq_path() -> Result<ApiResponse<String>, String> {
     let napcat_dir = crate::services::napcat_boot::locate_napcat_dir();
     match crate::services::protocol::patch::configured_qq_path(&napcat_dir) {
@@ -55,6 +58,7 @@ pub async fn get_qq_path() -> Result<ApiResponse<String>, String> {
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.set_qq_path", skip_all, err)]
 pub async fn set_qq_path(path: String) -> Result<ApiResponse<String>, String> {
     let candidate = std::path::PathBuf::from(path.trim());
     if !candidate.is_file() {

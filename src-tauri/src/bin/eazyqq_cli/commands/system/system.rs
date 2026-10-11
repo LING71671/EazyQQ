@@ -66,6 +66,17 @@ pub async fn cmd_updates(svc: &Services, args: &Args) -> Result<(), String> {
     Ok(())
 }
 
+pub fn cmd_telemetry(args: &Args) -> Result<(), String> {
+    let value = match args.positional.first().map(String::as_str).unwrap_or("status") {
+        "status" => services::infra::telemetry::status(),
+        "test" if args.has("confirm") => services::infra::telemetry::test_event()?,
+        "test" => return Err("发送Sentry诊断测试需要 --confirm".into()),
+        _ => return Err("Use telemetry status|test --confirm".into()),
+    };
+    print_json(&value);
+    Ok(())
+}
+
 pub fn cmd_delete_summary(svc: &Services, args: &Args) -> Result<(), String> {
     let id = args.flag("id").ok_or("Missing --id")?;
     svc.db.delete_summary(id).map_err(|e| e.to_string())?;

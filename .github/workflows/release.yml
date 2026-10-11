@@ -23,6 +23,8 @@ jobs:
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      EAZYQQ_SENTRY_DSN: ${{ vars.EAZYQQ_SENTRY_CORE_DSN }}
+      VITE_EAZYQQ_SENTRY_DSN: ${{ vars.EAZYQQ_SENTRY_UI_DSN }}
     steps:
       - name: Use canonical source line endings
         shell: pwsh
@@ -162,6 +164,7 @@ jobs:
             .test-runtime/native-profiles-*/login-layout.json
             .test-runtime/native-profiles-*/ai-health-synchronized.png
             .test-runtime/native-profiles-*/update-history-*.png
+            .test-runtime/native-profiles-*/sentry-diagnostic.png
             .test-runtime/native-profiles-*/native-failure.png
             .test-runtime/native-profiles-*/free-model-failure.json
             .test-runtime/native-profiles-*/EazyQQ_Data/accounts/*/*/logs/*.log

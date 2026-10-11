@@ -109,6 +109,7 @@ pub fn as_string_vec(value: Option<&serde_json::Value>) -> Vec<String> {
         .unwrap_or_default()
 }
 
+#[tracing::instrument(name = "eazyqq.summary.generate", skip_all)]
 pub async fn generate(
     db: &Arc<Database>,
     ai: &Arc<AiService>,
@@ -117,6 +118,7 @@ pub async fn generate(
     generate_stream(db, ai, req, |_| {}).await
 }
 
+#[tracing::instrument(name = "eazyqq.summary.stream", skip_all)]
 pub async fn generate_stream<F>(
     db: &Arc<Database>,
     ai: &Arc<AiService>,

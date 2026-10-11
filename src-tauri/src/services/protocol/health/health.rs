@@ -2,6 +2,7 @@
 use super::{NapCatService, OneBotClient};
 use crate::services::chain::{self, Link};
 
+#[tracing::instrument(name = "eazyqq.protocol.health", skip_all)]
 pub async fn refresh(napcat: &NapCatService, onebot: &OneBotClient) {
     let evidence = super::session::probe(napcat, onebot).await;
     let alive = napcat.is_alive().await;
@@ -56,6 +57,7 @@ pub fn recommended_action(link: Link) -> &'static str {
     }
 }
 
+#[tracing::instrument(name = "eazyqq.protocol.repair", skip_all)]
 pub async fn repair(napcat: &NapCatService, onebot: &OneBotClient) -> RepairReport {
     refresh(napcat, onebot).await;
     let Some(failed) = chain::first_break() else {

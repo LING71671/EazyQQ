@@ -3,6 +3,7 @@ use crate::models::{ApiResponse, MessageItemDto, PendingDraftDto};
 use tauri::{command, State};
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.get_messages", skip_all, err)]
 pub async fn get_messages(
     state: State<'_, AppState>,
     target_id: String,
@@ -128,6 +129,7 @@ pub async fn get_messages(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.send_message", skip_all, err)]
 pub async fn send_message(
     state: State<'_, AppState>,
     target_id: String,
@@ -192,6 +194,7 @@ pub async fn send_message(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.get_pending_drafts", skip_all, err)]
 pub async fn get_pending_drafts(
     state: State<'_, AppState>,
 ) -> Result<ApiResponse<Vec<PendingDraftDto>>, String> {
@@ -200,6 +203,7 @@ pub async fn get_pending_drafts(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.send_draft", skip_all, err)]
 pub async fn send_draft(
     state: State<'_, AppState>,
     draft_id: String,
@@ -280,6 +284,7 @@ pub async fn send_draft(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.dismiss_draft", skip_all, err)]
 pub async fn dismiss_draft(
     state: State<'_, AppState>,
     draft_id: String,
@@ -292,6 +297,7 @@ pub async fn dismiss_draft(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.regenerate_draft", skip_all, err)]
 pub async fn regenerate_draft(
     state: State<'_, AppState>,
     draft_id: String,
@@ -325,6 +331,7 @@ pub async fn regenerate_draft(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.trigger_ai_reply", skip_all, err)]
 pub async fn trigger_ai_reply(
     state: State<'_, AppState>,
     target_id: String,

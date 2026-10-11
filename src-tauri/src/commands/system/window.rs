@@ -35,6 +35,7 @@ pub fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.app_minimize_window", skip_all, err)]
 pub async fn app_minimize_window(
     window: tauri::Window,
     state: State<'_, AppState>,
@@ -49,6 +50,7 @@ pub async fn app_minimize_window(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.app_toggle_maximize_window", skip_all, err)]
 pub async fn app_toggle_maximize_window(window: tauri::Window) -> Result<bool, String> {
     if window.is_maximized().map_err(|e| e.to_string())? {
         window.unmaximize().map_err(|e| e.to_string())?;
@@ -61,6 +63,7 @@ pub async fn app_toggle_maximize_window(window: tauri::Window) -> Result<bool, S
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.app_close_window", skip_all, err)]
 pub async fn app_close_window(
     window: tauri::Window,
     state: State<'_, AppState>,
@@ -76,17 +79,20 @@ pub async fn app_close_window(
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.app_start_drag_window", skip_all, err)]
 pub async fn app_start_drag_window(window: tauri::Window) -> Result<(), String> {
     window.start_dragging().map_err(|e| e.to_string())
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.app_show_window", skip_all, err)]
 pub async fn app_show_window(app: tauri::AppHandle) -> Result<(), String> {
     show_main_window(&app);
     Ok(())
 }
 
 #[command]
+#[tracing::instrument(name = "eazyqq.ipc.app_get_window_behavior", skip_all, err)]
 pub async fn app_get_window_behavior(
     state: State<'_, AppState>,
 ) -> Result<ApiResponse<serde_json::Value>, String> {

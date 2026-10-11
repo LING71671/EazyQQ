@@ -8,6 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use tracing::Level;
 use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::prelude::*;
 
 const MAX_LOG_BYTES: u64 = 5 * 1024 * 1024;
 
@@ -205,12 +206,22 @@ pub fn init(mirror_stdout: bool) -> Option<PathBuf> {
         .and_then(|v| v.parse::<Level>().ok())
         .unwrap_or(Level::INFO);
 
-    let _ = tracing_subscriber::fmt()
+    let _ = tracing_subscriber::registry().with(tracing_subscriber::fmt::layer()
         .with_writer(writer)
-        .with_max_level(level)
         .with_ansi(false)
         .with_target(true)
         .with_thread_ids(false)
+        .with_filter(tracing_subscriber::filter::LevelFilter::from_level(level)))
+        .with(sentry_tracing::layer()
+            .event_filter(|metadata| {
+                if !metadata.target().starts_with("eazyqq") { return sentry_tracing::EventFilter::Ignore; }
+                match *metadata.level() {
+                    tracing::Level::ERROR => sentry_tracing::EventFilter::Event | sentry_tracing::EventFilter::Log,
+                    tracing::Level::WARN | tracing::Level::INFO => sentry_tracing::EventFilter::Log,
+                    _ => sentry_tracing::EventFilter::Ignore,
+                }
+            })
+            .span_filter(|metadata| metadata.name().starts_with("eazyqq.")))
         .try_init();
 
     install_panic_hook();
