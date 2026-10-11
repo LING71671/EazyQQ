@@ -1,0 +1,65 @@
+name: Development checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: development-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Types, contracts and frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v6.1.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm version:check
+      - run: pnpm presentation:check
+      - run: pnpm contracts:check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:release
+
+  windows:
+    name: Windows Rust and CLI
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      CARGO_BUILD_JOBS: '4'
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:rust
+      - name: Build development CLI
+        run: pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli
+      - name: Verify CLI with private simulated accounts
+        shell: pwsh
+        run: |
+          $env:EAZYQQ_TEST_CLI = (Resolve-Path src-tauri/target/debug/eazyqq_cli.exe).Path
+          pnpm test:smoke
+          exit $LASTEXITCODE

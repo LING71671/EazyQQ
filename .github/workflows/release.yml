@@ -39,6 +39,27 @@ jobs:
         with:
           node-version: 22
 
+      - name: Load publisher from the workflow revision
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $driverDirectory = Join-Path $env:RUNNER_TEMP 'eazyqq-release-driver'
+          New-Item -ItemType Directory -Path $driverDirectory -Force | Out-Null
+          foreach ($name in @('publish.mjs', 'publish.test.mjs')) {
+            $content = gh api "repos/$env:GITHUB_REPOSITORY/contents/scripts/release/${name}?ref=$env:GITHUB_SHA" --jq .content
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            [IO.File]::WriteAllBytes((Join-Path $driverDirectory $name), [Convert]::FromBase64String(($content -join '')))
+          }
+          $publisher = Join-Path $driverDirectory 'publish.mjs'
+          "EAZYQQ_RELEASE_PUBLISHER=$publisher" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Reject overwriting a public release
+        shell: pwsh
+        run: |
+          node --test (Join-Path (Split-Path $env:EAZYQQ_RELEASE_PUBLISHER) 'publish.test.mjs')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node $env:EAZYQQ_RELEASE_PUBLISHER --check
+
       - name: Install pnpm from package metadata
         uses: pnpm/action-setup@v6.1.0
 
@@ -157,22 +178,4 @@ jobs:
 
       - name: Publish release after all checks pass
         shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $assets = @(Get-ChildItem -LiteralPath "output/release/$version" -File | ForEach-Object FullName)
-          gh release view $env:RELEASE_TAG --json tagName 2>$null | Out-Null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $env:RELEASE_TAG --verify-tag --draft --title "EazyQQ $env:RELEASE_TAG" --notes-file "docs/release/$env:RELEASE_TAG.md"
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-          # Older clients pick the first exe asset; publish the desktop installer first.
-          $installer = @($assets | Where-Object { [IO.Path]::GetFileName($_) -eq "EazyQQ_${version}_x64-setup.exe" })
-          if ($installer.Count -ne 1) { throw 'Exactly one desktop installer is required' }
-          gh release upload $env:RELEASE_TAG @installer --clobber
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $otherAssets = @($assets | Where-Object { $_ -ne $installer[0] })
-          gh release upload $env:RELEASE_TAG @otherAssets --clobber
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          gh release edit $env:RELEASE_TAG --draft=false --prerelease=false --latest --title "EazyQQ $env:RELEASE_TAG" --notes-file "docs/release/$env:RELEASE_TAG.md"
-          exit $LASTEXITCODE
+        run: node $env:EAZYQQ_RELEASE_PUBLISHER

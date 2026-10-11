@@ -16,11 +16,14 @@
 
 ## 必须通过的检查
 
+普通main提交与PR先运行Development checks（类型、版本、展示、契约、前端、发布驱动回归、Windows Rust与模拟CLI）。此流程不上传资产，不代表完整安装/原生发布验收通过。
+
 ```powershell
 pnpm install --frozen-lockfile
 pnpm presentation:check
 pnpm typecheck
 pnpm test
+pnpm test:release
 pnpm test:rust
 pnpm contracts:check
 pnpm tauri:build
@@ -52,9 +55,9 @@ git diff --check
 发布工作流由 `v*` 标签或带标签参数的手动触发启动。它确认标签与清单版本相同，准备官方协议资源，执行类型/单元/CLI/原生测试，构建及打包后才建立并发布 Release。
 
 ```powershell
-git tag -a v0.6.3 -m "Release 0.6.3"
+git tag -a v0.6.4 -m "Release 0.6.4"
 git push origin main
-git push origin v0.6.3
+git push origin v0.6.4
 gh run list --workflow release.yml
 ```
 
@@ -63,5 +66,7 @@ gh run list --workflow release.yml
 GitHub Windows runner 的提升权限 WebView2 忽略环境变量和 HKCU 调试参数。原生验证驱动仅在托管 CI 中临时设置本应用 HKLM 调试策略，结束后恢复；普通本机验证不修改注册表。原生检查仍是发布门禁，不能以跳过检查解决调试入口故障。
 
 ## 发布后验证
+
+scripts/release/publish.mjs在构建前及每次资产/公开操作前检查目标状态。已公开版本拒绝覆盖；仅草稿可恢复中断上传。HTTP404以外的读取失败导致停止，不能当作不存在。驱动跟随工作流来源，应用仍跟随标签。需要修改公开版本时创建新版本，不重跑上传覆盖旧版。
 
 核对 Release 为目标标签、资产齐全、公开下载可用；下载 CLI ZIP 到独立目录核验校验和与 `version --json`。检查该标签的工作流结果和来源修订，记录发布链接及证据。

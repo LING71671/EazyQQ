@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:rust": "pwsh -NoProfile -File scripts/cargo.ps1 test --all-targets",
+    "test:release": "node --test scripts/release/publish.test.mjs",
     "version:check": "node scripts/version/check.mjs",
     "test:smoke": "python scripts/validation/cli_smoke.py",
     "test:native": "python scripts/validation/native_profiles.py",

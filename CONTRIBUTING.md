@@ -42,4 +42,6 @@ CLI/原生验收使用独立根目录和模拟协议。真实 QQ 验收需要保
 
 ## 提交与发布
 
+main提交和PR自动运行Development checks，包含前端/契约/发布脚本与Windows Rust/模拟CLI。开发CI不上传或安装正式资产，完整原生/安装验收仍由发布流程负责。后续任务与验收证据见[开发路线](docs/development/ROADMAP.md)。
+
 提交前运行 `git diff --check` 并复核敏感配置没有进入 Git 或资源包。更新开发记录中的起始状态、原因、决策、证据、未完成项。发布流程见 [RELEASING.md](docs/release/RELEASING.md)。
