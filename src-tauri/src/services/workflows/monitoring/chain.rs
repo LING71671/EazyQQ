@@ -74,6 +74,8 @@ pub struct LinkReport {
     pub impact: String,
     pub health: Health,
     pub detail: String,
+    #[serde(rename = "recommendedAction")]
+    pub recommended_action: String,
     pub last_ok_secs_ago: Option<u64>,
     pub last_error_secs_ago: Option<u64>,
 }
@@ -164,6 +166,7 @@ pub fn snapshot() -> Vec<LinkReport> {
                 detail: entry
                     .map(|e| e.detail.clone())
                     .unwrap_or_else(|| "尚未检测".into()),
+                recommended_action: recovery_action(*link, entry.map(|e| e.health).unwrap_or(Health::Unknown)).into(),
                 last_ok_secs_ago: entry
                     .and_then(|e| e.last_ok)
                     .map(|t| now.duration_since(t).as_secs()),
@@ -185,6 +188,64 @@ pub fn uptime_secs() -> u64 {
 
 pub fn has_failure() -> bool {
     snapshot().iter().any(|r| r.health == Health::Failed)
+}
+
+pub fn recovery_action(link: Link, health: Health) -> &'static str {
+    if health == Health::Ok { return "none"; }
+    if health == Health::Unknown {
+        return match link {
+            Link::QqLogin => "login",
+            Link::AiProvider => "test_model",
+            Link::OneBotWs | Link::Scheduler | Link::Frontend => "wait_for_evidence",
+            Link::OneBotHttp => "confirm_login",
+            Link::NapcatWebUi => "inspect_webui",
+            Link::Database => "inspect_storage",
+        };
+    }
+    crate::services::protocol::health::recommended_action(link)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChainStatusReport {
+    pub links: Vec<LinkReport>,
+    pub first_break: Option<LinkReport>,
+    pub has_failure: bool,
+    pub uptime_secs: u64,
+}
+
+pub fn status_report() -> ChainStatusReport {
+    let links = snapshot();
+    let first_break = links.iter().find(|link| link.health == Health::Failed).cloned();
+    ChainStatusReport { has_failure: first_break.is_some(), first_break, links, uptime_secs: uptime_secs() }
+}
+
+pub async fn refresh_status(
+    db: &crate::services::db::Database,
+    napcat: &crate::services::napcat::NapCatService,
+    onebot: &crate::services::onebot::OneBotClient,
+    ai: &crate::services::ai::AiService,
+) -> ChainStatusReport {
+    crate::services::infra::runtime_config::refresh_ai(db, ai);
+    refresh_ai_status(ai);
+    match db.get_setting("app_config") {
+        Ok(_) => record_ok(Link::Database, "数据库读取正常"),
+        Err(error) => record_error(Link::Database, format!("数据库读取失败：{error}")),
+    }
+    crate::services::protocol::health::refresh(napcat, onebot).await;
+    status_report()
+}
+
+#[cfg(test)]
+mod report_tests {
+    use super::*;
+    #[test]
+    fn unknown_states_offer_evidence_actions_without_restart() {
+        assert_eq!(recovery_action(Link::AiProvider, Health::Unknown), "test_model");
+        assert_eq!(recovery_action(Link::QqLogin, Health::Unknown), "login");
+        assert_eq!(recovery_action(Link::OneBotWs, Health::Unknown), "wait_for_evidence");
+        for link in Link::all() { assert_eq!(recovery_action(link, Health::Ok), "none"); }
+    }
 }
 
 fn napcat_setting(db: &crate::services::db::Database, key: &str) -> Option<serde_json::Value> {

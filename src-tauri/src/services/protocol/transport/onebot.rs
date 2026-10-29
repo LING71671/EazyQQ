@@ -425,7 +425,10 @@ fn validate_response(status: reqwest::StatusCode, value: &Value) -> Result<(), S
             "OneBot action failed (HTTP {}, retcode {}): {}",
             status,
             value["retcode"],
-            value["message"].as_str().unwrap_or("Invalid response")
+            value["wording"]
+                .as_str()
+                .or_else(|| value["message"].as_str())
+                .unwrap_or("Invalid response")
         ));
     }
     Ok(())

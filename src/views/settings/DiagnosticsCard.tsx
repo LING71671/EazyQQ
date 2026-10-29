@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   X,
   Cpu,
@@ -12,6 +12,7 @@ import {
 import type { DependencyHealthReport } from '@/api/contracts';
 import { api } from '@/api/client';
 import { useChainStatus } from '@/features/health/useChainStatus';
+import { describeRepair } from '@/features/health/repairResult';
 
 export type ChainLink = {
   link: string;
@@ -19,6 +20,7 @@ export type ChainLink = {
   impact: string;
   health: 'ok' | 'unknown' | 'failed';
   detail: string;
+  recommendedAction?: string;
 };
 
 interface DiagnosticsCardProps {
@@ -34,28 +36,32 @@ export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
   onExportDiagnostics,
   diagnosticsPath,
 }) => {
-  const { links: chainLinks, firstBreak: chainFirstBreak, isLoading: chainLoading, error: chainError, refresh: loadChain } = useChainStatus();
-  const [isRestartingNapcat, setIsRestartingNapcat] = useState(false);
+  const { links: chainLinks, isLoading: chainLoading, error: chainError, refresh: loadChain } = useChainStatus();
+  const chainFirstBreak = chainLinks.find(link => link.health === 'failed');
+  const [isRepairing, setIsRepairing] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [actionFailed, setActionFailed] = useState(false);
+  const repairing = useRef(false);
 
-  const handleRestartProtocol = async () => {
-    setIsRestartingNapcat(true);
-    setActionNotice('正在唤醒/重启 NapCat 协议端...');
+  const handleRepair = async () => {
+    if (repairing.current) return;
+    repairing.current = true;
+    setIsRepairing(true);
+    setActionFailed(false);
+    setActionNotice('正在诊断并按故障恢复…');
     try {
-      const res = await api.restartNapCat();
-      if (res.success) {
-        setActionNotice(`NapCat 唤醒指令已发送: ${res.data?.detail || '已尝试引导启动'}`);
-        setTimeout(() => {
-          loadChain();
-          onCheckHealth();
-        }, 2000);
-      } else {
-        setActionNotice(`唤醒失败: ${res.error?.message || '未知错误'}`);
-      }
-    } catch (e: any) {
-      setActionNotice(`唤醒异常: ${e?.message || e}`);
+      const res = await api.repairChain();
+      if (!res.success || !res.data) throw new Error(res.error?.message || '未收到恢复结果');
+      setActionNotice(describeRepair(res.data));
+      setActionFailed(res.data.attempted && !res.data.ok);
+      void loadChain();
+      onCheckHealth();
+    } catch (e) {
+      setActionFailed(true);
+      setActionNotice(`诊断/恢复失败：${e instanceof Error ? e.message : String(e)}。请重新检测后重试。`);
     } finally {
-      setIsRestartingNapcat(false);
+      repairing.current = false;
+      setIsRepairing(false);
     }
   };
 
@@ -173,12 +179,12 @@ export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={handleRestartProtocol}
-              disabled={isRestartingNapcat}
+              onClick={handleRepair}
+              disabled={isRepairing}
               className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 text-xs font-medium disabled:opacity-50 transition-colors shrink-0 cursor-pointer"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRestartingNapcat ? 'animate-spin' : ''}`} />
-              <span>{isRestartingNapcat ? '唤醒中…' : '一键唤醒协议端'}</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isRepairing ? 'animate-spin' : ''}`} />
+              <span>{isRepairing ? '诊断/恢复中…' : '检查并按故障恢复'}</span>
             </button>
             <button
               onClick={loadChain}
@@ -192,7 +198,7 @@ export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
         </div>
 
         {actionNotice && (
-          <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 text-xs text-sky-800 flex items-center justify-between animate-in fade-in">
+          <div role={actionFailed ? 'alert' : 'status'} className={`p-3 rounded-xl border text-xs flex items-start justify-between gap-2 ${actionFailed ? 'bg-red-50 border-red-200 text-red-800' : 'bg-sky-50 border-sky-200 text-sky-800'}`}>
             <span>{actionNotice}</span>
             <button onClick={() => setActionNotice(null)} aria-label="关闭操作提示" className="text-sky-500 hover:text-sky-700 ml-2 cursor-pointer"><X className="h-4 w-4" /></button>
           </div>
@@ -206,14 +212,15 @@ export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
               </span>
               <span className="text-red-800 block mt-0.5">{chainFirstBreak.detail}</span>
               <span className="text-red-700 block mt-1">影响：{chainFirstBreak.impact}</span>
+              {chainFirstBreak.recommendedAction && <span className="block mt-1 text-red-800">建议：{chainFirstBreak.recommendedAction}</span>}
             </div>
             {chainFirstBreak.label.includes('NapCat') || chainFirstBreak.label.includes('OneBot') ? (
               <button
-                onClick={handleRestartProtocol}
-                disabled={isRestartingNapcat}
+                onClick={handleRepair}
+                disabled={isRepairing}
                 className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium text-xs shrink-0 shadow-xs transition-colors cursor-pointer"
               >
-                一键启动/重启
+                按故障恢复
               </button>
             ) : null}
           </div>
@@ -250,6 +257,7 @@ export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
                       影响：{link.impact}
                     </span>
                   )}
+                  {link.recommendedAction && <span className="block mt-1 break-words text-xs text-slate-600">建议：{link.recommendedAction}</span>}
                 </div>
               </div>
 
@@ -258,11 +266,11 @@ export const DiagnosticsCard: React.FC<DiagnosticsCardProps> = ({
                 <div className="shrink-0">
                   {(link.link.includes('napcat') || link.link.includes('one_bot')) && (
                     <button
-                      onClick={handleRestartProtocol}
-                      disabled={isRestartingNapcat}
+                      onClick={handleRepair}
+                      disabled={isRepairing}
                       className="px-2.5 py-1 text-[11px] rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 font-medium transition-colors cursor-pointer"
                     >
-                      一键拉起
+                      按故障恢复
                     </button>
                   )}
 

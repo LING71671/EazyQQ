@@ -76,7 +76,6 @@ pub fn run() {
     services::logging::init(true);
     services::logging::log_paths();
 
-    let root_dir = services::logging::workspace_root();
     let data_dir = services::logging::data_dir();
     services::logging::ensure_dir(&data_dir);
 
@@ -249,6 +248,9 @@ pub fn run() {
     };
 
     // Keep localStorage, cached summaries and browser state private to this account.
+    if let Err(error) = services::infra::updates::confirm_app_startup() {
+        tracing::warn!("could not verify this application startup: {}", error);
+    }
     let mut context = tauri::generate_context!();
     let windows: Vec<_> = context
         .config()
@@ -496,18 +498,8 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                let close_to_tray = window
-                    .app_handle()
-                    .try_state::<AppState>()
-                    .map(|state| read_window_behavior(&state.db).1)
-                    .unwrap_or(true);
-                if close_to_tray {
-                    tracing::info!("close requested: close_to_tray=true, hiding window");
-                    api.prevent_close();
-                    let _ = window.hide();
-                } else {
-                    tracing::info!("close requested: close_to_tray=false, letting the app exit");
-                }
+                api.prevent_close();
+                request_system_window_close(window.clone());
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -549,6 +541,7 @@ pub fn run() {
             test_ai_connection,
             fetch_provider_models,
             detect_free_models,
+            cancel_free_model_detection,
             check_dependencies,
             restart_napcat,
             export_diagnostics_bundle,

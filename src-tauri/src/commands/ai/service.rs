@@ -7,12 +7,20 @@ use tauri::Emitter;
 #[tracing::instrument(name = "eazyqq.ipc.detect_free_models", skip_all, err)]
 pub async fn detect_free_models(app:tauri::AppHandle,state:State<'_,AppState>,probe:Option<bool>,request_id:Option<String>)
     ->Result<ApiResponse<crate::services::ai::free_models::FreeModelsReport>,String> {
-    let request_id=request_id.unwrap_or_default();
-    if request_id.len()>128 {return Err("检测请求编号过长".into());}
+    let request_id=request_id.filter(|id| !id.is_empty()).unwrap_or_else(|| format!("desktop-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()));
     match crate::services::ai::free_models::detect(state.ai.runtime_dir(),probe.unwrap_or(false),&request_id,
         |progress|{let _=app.emit("free-model-progress",progress);}).await {
         Ok(report)=>Ok(ApiResponse::ok(report)),
         Err(error)=>Ok(ApiResponse::err(1003,error,None)),
+    }
+}
+
+#[command]
+#[tracing::instrument(name = "eazyqq.ipc.cancel_free_model_detection", skip_all, err)]
+pub fn cancel_free_model_detection(state: State<'_, AppState>, request_id: String) -> Result<ApiResponse<bool>, String> {
+    match crate::services::ai::free_models::cancel(state.ai.runtime_dir(), &request_id) {
+        Ok(cancelled) => Ok(ApiResponse::ok(cancelled)),
+        Err(error) => Ok(ApiResponse::err(1003, error, None)),
     }
 }
 

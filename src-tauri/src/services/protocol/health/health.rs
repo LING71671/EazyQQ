@@ -7,33 +7,34 @@ pub async fn refresh(napcat: &NapCatService, onebot: &OneBotClient) {
     let evidence = super::session::probe(napcat, onebot).await;
     let alive = napcat.is_alive().await;
     if alive {
-        chain::record_ok(Link::NapcatWebUi, "WebUI reachable");
+        chain::record_ok(Link::NapcatWebUi, "WebUI 已响应");
     } else {
         chain::record_error(
             Link::NapcatWebUi,
-            "WebUI unavailable; QQ session may still be online",
+            "WebUI 不可达；QQ 会话可能仍在线，请检查该账号的 WebUI 端口和日志",
         );
     }
     if evidence.logged_in {
         chain::record_ok(
             Link::QqLogin,
             format!(
-                "Authenticated via {} ({})",
-                evidence.source,
-                evidence.uin.as_deref().unwrap_or("unknown account")
+                "身份已确认：{} ({})，来源 {}",
+                evidence.nickname.as_deref().unwrap_or("未知昵称"),
+                evidence.uin.as_deref().unwrap_or("未知账号"),
+                evidence.source
             ),
         );
     } else if evidence.source == "identity_mismatch" {
-        chain::record_error(Link::QqLogin, "Protocol endpoint belongs to another account; select the correct account or inspect its port configuration");
+        chain::record_error(Link::QqLogin, "协议端点属于另一账号，请选择正确账号或检查端口配置");
     } else if alive {
-        chain::record_unknown(Link::QqLogin, "Awaiting QR scan or account selection");
+        chain::record_unknown(Link::QqLogin, "等待扫码或选择账号，当前没有目标身份确认凭据");
     } else {
-        chain::record_unknown(Link::QqLogin, "No current authentication evidence");
+        chain::record_unknown(Link::QqLogin, "尚无当前身份确认凭据，请先启动协议并完成扫码");
     }
     match onebot.get_login_info().await {
-        Ok(_) => chain::record_ok(Link::OneBotHttp, "Authenticated OneBot API reachable"),
+        Ok(_) => chain::record_ok(Link::OneBotHttp, "已确认身份的 OneBot HTTP 接口可用"),
         Err(e) if evidence.logged_in => chain::record_error(Link::OneBotHttp, e),
-        Err(_) => chain::record_unknown(Link::OneBotHttp, "Available after QQ login"),
+        Err(_) => chain::record_unknown(Link::OneBotHttp, "等待目标 QQ 身份确认后验证接口"),
     }
 }
 
@@ -65,13 +66,13 @@ pub async fn repair(napcat: &NapCatService, onebot: &OneBotClient) -> RepairRepo
             action: "none".into(),
             attempted: false,
             ok: true,
-            detail: "No failed link requires recovery".into(),
+            detail: "没有需要自动恢复的失败环节；待扫码、未验证模型及未观察到的组件继续保持待验证".into(),
         };
     };
     let action = recommended_action(failed.link);
     if failed.link == Link::NapcatWebUi {
         if super::session::probe(napcat, onebot).await.logged_in {
-            return RepairReport { action: "inspect_webui".into(), attempted: false, ok: false, detail: "QQ is authenticated. Its running session was preserved; inspect WebUI configuration".into() };
+            return RepairReport { action: "inspect_webui".into(), attempted: false, ok: false, detail: "QQ 身份已确认，已保留运行会话；请检查 WebUI 配置".into() };
         }
         if super::ownership::is_running(std::path::Path::new(napcat.napcat_dir())) {
             let dir = std::path::PathBuf::from(napcat.napcat_dir());
@@ -89,7 +90,7 @@ pub async fn repair(napcat: &NapCatService, onebot: &OneBotClient) -> RepairRepo
                 attempted: false,
                 ok: false,
                 detail:
-                    "An owned protocol process is running. Inspect its boot log before restarting"
+                    "受管理协议进程仍在运行；已保留会话，请检查本次启动日志"
                         .into(),
             };
         }
@@ -114,7 +115,7 @@ pub async fn repair(napcat: &NapCatService, onebot: &OneBotClient) -> RepairRepo
         attempted: false,
         ok: false,
         detail: format!(
-            "{}: {}. The protocol process was preserved",
+            "{}：{}。未操作协议进程，请按该环节的建议处理",
             failed.label, failed.detail
         ),
     }

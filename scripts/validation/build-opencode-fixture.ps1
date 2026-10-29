@@ -9,6 +9,9 @@ $source = Join-Path $directory 'opencode-fixture.cpp'
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <string>
+#include <thread>
+#include <chrono>
 int main(int count,char** args) {
   for(int i=1;i<count;i++) {
     if(!strcmp(args[i],"--version")){puts("fixture-native");return 0;}
@@ -17,6 +20,12 @@ int main(int count,char** args) {
     }
     if(!strcmp(args[i],"run")){
       while(getchar()!=EOF){}
+      const std::string prefix(args[0]);
+      if(FILE* marker=fopen((prefix+".slow").c_str(),"rb")) {
+        fclose(marker);
+        if(FILE* started=fopen((prefix+".started").c_str(),"wb")) {fputs("started",started);fclose(started);}
+        std::this_thread::sleep_for(std::chrono::seconds(30));
+      }
       const char* config=getenv("OPENCODE_CONFIG_CONTENT");
       bool keyed=config && strstr(config,"selected-fixture-key");
       if(!keyed && (!getenv("OPENCODE_TEST_HOME") || getenv("OPENCODE_API_KEY") || getenv("OPENAI_API_KEY"))){

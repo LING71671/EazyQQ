@@ -13,6 +13,7 @@
 | `app_toggle_maximize_window` | `window toggle-maximize` |
 | `batch_accounts` | `accounts start|stop|login` |
 | `batch_update_mode` | `batch-mode` |
+| `cancel_free_model_detection` | `ai-free-models (Ctrl+C)` |
 | `check_app_update` | `updates check-app` |
 | `check_dependencies` | `health` |
 | `check_napcat_update` | `updates check-napcat` |

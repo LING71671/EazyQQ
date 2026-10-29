@@ -149,7 +149,7 @@ fn mcp_tool_definitions() -> Value {
                 "type": "object",
                 "properties": {
                     "target_id": { "type": "string", "description": "Friend QQ or Group ID" },
-                    "ai_mode": { "type": "string", "enum": ["auto_reply", "copilot", "ignore"] },
+                    "ai_mode": { "type": "string", "enum": ["auto_reply", "copilot", "summary_only", "ignore"] },
                     "is_summary_whitelist": { "type": "boolean" }
                 },
                 "required": ["target_id"]
@@ -167,7 +167,7 @@ fn mcp_tool_definitions() -> Value {
         },
         {
             "name": "restart_napcat",
-            "description": "Trigger restart or launch of the NapCat protocol supervisor process",
+            "description": "Apply fault-specific protocol recovery, preserving healthy, external and waiting-for-login sessions",
             "inputSchema": {
                 "type": "object",
                 "properties": {}
@@ -326,7 +326,19 @@ async fn handle_tool_call(
                 return tool_text_response(id, format!("File does not exist: {}", path_str), true);
             }
 
-            match eazyqq_lib::services::group_files::summarize_file(&svc.ai, path_str).await {
+            // Extraction is a local operation. Never send document contents to AI here.
+            let extracted = tokio::task::spawn_blocking(move || {
+                let metadata = std::fs::metadata(&path).map_err(|error| error.to_string())?;
+                if !metadata.is_file() || metadata.len() > 20 * 1024 * 1024 {
+                    return Err("只支持不超过 20 MiB 的普通文档".to_string());
+                }
+                let text = eazyqq_lib::services::workflows::file_summary::extract_text(&path)?;
+                let total_chars = text.chars().count();
+                Ok::<_, String>(json!({"fileName":path.file_name().and_then(|name|name.to_str()),
+                    "fileSize":metadata.len(),"totalChars":total_chars,
+                    "text":text.chars().take(100_000).collect::<String>(),"truncated":total_chars>100_000}))
+            }).await.map_err(|error| error.to_string()).and_then(|result|result);
+            match extracted {
                 Ok(doc) => tool_json_response(id, &doc),
                 Err(e) => {
                     tool_text_response(id, format!("Failed to extract document: {}", e), true)
@@ -447,38 +459,35 @@ async fn handle_tool_call(
         }
 
         "get_system_health" => {
-            let napcat_ok = svc.napcat.is_alive().await;
-            let onebot_ok = svc.onebot.get_login_info().await.is_ok();
-            let db_ok = svc.db.get_all_rules().is_ok();
-            let ai_has_key = svc.ai.has_api_key();
-
             let deep = args.get("deep").and_then(|v| v.as_bool()).unwrap_or(false);
-            let ai_probe = if deep && ai_has_key {
-                match svc.ai.generate_reply(&[], "ping", "mcp_probe").await {
-                    Ok(_) => "healthy".to_string(),
-                    Err(e) => format!("probe failed: {}", e),
-                }
-            } else {
-                "not_probed".to_string()
-            };
+            eazyqq_lib::services::infra::runtime_config::refresh_ai(&svc.db, &svc.ai);
+            if deep { let _ = svc.ai.generate_reply(&[], "ping", "mcp_probe").await; }
+            let report = eazyqq_lib::services::chain::refresh_status(&svc.db, &svc.napcat, &svc.onebot, &svc.ai).await;
+            use eazyqq_lib::services::chain::{Health, Link};
+            let verified = |target| report.links.iter().any(|link|link.link == target && link.health == Health::Ok);
+            let ai_health = svc.ai.inference_health();
 
             tool_json_response(
                 id,
                 &json!({
-                    "napcat_connected": napcat_ok,
-                    "onebot_http_ok": onebot_ok,
-                    "database_ok": db_ok,
-                    "ai_key_configured": ai_has_key,
+                    "napcat_connected": verified(Link::NapcatWebUi),
+                    "onebot_http_ok": verified(Link::OneBotHttp),
+                    "database_ok": verified(Link::Database),
+                    "ai_key_configured": !svc.ai.current().api_key.trim().is_empty(),
+                    "ai_credentials_ready": svc.ai.has_api_key(),
                     "active_ai_provider": svc.ai.current().provider,
                     "active_model": svc.ai.model(),
-                    "deep_ai_status": ai_probe
+                    "deep_ai_status": match ai_health.verified {Some(true)=>"healthy",Some(false)=>"failed",None=>"not_probed"},
+                    "ai_detail":ai_health.detail,
+                    "links":report.links,"firstBreak":report.first_break,
+                    "hasFailure":report.has_failure,"uptimeSecs":report.uptime_secs
                 }),
             )
         }
 
-        "restart_napcat" => match svc.napcat.launch_if_needed() {
-            Ok(_) => tool_text_response(id, "NapCat supervisor launch triggered".into(), false),
-            Err(e) => tool_text_response(id, format!("NapCat launch error: {}", e), true),
+        "restart_napcat" => {
+            let report = eazyqq_lib::services::protocol::health::repair(&svc.napcat, &svc.onebot).await;
+            tool_json_response(id, &report)
         },
 
         _ => tool_text_response(id, format!("Unknown tool '{}'", name), true),

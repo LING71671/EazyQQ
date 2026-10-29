@@ -1,6 +1,10 @@
 # CLI 使用与契约
 
-适用于 0.6.4。源码构建：`pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli`。桌面安装包包含同名 CLI；独立压缩包还提供 `ezq.exe` 兼容名。
+适用于 0.6.5 源码候选；公开版仍为 0.6.4，不包含本文标注的候选增量。源码构建：`pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli`。桌面安装包包含同名 CLI；独立压缩包还提供 `ezq.exe` 兼容名。
+
+## 0.6.5 候选范围
+
+本轮恢复源码开发，候选包含更新追踪、免费检测取消与历史证据分离，以及 GUI/CLI/MCP 诊断语义统一；实现已落地，统一验收中。此状态不等同于公开发布或本机已安装新行为，具体证据见 [本轮记录](../development/2026-10-28-reliability-and-lifecycle.md)。
 
 ```powershell
 .\src-tauri\target\debug\eazyqq_cli.exe --account 10001 status --json
@@ -77,6 +81,8 @@ eazyqq_cli run --all
 
 候选、无凭据验证通过、额外条件、明确停用、目录移除和暂未确认分别报告；不硬编码免费名单，也不以模型名称判断。检测结果仅代表 `observedAtMs` 时刻，供应方变化后应再次检测。
 
+0.6.5 候选的报告新增 `requestId`、`status=completed|cancelled|failed`、`completed`、`total`、`catalogueRefreshed`、`error`、`cleanupError` 和 `history`。Ctrl+C 请求停止本次检测并等待本次原生子进程回收；已完成的部分结果仍会输出，历史报告单列，不能当作本次成功。流式 JSON 最终仍使用 `type=complete` 包装报告，应检查其中的 `status`；`cancelled` 和 `failed` 返回非零退出码。清理只针对有检测所有权标记的临时目录，保留账号凭据、用户缓存和其他会话。
+
 ```powershell
 eazyqq_cli ai-models --json
 eazyqq_cli ai-set --provider opencode --model big-pickle --json
@@ -96,11 +102,11 @@ eazyqq_cli repair --json
 
 `config` 查询；`set-config --key app_config --file settings.json` 保存完整 JSON 配置；`config-audit` 检查字段消费。不要把完整配置接口当作服务端深度补丁。`qq-path [--set path]` 查询/更新 QQ 路径。
 
-`updates versions|check-app|check-napcat` 查询版本；`updates install-app|install-napcat --confirm` 启动安装。协议升级需要停机并保留回滚备份。`window status|show|hide|minimize|maximize|toggle-maximize|move|drag|close` 操作运行中的桌面；移动接受 `--x`、`--y`。
+`updates versions|check-app|check-napcat` 查询版本，其中 `check-app`、`check-napcat` 记录本次检查回执，不安装或登录；`updates history --json` 只读历史；`updates install-app|install-napcat --confirm` 启动安装。协议升级需要停机并保留回滚备份。`window status|show|hide|minimize|maximize|toggle-maximize|move|drag|close` 操作运行中的桌面；移动接受 `--x`、`--y`。
 
 ## MCP 与环境
 
-后续开发新增（未发布）：`telemetry status --json`读取诊断状态；`telemetry test --confirm --json`向Sentry发送合成测试。没有confirm则拒绝发送。SDK在普通程序中默认关闭，具体变量与数据范围见[接入文档](../observability/SENTRY.md)。
+0.6.5 候选包含尚未公开的可选诊断命令：`telemetry status --json`读取诊断状态；`telemetry test --confirm --json`向Sentry发送合成测试。没有confirm则拒绝发送。SDK在普通程序中默认关闭，具体变量与数据范围见[接入文档](../observability/SENTRY.md)。
 
 运行 `eazyqq_cli [--account QQ] mcp`，使用 JSON-RPC `initialize`、`tools/list`、`tools/call`。通知不返回响应，实际工具 schema 由服务返回，版本来自当前构建。
 
@@ -110,7 +116,11 @@ eazyqq_cli repair --json
 
 ## 更新边界
 
-后续开发接口（公开0.6.4不包含）：`updates history --json`返回统一`ApiResponse`及最多50条主程序安装回执，与桌面`get_update_history`一致。命令只读取当前更新暂存上下文，不安装、不登录。更新交接字符串保留兼容返回格式并给出编号；助手随后持久记录等待、校验、安装、退出码及失败。安装程序退出0不表示已证明新程序版本；下载与核心更新的回执仍待后续接入。
+0.6.5 候选的 `updates history --json` 返回统一 `ApiResponse` 及最多 50 条主程序/核心更新操作回执，与桌面 `get_update_history` 一致。命令只读取当前更新暂存上下文，不创建目录、不安装、不登录。检查、下载、校验、交接和核心部署沿操作编号记录；重试生成新编号。字段及阶段见 [IPC 更新契约](IPC.md#更新状态与事件)。
+
+安装交接字符串保持兼容返回格式并给出编号；安装程序退出 0 只表示 `pending_verification`，旧 `installer_succeeded` 也按待确认处理。只有真实 GUI 在记录的物理安装目录以目标版本启动后才记 `succeeded`，CLI 启动不能证明同目录 GUI 的版本。核心 `deployed` 只证明文件部署完成，重新运行的协议版本仍需确认；版本复查失败保持未知，不能显示已核验成功。
+
+写入最多保留 100 条操作回执，每条最多 32 项阶段记录，只清理已终态的自有证据；100 条均未决时拒绝新操作，不删除未知记录、用户数据或协议备份。历史查询不执行清理。实际取消和明确放弃执行可记录 `aborted`；进程硬退出留下的阶段显示结果未确认，不按 PID 或时间猜测成功或失败。
 
 updates install-app|install-napcat --confirm 只接受当前官方稳定资产，--url 不能绕过校验。主程序精确匹配 EazyQQ_<version>_x64-setup.exe，核心精确匹配 NapCat.Shell.zip；校验大小与 SHA256，更新跨进程互斥。CLI 安装助手等待本次命令退出，不强制关闭另一个桌面或 QQ。协议更新要求相关会话停机，保留配置和备份。JSON stdout 只输出最终结果。
 

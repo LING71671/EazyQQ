@@ -5,138 +5,44 @@ use crate::context::Services;
 use crate::format::{hr, print_json, truncate, wrap};
 
 pub async fn cmd_health(svc: &Services, args: &Args) -> Result<(), String> {
-    let deep = args.has("deep");
-    let mut items: Vec<(String, bool, String)> = Vec::new();
-
-    let napcat_alive = svc.napcat.is_alive().await;
-    items.push((
-        format!("NapCat WebUI ({})", svc.napcat.endpoint()),
-        napcat_alive,
-        if napcat_alive {
-            "在线".into()
-        } else {
-            "离线".into()
-        },
-    ));
-
-    let login = eazyqq_lib::services::protocol::session::probe(&svc.napcat, &svc.onebot).await;
-    items.push((
-        "QQ login".to_string(),
-        login.logged_in,
-        if login.logged_in {
-            format!(
-                "Authenticated {} ({}) via {}",
-                login.nickname.as_deref().unwrap_or("-"),
-                login.uin.as_deref().unwrap_or("-"),
-                login.source
-            )
-        } else {
-            "No confirmed account identity".into()
-        },
-    ));
-    let http = svc.onebot.get_login_info().await;
-    items.push((
-        format!("OneBot HTTP ({})", svc.onebot.endpoint()),
-        http.is_ok(),
-        http.map(|_| "Authenticated API reachable".into())
-            .unwrap_or_else(|error| error),
-    ));
-
-    let data_dir = logging::data_dir();
-    let writable = eazyqq_lib::services::diagnostics::is_dir_writable(&data_dir);
-    items.push((
-        "本地数据目录可写".to_string(),
-        writable,
-        data_dir.display().to_string(),
-    ));
-
-    let (log_dir, crash_count, _last) = logging::diagnostics();
-    items.push((
-        "日志目录".to_string(),
-        log_dir.exists(),
-        format!("{} (历史崩溃报告 {} 份)", log_dir.display(), crash_count),
-    ));
-
-    let rules = svc.db.get_all_rules();
-    let rule_count = rules.as_ref().map(|r| r.len()).unwrap_or(0);
-    let summary_groups = svc
-        .db
-        .get_summary_whitelist_groups()
-        .map(|r| r.len())
-        .unwrap_or(0);
-    items.push((
-        "SQLite 规则库".to_string(),
-        rules.is_ok(),
-        rules
-            .map(|_| format!("{} 条规则 / {} 个简报白名单群", rule_count, summary_groups))
-            .unwrap_or_else(|error| error.to_string()),
-    ));
-
-    let api_key_present = !svc.ai.current().requires_api_key()
-        || !svc.ai.current().api_key.trim().is_empty()
-        || svc
-            .db
-            .get_setting("ai_api_key")
-            .ok()
-            .flatten()
-            .map(|k| !k.is_empty())
-            .unwrap_or(false)
-        || std::env::var("LLM_API_KEY").is_ok()
-        || std::env::var("OPENAI_API_KEY").is_ok()
-        || std::env::var("AI_API_KEY").is_ok();
-    items.push((
-        "大模型 API Key".to_string(),
-        api_key_present,
-        if api_key_present {
-            "已配置".into()
-        } else {
-            "缺失".into()
-        },
-    ));
-
-    if deep {
-        let probe = svc.ai.generate_reply(&[], "ping", "自检").await;
-        items.push((
-            format!("大模型连通性 ({})", svc.ai.model()),
-            probe.is_ok(),
-            match probe {
-                Ok((c, _)) => format!("回复: {}", truncate(&c, 40)),
-                Err(e) => e,
-            },
-        ));
+    use eazyqq_lib::services::chain::{Health, Link};
+    eazyqq_lib::services::infra::runtime_config::refresh_ai(&svc.db, &svc.ai);
+    if args.has("deep") {
+        // Only this explicit option performs inference; ordinary diagnostics stay passive.
+        let _ = svc.ai.generate_reply(&[], "ping", "自检").await;
     }
-
-    let all_ok = items.iter().all(|(_, ok, _)| *ok);
-
+    let report = eazyqq_lib::services::chain::refresh_status(&svc.db, &svc.napcat, &svc.onebot, &svc.ai).await;
+    let mut items: Vec<serde_json::Value> = report.links.iter().map(|link| {
+        let name = match link.link {
+            Link::NapcatWebUi => format!("NapCat WebUI ({})", svc.napcat.endpoint()),
+            Link::OneBotHttp => format!("OneBot HTTP ({})", svc.onebot.endpoint()),
+            Link::QqLogin => "QQ login".into(),
+            _ => link.label.clone(),
+        };
+        serde_json::json!({"item":name,"ok":link.health==Health::Ok,"health":link.health,
+            "detail":link.detail,"recommendedAction":link.recommended_action})
+    }).collect();
+    let writable = eazyqq_lib::services::diagnostics::is_dir_writable(&logging::data_dir());
+    items.push(serde_json::json!({"item":"本地数据目录可写","ok":writable,
+        "health":if writable {"ok"} else {"failed"},"detail":logging::data_dir().display().to_string(),
+        "recommendedAction":if writable {"none"} else {"inspect_storage"}}));
+    let all_ok = items.iter().all(|item| item["health"] == "ok");
+    let has_failure = items.iter().any(|item| item["health"] == "failed");
     if args.json() {
-        let json: Vec<serde_json::Value> = items
-            .iter()
-            .map(|(n, ok, d)| serde_json::json!({ "item": n, "ok": ok, "detail": d }))
-            .collect();
-        print_json(&serde_json::json!({ "allOk": all_ok, "items": json }));
+        print_json(&serde_json::json!({"allOk":all_ok,"hasFailure":has_failure,"items":items,
+            "links":report.links,"firstBreak":report.first_break,"uptimeSecs":report.uptime_secs,
+            "aiCredentialsReady":svc.ai.has_api_key()}));
         return Ok(());
     }
-
     hr();
     println!("EazyQQ 健康自检");
     hr();
-    for (name, ok, detail) in &items {
-        println!(
-            "{} {:<34} {}",
-            if *ok { "[OK]  " } else { "[FAIL]" },
-            name,
-            detail
-        );
+    for item in &items {
+        let mark = match item["health"].as_str() { Some("ok") => "[OK]", Some("failed") => "[FAIL]", _ => "[?]" };
+        println!("{} {:<34} {}", mark, item["item"].as_str().unwrap_or(""), item["detail"].as_str().unwrap_or(""));
     }
     hr();
-    println!(
-        "总体: {}",
-        if all_ok {
-            "全部通过"
-        } else {
-            "存在异常项"
-        }
-    );
+    println!("总体: {}", if all_ok {"全部通过"} else if has_failure {"存在失败环节"} else {"部分环节待验证"});
     hr();
     Ok(())
 }
@@ -309,22 +215,19 @@ pub async fn cmd_chain_status(svc: &Services, args: &Args) -> Result<(), String>
     // recorded if it is running.
     probe_chain_from_cli(svc).await;
 
-    let links = eazyqq_lib::services::chain::snapshot();
-    let first = eazyqq_lib::services::chain::first_break();
+    let report = eazyqq_lib::services::chain::status_report();
+    let links = &report.links;
+    let first = report.first_break.clone();
 
     if args.json() {
-        print_json(&serde_json::json!({
-            "links": links,
-            "firstBreak": first,
-            "hasFailure": eazyqq_lib::services::chain::has_failure(),
-        }));
+        print_json(&serde_json::to_value(&report).map_err(|error| error.to_string())?);
         return Ok(());
     }
 
     hr();
     println!("全链路状态");
     hr();
-    for link in &links {
+    for link in links {
         let mark = match link.health {
             eazyqq_lib::services::chain::Health::Ok => "[OK]  ",
             eazyqq_lib::services::chain::Health::Unknown => "[?]   ",
@@ -365,44 +268,9 @@ pub async fn cmd_chain_status(svc: &Services, args: &Args) -> Result<(), String>
 
 /// Probe the externally-reachable links from the CLI process.
 async fn probe_chain_from_cli(svc: &Services) {
-    use eazyqq_lib::services::chain::{record_error, record_ok, record_unknown, Link};
-
-    match svc.db.get_setting("app_config") {
-        Ok(_) => record_ok(Link::Database, "读写正常"),
-        Err(e) => record_error(Link::Database, format!("{}", e)),
-    }
-
-    eazyqq_lib::services::protocol::health::refresh(&svc.napcat, &svc.onebot).await;
-
-    let cfg = svc.ai.current();
-    if cfg.api_key.trim().is_empty() && cfg.requires_api_key() {
-        record_error(Link::AiProvider, "未配置 API Key");
-    } else {
-        record_unknown(
-            Link::AiProvider,
-            "Configured; run ai-test to verify inference",
-        );
-    }
-
-    let ws_open = std::net::TcpStream::connect_timeout(
-        &std::net::SocketAddr::from((
-            [127, 0, 0, 1],
-            eazyqq_lib::services::protocol::layout::selected(
-                &eazyqq_lib::services::napcat_boot::locate_napcat_dir(),
-            )
-            .2,
-        )),
-        std::time::Duration::from_millis(800),
-    )
-    .is_ok();
-    if ws_open {
-        record_unknown(Link::OneBotWs, "端口开放；连接状态需由客户端进程确认");
-    } else {
-        record_error(Link::OneBotWs, "127.0.0.1:3001 未监听，消息无法进入");
-    }
-
-    record_unknown(Link::Scheduler, "需客户端进程运行才能确认");
-    record_unknown(Link::Frontend, "需客户端进程运行才能确认");
+    // In-process evidence cannot prove the health of another GUI/worker process.
+    // A TCP listener is not WebSocket authentication or message-consumer evidence.
+    eazyqq_lib::services::chain::refresh_status(&svc.db, &svc.napcat, &svc.onebot, &svc.ai).await;
 }
 
 pub async fn cmd_selftest(svc_ctx: &Services, args: &Args) -> Result<(), String> {

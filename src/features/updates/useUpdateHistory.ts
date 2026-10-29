@@ -9,8 +9,9 @@ export function useUpdateHistory() {
   const [error, setError] = useState<string | null>(null);
   const active = useRef(false);
   const inFlight = useRef(false);
-  const refresh = useCallback(async () => {
-    if (inFlight.current) return;
+  const queued = useRef(false);
+  const refresh = useCallback(async (): Promise<void> => {
+    if (inFlight.current) { queued.current = true; return; }
     inFlight.current = true;
     setLoading(true);
     try {
@@ -25,12 +26,15 @@ export function useUpdateHistory() {
     } finally {
       inFlight.current = false;
       if (active.current) setLoading(false);
+      if (active.current && queued.current) { queued.current = false; void refresh(); }
     }
   }, []);
   useEffect(() => {
     active.current = true;
     void refresh();
-    return () => { active.current = false; };
+    const onChanged = () => { void refresh(); };
+    window.addEventListener('eazyqq-updates-changed', onChanged);
+    return () => { active.current = false; window.removeEventListener('eazyqq-updates-changed', onChanged); };
   }, [refresh]);
   return { receipts, loading, error, refresh };
 }

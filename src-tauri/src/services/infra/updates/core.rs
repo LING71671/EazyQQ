@@ -31,6 +31,15 @@ pub async fn current_napcat_version(onebot: &crate::services::onebot::OneBotClie
 pub async fn check(
     onebot: &crate::services::onebot::OneBotClient,
 ) -> Result<ApiResponse<NapCatUpdateInfo>, String> {
+    let mut operation = super::receipts::Operation::begin("napcat", "check")?;
+    let result = match check_inner(onebot).await {
+        Ok(response) => { if let Some(info) = &response.data { operation.journal().target(&info.latest_version).map(|_| response) } else { Ok(response) } },
+        Err(error) => Err(error),
+    };
+    operation.end(result, super::receipts::Phase::Checked)
+}
+
+async fn check_inner(onebot: &crate::services::onebot::OneBotClient) -> Result<ApiResponse<NapCatUpdateInfo>, String> {
     let current_version = match onebot.get_version_info().await {
         Ok(v) => v
             .get("data")
@@ -126,9 +135,17 @@ pub(super) fn describe(current_version: String, json: &serde_json::Value) -> Res
 }
 
 pub async fn upgrade(download_url: Option<String>, report: &(dyn Fn(super::UpdateProgress) + Send + Sync)) -> Result<ApiResponse<String>, String> {
+    let mut operation = super::receipts::Operation::begin("napcat", "install")?;
+    let result = upgrade_inner(download_url, report, &mut operation).await;
+    operation.end(result, super::receipts::Phase::Deployed)
+}
+
+async fn upgrade_inner(download_url: Option<String>, report: &(dyn Fn(super::UpdateProgress) + Send + Sync), operation: &mut super::receipts::Operation) -> Result<ApiResponse<String>, String> {
+    use super::receipts::Phase;
+    let journal = operation.journal().clone();
     let _update = crate::services::infra::persistence::FileLock::try_acquire(&super::staging_root().join("download.lock"))
         .map_err(|_| "另一个更新任务正在执行，请等待完成".to_string())?;
-    report(super::UpdateProgress { phase:"checking", downloaded_bytes:0, total_bytes:0 });
+    report(super::UpdateProgress { operation_id: Some(journal.id().into()), phase:"checking", downloaded_bytes:0, total_bytes:0 });
     let maintenance_path = crate::services::accounts::data_root().join("protocol-maintenance.lock");
     let _maintenance = tokio::task::spawn_blocking(move || {
         crate::services::infra::persistence::FileLock::acquire(&maintenance_path)
@@ -170,6 +187,7 @@ pub async fn upgrade(download_url: Option<String>, report: &(dyn Fn(super::Updat
         .json().await.map_err(|e| e.to_string())?;
     describe(detect_local_napcat_version(), &release)?;
     let tag = release["tag_name"].as_str().ok_or("协议发布缺少版本")?;
+    journal.target(tag)?;
     let expected_url = format!("https://github.com/NapNeko/NapCatQQ/releases/download/{tag}/NapCat.Shell.zip");
     let asset = release["assets"].as_array().and_then(|assets| assets.iter().find(|asset| {
         asset["name"].as_str() == Some("NapCat.Shell.zip")
@@ -188,34 +206,51 @@ pub async fn upgrade(download_url: Option<String>, report: &(dyn Fn(super::Updat
     if response.content_length().is_some_and(|size| size != expected_size) {
         return Err("协议响应大小不匹配".into());
     }
-    report(super::UpdateProgress { phase:"downloading", downloaded_bytes:0, total_bytes:expected_size });
+    journal.update(Phase::Downloading, None, None)?;
+    report(super::UpdateProgress { operation_id: Some(journal.id().into()), phase:"downloading", downloaded_bytes:0, total_bytes:expected_size });
     let mut last_report = std::time::Instant::now();
     let mut bytes = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(|e| format!("协议下载中断：{e}"))? {
         if bytes.len() as u64 + chunk.len() as u64 > expected_size { return Err("协议下载超过大小上限".into()); }
         bytes.extend_from_slice(&chunk);
         if last_report.elapsed().as_millis() >= 150 || bytes.len() as u64 == expected_size {
-            report(super::UpdateProgress { phase:"downloading", downloaded_bytes:bytes.len() as u64, total_bytes:expected_size });
+            report(super::UpdateProgress { operation_id: Some(journal.id().into()), phase:"downloading", downloaded_bytes:bytes.len() as u64, total_bytes:expected_size });
             last_report=std::time::Instant::now();
         }
     }
-    report(super::UpdateProgress { phase:"verifying", downloaded_bytes:bytes.len() as u64, total_bytes:expected_size });
+    journal.update(Phase::Verifying, None, None)?;
+    report(super::UpdateProgress { operation_id: Some(journal.id().into()), phase:"verifying", downloaded_bytes:bytes.len() as u64, total_bytes:expected_size });
     use sha2::Digest;
     if bytes.len() as u64 != expected_size || format!("{:x}", sha2::Sha256::digest(&bytes)) != expected_hash.to_ascii_lowercase() {
         return Err("协议包大小或 SHA256 不匹配，原资源保持不变".into());
     }
 
-    report(super::UpdateProgress { phase:"installing", downloaded_bytes:expected_size, total_bytes:expected_size });
+    journal.update(Phase::Installing, None, None)?;
+    report(super::UpdateProgress { operation_id: Some(journal.id().into()), phase:"installing", downloaded_bytes:expected_size, total_bytes:expected_size });
     let staging = crate::services::infra::updates::staging_root().join("napcat");
     let target = staging.clone();
+    let deployment = journal.clone();
+    // Deployment owns its result once blocking filesystem work begins, even if the IPC future is dropped.
+    operation.handoff();
     tokio::task::spawn_blocking(move || {
-        crate::services::infra::protocol_update::stage_and_install(&bytes, &target, &napcat_dir)
+        let _locks = (_update, _maintenance);
+        let result = deploy_tracked(&bytes, &target, &napcat_dir, &deployment);
+        if result.is_ok() { crate::services::protocol::boot::set_auto_start(false); }
+        result
     })
     .await
     .map_err(|e| e.to_string())??;
-    crate::services::protocol::boot::set_auto_start(false);
-    report(super::UpdateProgress { phase:"ready", downloaded_bytes:expected_size, total_bytes:expected_size });
+    report(super::UpdateProgress { operation_id: Some(journal.id().into()), phase:"ready", downloaded_bytes:expected_size, total_bytes:expected_size });
     Ok(ApiResponse::ok(
-        "协议包 SHA256 已校验并更新，账号配置与回滚备份保留；请启动所需账号加载新版本。".into(),
+        format!("更新 {} 的协议包 SHA256 已校验并部署，账号配置与回滚备份保留；运行中的协议版本尚未核验，请启动所需账号加载新版本。", journal.id()),
     ))
+}
+
+pub(super) fn deploy_tracked(bytes: &[u8], staging: &std::path::Path, destination: &std::path::Path, journal: &super::receipts::Journal) -> Result<(), String> {
+    let result = crate::services::infra::protocol_update::stage_and_install(bytes, staging, destination);
+    match &result {
+        Ok(_) => { journal.update(super::receipts::Phase::Deployed, None, None)?; },
+        Err(error) => { journal.update(super::receipts::Phase::Failed, None, Some(error))?; },
+    }
+    result
 }

@@ -35,6 +35,7 @@ export const api = {
   getTelemetryStatus: (): Promise<ApiResponse<TelemetryStatus>> => invoke('get_telemetry_status'),
   testTelemetry: (): Promise<ApiResponse<TelemetryTest>> => invoke('test_telemetry'),
   detectFreeModels: (probe: boolean, requestId: string): Promise<ApiResponse<FreeModelsReport>> => invoke('detect_free_models', { probe, requestId }),
+  cancelFreeModelDetection: (requestId: string): Promise<ApiResponse<boolean>> => invoke('cancel_free_model_detection', { requestId }),
   onFreeModelProgress: (callback: (progress: FreeModelProgress) => void): Promise<UnlistenFn> => listen<FreeModelProgress>('free-model-progress', event => callback(event.payload)),
   getAccountStatus: (uin: string): Promise<ApiResponse<AccountReport>> => invoke('get_account_status', { uin }),
   listAccounts: (): Promise<ApiResponse<AccountReport[]>> => invoke('list_accounts'),
@@ -78,6 +79,7 @@ export const api = {
         impact: string;
         health: 'ok' | 'unknown' | 'failed';
         detail: string;
+        recommendedAction?: string;
         last_ok_secs_ago: number | null;
         last_error_secs_ago: number | null;
       }>;
@@ -86,6 +88,7 @@ export const api = {
         label: string;
         impact: string;
         detail: string;
+        recommendedAction?: string;
       } | null;
       hasFailure: boolean;
       uptimeSecs: number;
@@ -111,8 +114,8 @@ export const api = {
   getMessages: async (targetId: string, limit = 30, offset = 0, targetType?: string): Promise<ApiResponse<MessageItemDto[]>> => {
     return invoke('get_messages', { targetId, limit, offset, targetType });
   },
-  sendMessage: async (targetId: string, content: string): Promise<ApiResponse<{ messageId: string }>> => {
-    return invoke('send_message', { targetId, content });
+  sendMessage: async (targetId: string, content: string, targetType?: string): Promise<ApiResponse<{ messageId: string }>> => {
+    return invoke('send_message', { targetId, content, targetType });
   },
   getPendingDrafts: async (): Promise<ApiResponse<PendingDraftDto[]>> => {
     return invoke('get_pending_drafts');

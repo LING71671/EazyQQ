@@ -24,6 +24,7 @@ export function useAppUpdate() {
     } catch (cause) {
       if (mounted.current) setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
+      window.dispatchEvent(new Event('eazyqq-updates-changed'));
       pending.current = false; if (mounted.current) setBusy(null);
     }
   };
@@ -31,8 +32,17 @@ export function useAppUpdate() {
   const install = async () => {
     if (pending.current || !info?.hasUpdate || !info.downloadUrl || !info.checksumSha256) return;
     pending.current = true; setBusy('install'); setError(null); setNotice(null); setProgress(null);
+    let operationId: string | undefined;
     try {
-      const unlisten = await api.onAppUpdateProgress(value => { if (mounted.current) setProgress(value); });
+      const unlisten = await api.onAppUpdateProgress(value => {
+        if (!mounted.current) return;
+        if (value.operationId) {
+          if (!operationId && value.phase !== 'checking') return;
+          if (operationId && operationId !== value.operationId) return;
+          operationId = value.operationId;
+        }
+        setProgress(value);
+      });
       cleanup.current = unlisten;
       if (!mounted.current) { unlisten(); return; }
       const result = await api.upgradeApp(info.downloadUrl);
@@ -42,6 +52,7 @@ export function useAppUpdate() {
     } catch (cause) {
       if (mounted.current) { setError(cause instanceof Error ? cause.message : String(cause)); setProgress(null); }
     } finally {
+      window.dispatchEvent(new Event('eazyqq-updates-changed'));
       cleanup.current?.(); cleanup.current = null;
       pending.current = false; if (mounted.current) setBusy(null);
     }

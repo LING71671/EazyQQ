@@ -1,6 +1,10 @@
 # 桌面 IPC 契约
 
-适用于 0.6.4，传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`，私有登记文件使用 `snake_case`。
+适用于 0.6.5 源码候选；公开版仍为 0.6.4，不包含本文标注的候选增量。传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`，私有登记文件使用 `snake_case`。
+
+## 0.6.5 候选范围
+
+本轮恢复源码开发，更新回执闭环、免费检测生命周期及 GUI/CLI/MCP 诊断语义统一已落地，正在统一验收。候选新增接口及字段不能据此视为已进入公开安装包；具体实现和验收状态见 [本轮记录](../development/2026-10-28-reliability-and-lifecycle.md)。
 
 ## 返回与错误
 
@@ -65,9 +69,13 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 
 ### OpenCode 免凭据检测
 
-`detect_free_models({probe?,requestId?})` 返回统一 `ApiResponse<FreeModelsReport>`。`probe=false` 只刷新原生目录，不发起推理；`probe=true` 对显式零定价候选逐一发送隔离的中性请求。`requestId` 最长 128 字符，用于过滤进度，不作为权限凭据。
+`detect_free_models({probe?,requestId?})` 返回统一 `ApiResponse<FreeModelsReport>`。`probe=false` 只刷新原生目录，不发起推理；`probe=true` 对显式零定价候选逐一发送隔离的中性请求。`requestId` 为空或未提供时由后端生成；非空时为 1–128 个 ASCII 字母、数字、连字符或下划线，用于过滤进度及定位本账号任务，不作为权限凭据。
 
 报告字段为 `runtimeVersion`、`observedAtMs`、`catalogueIds`、`models`、`credentialsUsed` 和 `source`。每模型包含 `id`、`name`、`state`、`detail`、`observedAtMs`；状态为 `candidate`、`available`、`requires_conditions`、`retired`、`removed_from_catalogue`、`unconfirmed`。`available` 仅证明本次未借用用户账号/API Key 的请求成功，价格为零或名称含 free 不足以成立。目录移除只描述本次原生目录，不能从网络错误推出供应方永久下架。
+
+0.6.5 候选新增 `requestId`、`status`、`completed`、`total`、`catalogueRefreshed`、`error`、`cleanupError` 和 `history`。任务状态为 `completed`、`cancelled`、`failed`；部分完成结果保留在本次 `models`，历史报告位于 `history`，每项包含 `{requestId,status,observedAtMs,models}`，不能当作本次可用证据。目录刷新失败和临时目录清理失败分别呈现，不伪装为完整检测成功。
+
+`cancel_free_model_detection({requestId})` 返回 `ApiResponse<boolean>`，仅定位固定账号运行目录下的同编号任务。`true` 表示找到正在执行的任务并请求取消；`false` 也可能表示取消先于检测注册而暂存，不能解释为任务已完成或子进程已退出。最终状态以原检测返回的报告为准。取消、控件卸载及窗口退出纳入本次子进程回收；只清理有本次所有权标记的检测目录，不删除账号凭据、用户缓存或其他 OpenCode 会话。关窗回收的统一验收仍在进行。
 
 `free-model-progress` 事件字段为 `{requestId,completed,total,model}`。调用前订阅，结束后释放，丢弃不匹配编号；检测不自动保存模型选择、不改变 QQ 会话或规则。周期健康监控不调用显式推理检测。
 
@@ -82,7 +90,7 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 | 配置 | `get_config()`、`update_config({config})` 返回配置；修改接口接收完整 JSON 配置，不是服务端深度补丁合并 |
 | 模型 | `fetch_provider_models({provider,baseUrl?,apiKey?})` 返回目录；`test_ai_connection({provider?,modelId?,baseUrl?,apiKey?,prompt?})` 返回测试结果 |
 | 诊断 | `check_dependencies()` 返回依赖报告；`export_diagnostics_bundle()` 返回 `{zipFilePath}` |
-| 更新 | `check_app_update()`、`check_napcat_update()` 返回更新信息；`get_napcat_version()` 返回版本；`upgrade_app` / `upgrade_napcat` 接受 `{downloadUrl?}` |
+| 更新 | `check_app_update()`、`check_napcat_update()` 返回更新信息并记录检查回执；`get_napcat_version()` 返回版本；`get_update_history()` 只读回执；`upgrade_app` / `upgrade_napcat` 接受 `{downloadUrl?}` |
 | QQ 路径 | `get_qq_path()` 返回路径；`set_qq_path({path})` 验证文件并更新引导 |
 
 0.6.0 的诊断 ZIP 新增 `protocol/startup-trace.json`，包含实际私有目录、入口解析、资源散列、本次启动编号及加载器执行凭证。阶段状态 `passed`、`failed`、`unknown` 分别表示该检查成立、该检查失败或缺乏证据；端口开放不代表认证成立。凭证只记录阶段、PID、运行时版本、时间、错误类型/代码，不记录 token、消息或完整环境。旧版 0.5.3 不包含该能力。
@@ -103,15 +111,19 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 
 ## 更新状态与事件
 
-后续开发新增（未发布）：`get_telemetry_status()`返回`{enabled,configured,component,release}`；`test_telemetry()`发送合成诊断，返回`{eventId,flushed,release}`。状态读取不发送测试，测试由用户显式操作。flushed只证明队列处理完成，服务器接收需按eventId核对。配置与隐私范围见[接入文档](../observability/SENTRY.md)。
+0.6.5 候选包含尚未公开的可选诊断接口：`get_telemetry_status()`返回`{enabled,configured,component,release}`；`test_telemetry()`发送合成诊断，返回`{eventId,flushed,release}`。状态读取不发送测试，测试由用户显式操作。flushed只证明队列处理完成，服务器接收需按eventId核对。配置与隐私范围见[接入文档](../observability/SENTRY.md)。
 
-后续开发新增接口（未进入已公开0.6.4）：`get_update_history({})`返回`ApiResponse<UpdateReceipt[]>`，与CLI `updates history`读取同一暂存上下文的回执，按开始时间倒序最多50条。读取不创建目录、不运行安装、不改变QQ。当前阶段仅记录主程序安装交接；尚不覆盖下载与核心更新。
+0.6.5 候选的 `get_update_history({})` 返回 `ApiResponse<UpdateReceipt[]>`，与 CLI `updates history` 读取同一暂存上下文的回执，按开始时间倒序最多 50 条。历史查询不创建目录、不运行安装、不改变 QQ。主程序及核心的检查、下载、校验、安装交接和部署分别留证；一次安装流程的再次检查、下载、校验和交接沿同一操作编号关联，重试创建新编号。
 
-回执字段为`schemaVersion=1`、`operationId`、`component=app`、`targetVersion?`、`phase`、`startedAtMs`、`updatedAtMs`、`installerExitCode?`、`error?`。阶段为`handoff`、`waiting_parent`、`verifying`、`installing`、`installer_succeeded`、`failed`。`installer_succeeded`只证明安装程序在安装阶段退出0，不能代替新程序版本验证。未结束的记录保持原阶段，不凭时间推断失败。损坏/身份不符回执会报错，不伪装为成功。
+回执保留 `schemaVersion=1`，字段为 `operationId`、`component=app|napcat`、`operation=check|install`、`targetVersion?`、`phase`、`startedAtMs`、`updatedAtMs`、`installerExitCode?`、`error?`、`verifiedVersion?` 和 `events`。`events` 为最多 32 项 `{phase,atMs}` 阶段记录。旧回执缺少新增字段时仍可读取，旧 `installer_succeeded` 保持“待核验版本”的含义。
+
+阶段包括 `checking`、`checked`、`downloading`、`verifying`、`ready`、`handoff`、`waiting_parent`、`installing`、`pending_verification`、`deployed`、`succeeded`、`failed`、`aborted`，以及兼容阶段 `installer_succeeded`。安装程序退出 0 只进入 `pending_verification`；真实 GUI 从交接记录的物理安装目录以目标版本启动后，才记为 `succeeded` 并填写 `verifiedVersion`。CLI 启动不能证明同目录 GUI 的版本；缺少核验目录或启动证据时保留待确认。`deployed` 只证明核心文件部署完成，不证明协议进程已加载该版本。
+
+只有实际观察到的取消或助手明确放弃执行才记为 `aborted`；进程崩溃留下的未结束记录保持最后阶段，界面标明结果未确认，不凭陈旧 PID 或经过时间猜测失败。写入时最多保留 100 条操作回执，只清理已终态的自有证据和对应交接/核验文件；100 条均未决时拒绝新任务，保留未知证据。用户数据、协议配置和回滚备份不随此清理。损坏或身份不符回执报错，不伪装为成功。
 
 主程序信息新增 status、installerName、downloadSize、checksumSha256。状态为 available、up_to_date、newer_local、no_release、installer_missing；核心状态为 available、up_to_date、newer_local、version_unknown、asset_missing。可选值可能为 null。
 
-app-update-progress、napcat-update-progress 的 payload 为 {phase,downloadedBytes,totalBytes}，阶段包含 checking、downloading、verifying、installing、ready。调用前订阅，成功、失败和卸载后释放。ready 只表示包就绪，不表示安装结束。
+`app-update-progress`、`napcat-update-progress` 的 payload 为 `{operationId?,phase,downloadedBytes,totalBytes}`，阶段包含 `checking`、`downloading`、`verifying`、`installing`、`ready`。调用前订阅，按编号丢弃其他任务进度，成功、失败和卸载后释放。主程序的 `ready` 只表示包就绪，不表示安装结束；核心的 `ready` 表示文件部署完成，仍不表示协议运行版本已确认。
 
 主程序升级只接受当前稳定版本的明确安装包及官方 SHA256；显式 downloadUrl 不能绕过选择。桌面退出后助手安装并重开，CLI 不退出另一个桌面。核心只接受官方 Shell 包，存活会话阻止覆盖，配置与备份保留；成功后按需启动账号。
 

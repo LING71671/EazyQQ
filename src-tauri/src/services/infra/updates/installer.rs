@@ -13,6 +13,8 @@ struct Request {
     #[serde(default)]
     telemetry_dsn: Option<String>,
     parent_id: u32,
+    #[serde(default)]
+    parent_started_at: Option<u64>,
     installer: PathBuf,
     sha256: String,
     size: u64,
@@ -38,9 +40,12 @@ pub(super) fn run_helper(request_path: &Path) -> Result<(),String> {
     let _telemetry = request.telemetry_dsn.as_deref().and_then(|dsn| crate::services::infra::telemetry::initialize_from_dsn("update-helper", dsn));
     let journal = request.operation_id.as_deref().map(|id| Journal::resume(root, id)).transpose()?;
     let mut exit_code = None;
+    let mut aborted = false;
     let result=(|| {
+        let _update = crate::services::infra::persistence::FileLock::try_acquire(&root.join("download.lock"))
+            .map_err(|_| "另一个更新任务正在执行，未启动安装程序".to_string())?;
         if let Some(journal) = &journal { journal.update(Phase::WaitingParent, None, None)?; }
-        wait_parent(request.parent_id)?;
+        if let Err(error) = wait_parent(request.parent_id, request.parent_started_at) { aborted = true; return Err(error); }
         if let Some(journal) = &journal { journal.update(Phase::Verifying, None, None)?; }
         if std::fs::canonicalize(request.installer.parent().ok_or("Installer has no directory")?).map_err(|e|e.to_string())?
             != std::fs::canonicalize(root).map_err(|e|e.to_string())? {return Err("Installer is outside the verified update directory".into());}
@@ -60,11 +65,14 @@ pub(super) fn run_helper(request_path: &Path) -> Result<(),String> {
         let status=installer.status().map_err(|e|e.to_string())?;
         exit_code = status.code();
         if !status.success() {return Err(format!("安装程序未成功结束，退出码 {}",status.code().map(|value| value.to_string()).unwrap_or_else(|| "未提供".into())));}
-        if let Some(journal) = &journal { journal.update(Phase::InstallerSucceeded, exit_code, None)?; }
+        if let Some(journal) = &journal {
+            journal.update(Phase::PendingVerification, exit_code, None)?;
+            journal.confirm_observed()?;
+        }
         Ok(())
     })();
     if let Err(error)=&result {
-        if let Some(journal) = &journal { let _ = journal.update(Phase::Failed, exit_code, Some(error)); }
+        if let Some(journal) = &journal { let _ = journal.update(if aborted { Phase::Aborted } else { Phase::Failed }, exit_code, Some(error)); }
         crate::services::infra::telemetry::capture_failure("update.installer", request.operation_id.as_deref(), exit_code);
         let _=std::fs::write(request_path.with_extension("error.log"),error);
         if let Some(previous)=&request.previous_executable {
@@ -77,18 +85,25 @@ pub(super) fn run_helper(request_path: &Path) -> Result<(),String> {
 }
 
 #[cfg(windows)]
-fn wait_parent(pid:u32)->Result<(),String> {
+fn wait_parent(pid:u32, expected_started_at:Option<u64>)->Result<(),String> {
     use std::ffi::c_void;
     #[link(name="kernel32")]
     unsafe extern "system" {
         fn OpenProcess(access:u32,inherit:i32,pid:u32)->*mut c_void;
         fn WaitForSingleObject(handle:*mut c_void,millis:u32)->u32;
         fn CloseHandle(handle:*mut c_void)->i32;
+        fn GetProcessTimes(handle:*mut c_void,created:*mut u64,exited:*mut u64,kernel:*mut u64,user:*mut u64)->i32;
     }
-    let handle=unsafe {OpenProcess(0x00100000,0,pid)};
+    let handle=unsafe {OpenProcess(0x00100000 | 0x1000,0,pid)};
     if handle.is_null() {
         let error=std::io::Error::last_os_error();
         return if error.raw_os_error()==Some(87) {Ok(())} else {Err(error.to_string())};
+    }
+    if let Some(expected) = expected_started_at {
+        let (mut created, mut exited, mut kernel, mut user) = (0, 0, 0, 0);
+        let read = unsafe { GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user) };
+        if read == 0 { let error = std::io::Error::last_os_error(); unsafe { CloseHandle(handle); } return Err(format!("无法确认更新调用进程身份，安装未执行：{error}")); }
+        if created != expected { unsafe { CloseHandle(handle); } return Ok(()); }
     }
     let result=unsafe {WaitForSingleObject(handle,90_000)};
     let wait_error = (result == u32::MAX).then(std::io::Error::last_os_error);
@@ -101,22 +116,31 @@ fn wait_parent(pid:u32)->Result<(),String> {
     }
 }
 #[cfg(not(windows))]
-fn wait_parent(_:u32)->Result<(),String> {Err("Native installation is supported only on Windows".into())}
+fn wait_parent(_:u32,_:Option<u64>)->Result<(),String> {Err("Native installation is supported only on Windows".into())}
+
+#[cfg(windows)]
+fn caller_started_at() -> Result<u64, String> {
+    use std::ffi::c_void;
+    #[link(name="kernel32")]
+    unsafe extern "system" { fn GetCurrentProcess()->*mut c_void; fn GetProcessTimes(handle:*mut c_void,created:*mut u64,exited:*mut u64,kernel:*mut u64,user:*mut u64)->i32; }
+    let (mut created, mut exited, mut kernel, mut user) = (0, 0, 0, 0);
+    if unsafe { GetProcessTimes(GetCurrentProcess(), &mut created, &mut exited, &mut kernel, &mut user) } == 0 { return Err(std::io::Error::last_os_error().to_string()); }
+    Ok(created)
+}
 
 pub fn launch(prepared: &PreparedUpdate, desktop: bool) -> Result<UpdateReceipt, String> {
-    #[cfg(not(windows))]
-    { let _ = (prepared, desktop); return Err("自动安装仅支持 Windows x64".into()); }
-    #[cfg(windows)]
-    {
-        let path = crate::services::infra::filesystem::physical_path(&prepared.path)?;
-        let root = path.parent().ok_or("安装包目录无效")?;
-        let (journal, receipt) = Journal::begin(root, prepared.target_version.clone())?;
-        if let Err(error) = launch_inner(prepared, desktop, &journal) {
-            let _ = journal.update(Phase::Failed, None, Some(&error));
-            return Err(format!("更新 {} 交接失败：{error}", journal.id()));
-        }
-        Ok(receipt)
+    // The package can disappear after prepare; its existing parent still locates the receipt.
+    let parent = prepared.path.parent().ok_or("安装包目录无效")?;
+    let root = crate::services::infra::filesystem::physical_path(parent)?;
+    let journal = match &prepared.operation_id {
+        Some(id) => { let journal = Journal::resume(&root, id)?; journal.update(Phase::Handoff, None, None)?; journal },
+        None => Journal::begin(&root, prepared.target_version.clone())?.0,
+    };
+    if let Err(error) = launch_inner(prepared, desktop, &journal) {
+        let _ = journal.update(Phase::Failed, None, Some(&error));
+        return Err(format!("更新 {} 交接失败：{error}", journal.id()));
     }
+    journal.read()
 }
 
 fn launch_inner(prepared:&PreparedUpdate,desktop:bool,journal:&Journal)->Result<(),String> {
@@ -131,6 +155,9 @@ fn launch_inner(prepared:&PreparedUpdate,desktop:bool,journal:&Journal)->Result<
         let bytes=std::fs::read(&installer_path).map_err(|e|e.to_string())?;
         if bytes.len() as u64 != prepared.size || format!("{:x}",Sha256::digest(&bytes))!=prepared.sha256 {return Err("安装包在校验后发生变化，已拒绝启动".into());}
         let source=physical_path(&std::env::current_exe().map_err(|e|e.to_string())?)?;
+        let install_directory = if desktop { source.parent().map(Path::to_path_buf) }
+            else { source.parent().filter(|directory| directory.join("eazyqq.exe").is_file()).map(Path::to_path_buf) };
+        if let Some(directory) = &install_directory { journal.prepare_verification(directory)?; }
         let source_bytes=std::fs::read(&source).map_err(|e|e.to_string())?;
         let helper=root.join(format!("eazyqq-update-helper-{:x}.exe",Sha256::digest(source_bytes)));
         if !helper.exists() {std::fs::copy(&source,&helper).map_err(|e|e.to_string())?;}
@@ -138,8 +165,8 @@ fn launch_inner(prepared:&PreparedUpdate,desktop:bool,journal:&Journal)->Result<
         crate::services::infra::persistence::write_json(&request,&Request {
             operation_id: Some(journal.id().into()),
             telemetry_dsn: crate::services::infra::telemetry::helper_dsn(),
-            parent_id:std::process::id(),installer:installer_path.clone(),sha256:prepared.sha256.clone(),size:prepared.size,
-            install_directory:if desktop {source.parent().map(Path::to_path_buf)} else {None},
+            parent_id:std::process::id(),parent_started_at:Some(caller_started_at()?),installer:installer_path.clone(),sha256:prepared.sha256.clone(),size:prepared.size,
+            install_directory,
             previous_executable:desktop.then_some(source),root_override:std::env::var_os("EAZYQQ_ROOT")
                 .map(|path|physical_path(Path::new(&path)).map(|p|p.to_string_lossy().into_owned())).transpose()?,
         })?;

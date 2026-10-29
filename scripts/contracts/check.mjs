@@ -15,6 +15,7 @@ const route = new Map([...main.matchAll(/"([a-z-]+)"\s*=>\s*commands::(\w+)::(\w
 for (const match of main.matchAll(/if args\.command == "([a-z-]+)"\s*\{\s*return match commands::(\w+)::(\w+)/g)) route.set(match[1], [match[2], match[3]]);
 const map = {
   detect_free_models: 'ai-free-models',
+  cancel_free_model_detection: 'ai-free-models (Ctrl+C)',
   get_telemetry_status: 'telemetry status', test_telemetry: 'telemetry test',
   get_protocol_status: 'status', refresh_qrcode: 'qr --refresh', quick_login: 'quick-login', get_quick_login_accounts: 'quick-login-list', logout: 'logout',
   list_accounts: 'accounts list', get_account_status: 'accounts status', register_account: 'accounts add', batch_accounts: 'accounts start|stop|login', account_qrcode: 'accounts qr', configure_account: 'accounts configure', forget_account: 'accounts forget',

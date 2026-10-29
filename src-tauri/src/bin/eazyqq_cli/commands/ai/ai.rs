@@ -5,14 +5,30 @@ use crate::format::{hr, print_json};
 pub async fn cmd_free_models(svc:&Services,args:&Args)->Result<(),String> {
     let probe=args.has("probe");
     let stream=args.has("stream");
-    let report=eazyqq_lib::services::ai::free_models::detect(svc.ai.runtime_dir(),probe,"cli",|progress| {
+    let request_id=format!("cli-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+    let detection=eazyqq_lib::services::ai::free_models::detect(svc.ai.runtime_dir(),probe,&request_id,|progress| {
         if stream {println!("{}",serde_json::json!({"type":"progress","data":progress}));}
-    }).await?;
+    });
+    tokio::pin!(detection);
+    let report=tokio::select! {
+        result = &mut detection => result?,
+        signal = tokio::signal::ctrl_c() => {
+            signal.map_err(|error|format!("无法监听停止信号: {error}"))?;
+            eazyqq_lib::services::ai::free_models::cancel(svc.ai.runtime_dir(),&request_id)?;
+            detection.await?
+        }
+    };
     if args.json() && stream {println!("{}",serde_json::json!({"type":"complete","data":report}));}
     else if args.json() {print_json(&serde_json::to_value(&report).map_err(|e|e.to_string())?);} else {
         println!("OpenCode {}；检测时间 {}；未使用凭据",report.runtime_version,report.observed_at_ms);
-        for model in report.models {println!("{} [{}] {}",model.id,model.state,model.detail);}
+        println!("检测状态 {:?}；完成 {}/{}",report.status,report.completed,report.total);
+        for model in &report.models {println!("{} [{}] {}",model.id,model.state,model.detail);}
+        if let Some(error)=&report.error {println!("检测失败: {error}");}
+        if let Some(error)=&report.cleanup_error {println!("临时目录清理失败: {error}");}
+        for history in &report.history {println!("历史证据 {} [{:?}]，{} 个模型；不代表本次可用",history.observed_at_ms,history.status,history.models.len());}
     }
+    if report.status==eazyqq_lib::services::ai::free_models::DetectionStatus::Failed { return Err("免费模型检测失败；当前报告保留已完成结果与历史证据".into()); }
+    if report.status==eazyqq_lib::services::ai::free_models::DetectionStatus::Cancelled { return Err("免费模型检测已停止；当前报告保留已完成结果".into()); }
     Ok(())
 }
 

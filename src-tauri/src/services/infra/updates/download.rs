@@ -4,16 +4,21 @@ use tokio::io::AsyncWriteExt;
 use super::release::Artifact;
 
 pub(super) const MAX_SIZE: u64 = 256 * 1024 * 1024;
+struct PartialFile(PathBuf);
+impl Drop for PartialFile { fn drop(&mut self) { let _ = std::fs::remove_file(&self.0); } }
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateProgress {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation_id: Option<String>,
     pub phase: &'static str,
     pub downloaded_bytes: u64,
     pub total_bytes: u64,
 }
 
 pub struct PreparedUpdate {
+    pub operation_id: Option<String>,
     pub path: PathBuf,
     pub sha256: String,
     pub size: u64,
@@ -41,11 +46,13 @@ pub(super) async fn download(client: &reqwest::Client, artifact: &Artifact, root
     report: &(dyn Fn(UpdateProgress) + Send + Sync)) -> Result<PathBuf, String> {
     std::fs::create_dir_all(root).map_err(|e| format!("创建更新暂存目录失败：{e}"))?;
     let destination = root.join(&artifact.name);
+    report(UpdateProgress { operation_id: None, phase:"verifying", downloaded_bytes:0, total_bytes:artifact.size });
     if verified_file(&destination, artifact).is_ok() {
-        report(UpdateProgress { phase:"ready", downloaded_bytes:artifact.size, total_bytes:artifact.size });
+        report(UpdateProgress { operation_id: None, phase:"ready", downloaded_bytes:artifact.size, total_bytes:artifact.size });
         return Ok(destination);
     }
     let partial = root.join(format!("{}.{}.part", artifact.name, std::process::id()));
+    let _partial_cleanup = PartialFile(partial.clone());
     let result = async {
         let mut response = client.get(&artifact.url).send().await.map_err(|e| format!("下载安装包失败：{e}"))?
             .error_for_status().map_err(|e| format!("下载安装包失败：{e}"))?;
@@ -55,21 +62,21 @@ pub(super) async fn download(client: &reqwest::Client, artifact: &Artifact, root
         let mut file = tokio::fs::File::create(&partial).await.map_err(|e| e.to_string())?;
         let mut received = 0u64;
         let mut last_report = std::time::Instant::now();
-        report(UpdateProgress { phase:"downloading", downloaded_bytes:0, total_bytes:artifact.size });
+        report(UpdateProgress { operation_id: None, phase:"downloading", downloaded_bytes:0, total_bytes:artifact.size });
         while let Some(chunk) = response.chunk().await.map_err(|e| format!("下载中断：{e}，可重试"))? {
             received += chunk.len() as u64;
             if received > artifact.size || received > MAX_SIZE { return Err("下载超过安装包大小上限".into()); }
             file.write_all(&chunk).await.map_err(|e| format!("保存安装包失败：{e}"))?;
             if last_report.elapsed().as_millis() >= 150 || received == artifact.size {
-                report(UpdateProgress { phase:"downloading", downloaded_bytes:received, total_bytes:artifact.size });
+                report(UpdateProgress { operation_id: None, phase:"downloading", downloaded_bytes:received, total_bytes:artifact.size });
                 last_report = std::time::Instant::now();
             }
         }
         file.sync_all().await.map_err(|e| e.to_string())?; drop(file);
-        report(UpdateProgress { phase:"verifying", downloaded_bytes:received, total_bytes:artifact.size });
+        report(UpdateProgress { operation_id: None, phase:"verifying", downloaded_bytes:received, total_bytes:artifact.size });
         verified_file(&partial, artifact)?;
         std::fs::rename(&partial, &destination).map_err(|e| e.to_string())?;
-        report(UpdateProgress { phase:"ready", downloaded_bytes:received, total_bytes:artifact.size });
+        report(UpdateProgress { operation_id: None, phase:"ready", downloaded_bytes:received, total_bytes:artifact.size });
         Ok(destination)
     }.await;
     if result.is_err() { let _ = std::fs::remove_file(&partial); }
@@ -77,17 +84,39 @@ pub(super) async fn download(client: &reqwest::Client, artifact: &Artifact, root
 }
 
 pub async fn prepare(download_url: Option<String>, report: &(dyn Fn(UpdateProgress) + Send + Sync)) -> Result<PreparedUpdate, String> {
+    use super::receipts::{Operation, Phase};
+    let mut operation = Operation::begin("app", "install")?;
+    report(UpdateProgress { operation_id: Some(operation.journal().id().into()), phase:"checking", downloaded_bytes:0, total_bytes:0 });
+    let result = prepare_inner(download_url, report, operation.journal()).await;
+    operation.end(result, Phase::Ready)
+}
+
+async fn prepare_inner(download_url: Option<String>, report: &(dyn Fn(UpdateProgress) + Send + Sync), journal: &super::receipts::Journal) -> Result<PreparedUpdate, String> {
     let root = super::staging_root();
     let _lock = crate::services::infra::persistence::FileLock::try_acquire(&root.join("download.lock"))
         .map_err(|_| "另一个更新任务正在执行，请等待完成".to_string())?;
     let client = super::client()?;
     let release = super::release::latest(&client).await?.ok_or("暂无稳定发布版本")?;
     let version = release["tag_name"].as_str().ok_or("发布版本无效")?;
+    journal.target(version)?;
+    report(UpdateProgress { operation_id: Some(journal.id().into()), phase:"checking", downloaded_bytes:0, total_bytes:0 });
     if !crate::services::infra::versions::newer(version, env!("CARGO_PKG_VERSION")) { return Err("当前已无更高的稳定版本，无需重复安装".into()); }
     let artifact = super::release::artifact(&client, &release).await?;
     if download_url.as_deref().is_some_and(|url| !url.trim().is_empty() && url != artifact.url) {
         return Err("下载链接已过期或不属于当前正式安装包，请重新检查更新".into());
     }
-    let path = download(&client, &artifact, &root, report).await?;
-    Ok(PreparedUpdate { path, sha256:artifact.sha256, size:artifact.size, target_version: Some(version.trim_start_matches('v').into()) })
+    let path = download_tracked(&client, &artifact, &root, report, journal).await?;
+    Ok(PreparedUpdate { operation_id: Some(journal.id().into()), path, sha256:artifact.sha256, size:artifact.size, target_version: Some(version.trim_start_matches('v').into()) })
+}
+
+pub(super) async fn download_tracked(client: &reqwest::Client, artifact: &Artifact, root: &Path, report: &(dyn Fn(UpdateProgress) + Send + Sync), journal: &super::receipts::Journal) -> Result<PathBuf, String> {
+    let persistence_error = std::sync::Mutex::new(None);
+    let tracked = |mut progress: UpdateProgress| {
+        let phase = match progress.phase { "downloading" => super::receipts::Phase::Downloading, "verifying" => super::receipts::Phase::Verifying, _ => super::receipts::Phase::Ready };
+        if let Err(error) = journal.update(phase, None, None) { *persistence_error.lock().unwrap() = Some(error); }
+        progress.operation_id = Some(journal.id().into()); report(progress);
+    };
+    let path = download(client, artifact, root, &tracked).await?;
+    if let Some(error) = persistence_error.into_inner().unwrap() { return Err(format!("更新回执保存失败：{error}")); }
+    Ok(path)
 }

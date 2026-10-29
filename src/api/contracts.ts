@@ -211,6 +211,7 @@ export interface AppUpdateInfo {
 }
 
 export interface AppUpdateProgress {
+  operationId?: string;
   phase: 'checking' | 'downloading' | 'verifying' | 'installing' | 'ready';
   downloadedBytes: number;
   totalBytes: number;
@@ -219,9 +220,12 @@ export interface AppUpdateProgress {
 export interface UpdateReceipt {
   schemaVersion: number;
   operationId: string;
-  component: 'app';
+  component: 'app' | 'napcat';
   targetVersion: string | null;
-  phase: 'handoff' | 'waiting_parent' | 'verifying' | 'installing' | 'installer_succeeded' | 'failed';
+  phase: 'checking' | 'checked' | 'downloading' | 'verifying' | 'ready' | 'handoff' | 'waiting_parent' | 'installing' | 'installer_succeeded' | 'pending_verification' | 'deployed' | 'succeeded' | 'failed' | 'aborted';
+  operation?: 'check' | 'install';
+  verifiedVersion?: string | null;
+  events?: { phase: UpdateReceipt['phase']; atMs: number }[];
   startedAtMs: number;
   updatedAtMs: number;
   installerExitCode: number | null;
@@ -250,7 +254,28 @@ export interface ModelInfoDto {
 }
 
 export interface FreeModelCheck { id: string; name: string; state: 'candidate' | 'available' | 'retired' | 'removed_from_catalogue' | 'unconfirmed' | 'requires_conditions'; detail: string; observedAtMs: number }
-export interface FreeModelsReport { runtimeVersion: string; observedAtMs: number; catalogueIds: string[]; models: FreeModelCheck[]; credentialsUsed: boolean; source: string }
+export interface FreeModelsHistory {
+  requestId: string;
+  status: 'completed' | 'cancelled' | 'failed';
+  observedAtMs: number;
+  models: FreeModelCheck[];
+}
+export interface FreeModelsReport {
+  runtimeVersion: string;
+  observedAtMs: number;
+  catalogueIds: string[];
+  models: FreeModelCheck[];
+  credentialsUsed: boolean;
+  source: string;
+  requestId: string;
+  status: 'completed' | 'cancelled' | 'failed';
+  completed: number;
+  total: number;
+  catalogueRefreshed: boolean;
+  error: string | null;
+  cleanupError: string | null;
+  history: FreeModelsHistory[];
+}
 export interface FreeModelProgress { requestId: string; completed: number; total: number; model: FreeModelCheck }
 
 export interface AccountInfoDto { uin: string; nickname?: string | null; httpPort: number; wsPort: number; webuiPort: number; autoStart: boolean; processManaged: boolean }

@@ -284,10 +284,10 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                     <button
                       onClick={() => onOpenChat(contact)}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 transition-colors shadow-2xs"
-                      title="打开私聊会话与实时 AI 对话窗口"
+                      title={contact.targetType === 'group' ? '打开群聊会话与实时 AI 对话窗口' : '打开私聊会话与实时 AI 对话窗口'}
                     >
                       <MessageSquare className="w-3.5 h-3.5" />
-                      <span>私聊会话</span>
+                      <span>{contact.targetType === 'group' ? '群聊会话' : '私聊会话'}</span>
                     </button>
 
                     {/* 1. Group Summary Whitelist Pill (Groups Only) */}

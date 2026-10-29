@@ -1,4 +1,10 @@
-import type { FreeModelCheck } from '@/api/contracts';
+import type { FreeModelCheck, FreeModelsReport } from '@/api/contracts';
+
+export const FREE_DETECTION_STATES: Record<FreeModelsReport['status'], string> = {
+  completed: '检测完成',
+  cancelled: '检测已停止',
+  failed: '检测失败',
+};
 
 export const FREE_MODEL_STATES: Record<FreeModelCheck['state'], string> = {
   candidate: '待验证',

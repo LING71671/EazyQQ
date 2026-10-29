@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import type { 
   AiProviderId, 
@@ -18,7 +18,7 @@ import { AppUpdateCard } from '@/views/settings/AppUpdateCard';
 interface SettingsViewProps {
   config: AppConfig;
   health: DependencyHealthReport;
-  onUpdateConfig: (cfg: Partial<AppConfig>) => void;
+  onUpdateConfig: (cfg: Partial<AppConfig>) => Promise<void>;
   onCheckHealth: () => void;
   onExportDiagnostics: () => void;
   diagnosticsPath?: string;
@@ -81,6 +81,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleSelectProvider = (id: AiProviderId) => {
+    setIsSaved(false);
     const updatedMap = {
       ...providersMap,
       [provider]: {
@@ -130,17 +131,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   );
   const [closeToTray, setCloseToTray] = useState(config.window?.closeToTray ?? true);
 
-  const applyWindowBehavior = (next: { minimizeToTray?: boolean; closeToTray?: boolean }) => {
+  const applyWindowBehavior = async (next: { minimizeToTray?: boolean; closeToTray?: boolean }) => {
+    if (saving.current) return;
     const merged = {
       minimizeToTray: next.minimizeToTray ?? minimizeToTray,
       closeToTray: next.closeToTray ?? closeToTray,
     };
     setMinimizeToTray(merged.minimizeToTray);
     setCloseToTray(merged.closeToTray);
-    onUpdateConfig({ window: merged });
+    saving.current = true;
+    setIsSaving(true);
+    setIsSaved(false);
+    setSaveError(null);
+    try {
+      await onUpdateConfig({ window: merged });
+    } catch (error) {
+      setSaveError(`窗口设置未保存：${error instanceof Error ? error.message : String(error)}。请重试保存所有设置。`);
+    } finally {
+      saving.current = false;
+      setIsSaving(false);
+    }
   };
 
   const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const saving = useRef(false);
 
   // Sync state whenever async config from SQLite changes
   useEffect(() => {
@@ -161,7 +177,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setBaseUrl(curBaseUrl);
 
     fetchModelsForEndpoint(curProvider, curBaseUrl, curKey, !curModel);
+  }, [config.ai]);
 
+  useEffect(() => {
     setSummaryEnabled(config.summary?.enabled ?? true);
     setIntervalType(config.summary?.intervalType || '6h');
     setCustomIntervalMinutes(config.summary?.customIntervalMinutes || 360);
@@ -171,12 +189,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       config.summary?.customPrompt ||
         '请提取群聊中的核心讨论议题、达成的共识决议、待办行动项及关联责任人，输出清晰简洁的结构化简报。'
     );
+  }, [config.summary]);
 
+  useEffect(() => {
     setMinimizeToTray(config.window?.minimizeToTray ?? false);
     setCloseToTray(config.window?.closeToTray ?? true);
-  }, [config]);
+  }, [config.window]);
 
-  const handleSaveAll = () => {
+  const handleSaveAll = async () => {
+    if (saving.current) return;
+    saving.current = true;
+    setIsSaving(true);
+    setIsSaved(false);
+    setSaveError(null);
     const updatedMap = {
       ...providersMap,
       [provider]: {
@@ -185,32 +210,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         apiKey: apiKey.trim(),
       },
     };
-    setProvidersMap(updatedMap);
-
-    onUpdateConfig({
-      ai: {
-        ...config.ai,
-        activeProvider: provider,
-        model: model.trim(),
-        baseUrl: baseUrl.trim(),
-        apiKey: apiKey.trim(),
-        providers: updatedMap,
-      },
-      summary: {
-        enabled: summaryEnabled,
-        intervalType,
-        customIntervalMinutes,
-        slidingWindowHours,
-        autoForwardToPhone,
-        customPrompt: customPrompt.trim(),
-      },
-      window: {
-        minimizeToTray,
-        closeToTray,
-      },
-    });
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000);
+    try {
+      await onUpdateConfig({
+        ai: {
+          ...config.ai,
+          activeProvider: provider,
+          model: model.trim(),
+          baseUrl: baseUrl.trim(),
+          apiKey: apiKey.trim(),
+          providers: updatedMap,
+        },
+        summary: {
+          enabled: summaryEnabled,
+          intervalType,
+          customIntervalMinutes,
+          slidingWindowHours,
+          autoForwardToPhone,
+          customPrompt: customPrompt.trim(),
+        },
+        window: {
+          minimizeToTray,
+          closeToTray,
+        },
+      });
+      setProvidersMap(updatedMap);
+      setIsSaved(true);
+    } catch (error) {
+      setSaveError(`设置未保存：${error instanceof Error ? error.message : String(error)}。编辑内容已保留，请重试。`);
+    } finally {
+      saving.current = false;
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -224,13 +254,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
           <button
             onClick={handleSaveAll}
-            className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white text-xs font-semibold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+            disabled={isSaving}
+            className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white text-xs font-semibold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>{isSaved ? '已保存！' : '保存所有设置'}</span>
+            <span role="status">{isSaving ? '正在保存…' : isSaved ? '已保存' : '保存所有设置'}</span>
           </button>
         </div>
 
+        {saveError && <p role="alert" className="break-words text-sm text-red-700">{saveError}</p>}
+        <fieldset disabled={isSaving} onChange={() => setIsSaved(false)} className="min-w-0 space-y-6">
         {/* 1. Window & System Tray Behavior Card */}
         <WindowBehaviorCard
           minimizeToTray={minimizeToTray}
@@ -262,7 +295,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           baseUrl={baseUrl}
           onChangeBaseUrl={setBaseUrl}
           model={model}
-          onChangeModel={setModel}
+          onChangeModel={value => { setIsSaved(false); setModel(value); }}
           apiKey={apiKey}
           onChangeApiKey={setApiKey}
           fetchedModels={fetchedModels}
@@ -270,6 +303,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           fetchModelError={fetchModelError}
           onRefreshModels={() => fetchModelsForEndpoint(provider, baseUrl, apiKey, true)}
         />
+        </fieldset>
 
         {/* 4. Pre-flight Health & End-to-end Chain Diagnostics Card */}
         <DiagnosticsCard

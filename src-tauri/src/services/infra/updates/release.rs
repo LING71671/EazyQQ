@@ -108,6 +108,15 @@ pub(super) async fn artifact(client: &reqwest::Client, release: &Value) -> Resul
 }
 
 pub async fn check() -> Result<AppUpdateInfo, String> {
+    let mut operation = super::receipts::Operation::begin("app", "check")?;
+    let result = match check_inner().await {
+        Ok(info) => operation.journal().target(&info.latest_version).map(|_| info),
+        Err(error) => Err(error),
+    };
+    operation.end(result, super::receipts::Phase::Checked)
+}
+
+async fn check_inner() -> Result<AppUpdateInfo, String> {
     let client = super::client()?;
     let current = env!("CARGO_PKG_VERSION").to_string();
     let Some(release) = latest(&client).await? else {

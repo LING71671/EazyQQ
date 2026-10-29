@@ -24,6 +24,8 @@ from login_layout import validate_login_layout
 from ai_health_ui import validate_ai_health
 from update_history_ui import seed_update_history, validate_update_history
 from sentry_live_ui import validate_sentry_live
+from reliability_ui import validate_reliability
+from free_detection_ui import validate_free_detection_lifecycle
 GUI = Path(os.environ.get("EAZYQQ_TEST_GUI", PROJECT / "src-tauri/target/release/eazyqq.exe"))
 CLI = Path(os.environ.get("EAZYQQ_TEST_CLI", PROJECT / "src-tauri/target/release/eazyqq_cli.exe"))
 FIXTURES = PROJECT / ".test-runtime"
@@ -68,7 +70,7 @@ class Protocol(BaseHTTPRequestHandler):
             self.close_connection = True
         else: self.respond({"code": 0, "data": {}})
     def do_POST(self):
-        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b'{}')
         if self.path == "/get_login_info":
             if self.server.uin == delayed_probe_account:
                 delayed_probe_started.set()
@@ -80,6 +82,10 @@ class Protocol(BaseHTTPRequestHandler):
         elif self.path == "/api/QQLogin/GetQuickLoginListNew": body = {"code": 0, "data": [{"uin": uin, "nickName": f"Remembered {uin}"} for uin in ["10001", "10002", "10003"]]}
         elif self.path == "/api/QQLogin/GetQQLoginQrcode": body = {"code": 0, "data": {"qrcode": "https://example.invalid/native-login-fixture"}}
         elif self.path == "/get_version_info": body = {"status": "ok", "retcode": 0, "data": {"app_version": "7.8.9"}}
+        elif self.path == "/get_group_list": body = {"status": "ok", "retcode": 0, "data": [{"group_id": 995001, "group_name": "Reliability fixture group", "member_count": 2}]}
+        elif self.path == "/send_msg":
+            self.server.sent_messages.append(payload)
+            body = {"status": "failed", "retcode": 1200, "wording": "模拟消息发送失败", "data": {}} if self.server.reject_manual_sends else {"status": "ok", "retcode": 0, "data": {"message_id": 995123}}
         elif self.path.startswith("/api/"): body = {"code": 0, "data": []}
         else: body = {"status": "ok", "retcode": 0, "data": []}
         self.respond(body)
@@ -189,6 +195,8 @@ try:
             server = ThreadingHTTPServer(("127.0.0.1", 0), Protocol)
             server.daemon_threads = True
             server.uin = instance["uin"]
+            server.reject_manual_sends = False
+            server.sent_messages = []
             server.stopping = threading.Event()
             instance[key] = server.server_address[1]
             servers.append(server)
@@ -270,6 +278,8 @@ try:
     client.screenshot(ROOT / "free-model-discovery.png")
     validate_ai_health(client, ROOT)
     validate_update_history(client, ROOT, run)
+    validate_free_detection_lifecycle(client, ROOT, opencode_fixture)
+    validate_reliability(client, ROOT, servers)
     if os.environ.get('EAZYQQ_TEST_LIVE_TELEMETRY') == '1':
         validate_sentry_live(client, ROOT)
     assert client.evaluate("localStorage.getItem('eazyqq_profile_validation')") is None

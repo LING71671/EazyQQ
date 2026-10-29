@@ -1,6 +1,6 @@
 {
   "name": "eazyqq_cli",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "globalFlags": {
     "account": {
       "type": "string",
@@ -1262,6 +1262,10 @@
     {
       "ipc": "batch_update_mode",
       "cli": "batch-mode"
+    },
+    {
+      "ipc": "cancel_free_model_detection",
+      "cli": "ai-free-models (Ctrl+C)"
     },
     {
       "ipc": "check_app_update",

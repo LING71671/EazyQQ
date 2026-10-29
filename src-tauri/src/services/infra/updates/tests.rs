@@ -2,6 +2,24 @@ use super::{download::*, release::*};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
+#[test]
+fn a_package_removed_after_preparation_leaves_the_same_failed_receipt() {
+    use super::receipts::{Journal, Phase};
+    let root = crate::services::logging::workspace_root().join("missing-prepared-installer");
+    let bytes = b"MZisolated fixture; never executed";
+    let path = root.join("setup.exe");
+    let (journal, _) = Journal::begin_for(&root, "app", "install", Some("9.8.7".into()), Phase::Checking).unwrap();
+    std::fs::write(&path, bytes).unwrap();
+    journal.update(Phase::Verifying, None, None).unwrap(); journal.update(Phase::Ready, None, None).unwrap();
+    let prepared = PreparedUpdate { operation_id: Some(journal.id().into()), path: path.clone(), sha256: format!("{:x}", Sha256::digest(bytes)), size: bytes.len() as u64, target_version: Some("9.8.7".into()) };
+    std::fs::rename(&path, root.join("removed-package.bin")).unwrap();
+    let error = super::installer::launch(&prepared, false).unwrap_err();
+    assert!(error.contains(journal.id()));
+    let history = super::receipts::history(&root).unwrap();
+    assert_eq!(history.len(), 1); assert_eq!(history[0].operation_id, journal.id()); assert_eq!(history[0].phase, Phase::Failed);
+    assert!(!root.join(format!("handoff-{}.json", journal.id())).exists());
+}
+
 #[cfg(windows)]
 #[test]
 fn handoff_worker() {
@@ -12,7 +30,7 @@ fn handoff_worker() {
     let Some(path)=std::env::var_os("EAZYQQ_TEST_HANDOFF") else { return; };
     let path=std::path::PathBuf::from(path);
     let bytes=std::fs::read(&path).unwrap();
-    let prepared=super::download::PreparedUpdate {path,sha256:format!("{:x}",Sha256::digest(&bytes)),size:bytes.len() as u64,target_version:Some("9.8.7".into())};
+    let prepared=super::download::PreparedUpdate {operation_id:None,path,sha256:format!("{:x}",Sha256::digest(&bytes)),size:bytes.len() as u64,target_version:Some("9.8.7".into())};
     super::installer::launch(&prepared,false).unwrap();
 }
 
@@ -48,7 +66,7 @@ int WINAPI WinMain(HINSTANCE a,HINSTANCE b,LPSTR command,int show){
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     let final_receipt = loop {
         let values = super::receipts::history(&root).unwrap();
-        if let Some(value) = values.into_iter().find(|value| value.phase == super::receipts::Phase::InstallerSucceeded) { break value; }
+        if let Some(value) = values.into_iter().find(|value| value.phase == super::receipts::Phase::PendingVerification) { break value; }
         assert!(std::time::Instant::now() < deadline, "Installer exited without a durable success receipt");
         std::thread::sleep(std::time::Duration::from_millis(100));
     };
@@ -123,6 +141,20 @@ fn incomplete_core_archive_does_not_modify_existing_resources() {
 }
 
 #[test]
+fn core_deployment_records_a_durable_result_without_claiming_runtime_success() {
+    use super::receipts::{Journal, Phase};
+    let root = crate::services::logging::workspace_root().join("tracked-core-deployment");
+    let destination = root.join("napcat");
+    for (complete, expected) in [(true, Phase::Deployed), (false, Phase::Failed)] {
+        let (journal, _) = Journal::begin_for(&root, "napcat", "install", Some("4.18.33".into()), Phase::Checking).unwrap();
+        journal.update(Phase::Verifying, None, None).unwrap(); journal.update(Phase::Installing, None, None).unwrap();
+        let result = super::core::deploy_tracked(&archive(b"new module", complete), &root.join("staging"), &destination, &journal);
+        assert_eq!(result.is_ok(), complete); let receipt = journal.read().unwrap(); assert_eq!(receipt.phase, expected); assert!(receipt.verified_version.is_none());
+        assert_eq!(std::fs::read(destination.join("napcat.mjs")).unwrap(), b"new module");
+    }
+}
+
+#[test]
 fn stable_releases_are_ordered_by_version_not_api_order() {
     let releases = json!([
         {"tag_name":"v9.0.0","draft":true}, {"tag_name":"v8.0.0-beta","prerelease":true},
@@ -181,6 +213,23 @@ async fn corrupt_download_is_not_promoted_and_can_be_retried() {
     artifact.url=serve(good);
     let path=download(&client,&artifact,&root,&|_| {}).await.unwrap();
     assert_eq!(std::fs::read(path).unwrap(),good);
+}
+
+#[tokio::test]
+async fn tracked_download_correlates_hash_failure_and_a_separate_retry() {
+    use super::receipts::{Operation, Phase};
+    let root = crate::services::logging::workspace_root().join("tracked-download"); let good = b"MZverified installer";
+    let client = reqwest::Client::builder().no_proxy().build().unwrap();
+    let mut ids = Vec::new();
+    for (bytes, expected) in [(b"MZcorrupt installer!".as_slice(), Phase::Failed), (good.as_slice(), Phase::Ready)] {
+        let mut operation = Operation::at(&root, "app", "install").unwrap(); ids.push(operation.journal().id().to_owned());
+        let artifact = Artifact { name:"setup.exe".into(), url:serve(bytes), size:good.len() as u64, sha256:format!("{:x}", Sha256::digest(good)) };
+        let result = download_tracked(&client, &artifact, &root, &|progress| { assert!(progress.operation_id.is_some()); }, operation.journal()).await;
+        assert_eq!(operation.end(result, Phase::Ready).is_ok(), expected == Phase::Ready);
+        let receipt = operation.journal().read().unwrap(); assert_eq!(receipt.phase, expected);
+        assert!(receipt.events.iter().any(|event| event.phase == Phase::Verifying));
+    }
+    assert_ne!(ids[0], ids[1]);
 }
 
 #[tokio::test]

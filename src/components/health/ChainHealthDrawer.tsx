@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { usePresence } from '@/hooks/usePresence';
 import {
   Activity,
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/api/client';
 import { notifyAiTestFinished, useChainStatus } from '@/features/health/useChainStatus';
+import { describeRepair } from '@/features/health/repairResult';
 import type { DependencyHealthReport } from '@/api/contracts';
 
 interface ChainLink {
@@ -28,6 +29,7 @@ interface ChainLink {
   impact: string;
   health: 'ok' | 'unknown' | 'failed';
   detail: string;
+  recommendedAction?: string;
   last_ok_secs_ago: number | null;
   last_error_secs_ago: number | null;
 }
@@ -43,11 +45,15 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
   onClose,
   onOpenSettings,
 }) => {
-  const { links, firstBreak, hasFailure, uptimeSecs, isLoading, refresh: fetchStatus } = useChainStatus(isOpen);
+  const { links, uptimeSecs, isLoading, error: statusError, refresh: fetchStatus } = useChainStatus(isOpen);
+  const firstBreak = links.find(link => link.health === 'failed');
+  const hasFailure = !!firstBreak;
 
   // 1-Click Repair states
   const [isRestarting, setIsRestarting] = useState(false);
   const [repairNotice, setRepairNotice] = useState<string | null>(null);
+  const [repairFailed, setRepairFailed] = useState(false);
+  const repairing = useRef(false);
 
   // Diagnostics Export
   const [isExporting, setIsExporting] = useState(false);
@@ -59,22 +65,22 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
   const [aiTestResult, setAiTestResult] = useState<{ isSuccess: boolean; latencyMs: number } | null>(null);
 
   const handleRestartNapCat = async () => {
+    if (repairing.current) return;
+    repairing.current = true;
     setIsRestarting(true);
+    setRepairFailed(false);
     setRepairNotice('正在检查故障类型…');
     try {
       const res = await api.repairChain();
-      if (res.success) {
-        setRepairNotice(res.data?.detail || '诊断完成');
-        setTimeout(() => {
-          fetchStatus();
-
-        }, 4000);
-      } else {
-        setRepairNotice(`重启失败：${res.error?.message || '未知错误'}`);
-      }
-    } catch (e: any) {
-      setRepairNotice(`重启异常：${e?.message || String(e)}`);
+      if (!res.success || !res.data) throw new Error(res.error?.message || '未收到恢复结果');
+      setRepairNotice(describeRepair(res.data));
+      setRepairFailed(res.data.attempted && !res.data.ok);
+      void fetchStatus();
+    } catch (e) {
+      setRepairFailed(true);
+      setRepairNotice(`诊断/恢复失败：${e instanceof Error ? e.message : String(e)}。请重新检测后重试。`);
     } finally {
+      repairing.current = false;
       setIsRestarting(false);
     }
   };
@@ -125,6 +131,7 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
 
   const mounted = usePresence(isOpen);
   if (!mounted) return null;
+  const allVerified = links.length > 0 && links.every(link => link.health === 'ok');
 
   const formatUptime = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -200,25 +207,23 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
                 </button>
               </div>
 
-              {repairNotice && (
-                <div className="text-[11px] p-2 rounded-lg bg-amber-100/60 text-amber-900">
-                  {repairNotice}
-                </div>
-              )}
             </div>
           ) : (
-            <div className="p-3.5 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+            <div className={`p-3.5 rounded-2xl border flex items-center gap-3 ${allVerified ? 'bg-emerald-50/80 border-emerald-200/80' : 'bg-slate-50 border-slate-200'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${allVerified ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
                 <CheckCircle2 className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="font-bold text-emerald-900 text-xs">{links.length > 0 && links.every(link => link.health === 'ok') ? '全链路已验证' : '等待完成链路检测'}</h3>
-                <p className="text-[11px] text-emerald-700 mt-0.5">
+                <h3 className={`font-bold text-xs ${allVerified ? 'text-emerald-900' : 'text-slate-900'}`}>{allVerified ? '全链路已验证' : '未发现已确认故障，仍有环节待验证'}</h3>
+                <p className={`text-[11px] mt-0.5 ${allVerified ? 'text-emerald-700' : 'text-slate-600'}`}>
                   未验证不代表异常；模型测试成功后会同步显示健康。
                 </p>
               </div>
             </div>
           )}
+
+          {repairNotice && <p role={repairFailed ? 'alert' : 'status'} className={`break-words p-3 rounded-lg border text-xs ${repairFailed ? 'bg-red-50 border-red-200 text-red-800' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>{repairNotice}</p>}
+          {statusError && <p role="alert" className="break-words text-sm text-red-700">诊断读取失败：{statusError}</p>}
 
           {/* 2. Chain Link Detail Cards */}
           <div className="space-y-2">
@@ -272,6 +277,7 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
                     <p className="text-[11px] text-slate-500 leading-relaxed pl-4">
                       {link.detail || (isOk ? '正常运行中' : '等待连接')}
                     </p>
+                    {link.recommendedAction && <p className="mt-1 pl-4 break-words text-xs text-slate-600">建议：{link.recommendedAction}</p>}
 
                     {/* Specific Node Actions */}
                     {link.link === 'ai_provider' && (
@@ -320,7 +326,7 @@ export const ChainHealthDrawer: React.FC<ChainHealthDrawerProps> = ({
                           disabled={isRestarting}
                           className="px-2.5 py-1 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-[10px] font-medium transition-colors cursor-pointer"
                         >
-                          唤醒 NapCat
+                          按故障恢复
                         </button>
                       </div>
                     )}

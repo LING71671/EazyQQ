@@ -85,10 +85,44 @@ pub(crate) fn anonymous_environment(command: &mut tokio::process::Command, root:
 }
 
 pub async fn probe_without_credentials(root: &std::path::Path, model: &str) -> Result<(),String> {
-    let payload=serde_json::json!({"messages":[{"role":"user","content":"Reply only OK"}]});
-    tokio::time::timeout(std::time::Duration::from_secs(25),complete_mode(root,model,"",&payload,true,|_|{}))
-        .await.map_err(|_|"无凭据检测超过 25 秒，不能确认当前可用".to_string())??;
-    Ok(())
+    probe_without_credentials_cancellable(root, model, &super::free_models::Cancellation::default()).await
+}
+
+pub(crate) async fn probe_without_credentials_cancellable(
+    root: &std::path::Path,
+    model: &str,
+    cancellation: &super::free_models::Cancellation,
+) -> Result<(), String> {
+    probe_without_credentials_command(root, model, cancellation, command()?).await
+}
+
+pub(crate) async fn probe_without_credentials_command(
+    root: &std::path::Path,
+    model: &str,
+    cancellation: &super::free_models::Cancellation,
+    mut command: tokio::process::Command,
+) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    command.args(["run", "--pure", "--format", "json", "--model", &model_id(model), "--agent", "build"])
+        .current_dir(root).env("OPENCODE_DISABLE_DEFAULT_PLUGINS", "true");
+    anonymous_environment(&mut command, root);
+    let input = "Respond to this conversation. Preserve its role hierarchy. Output only the assistant response.\n[{\"role\":\"user\",\"content\":\"Reply only OK\"}]";
+    let output = super::free_models::run_owned_command(command, Some(input.as_bytes()), std::time::Duration::from_secs(25), cancellation, 2_000_000).await?;
+    if !output.status.success() { return Err(format!("OpenCode exited with {}", output.status)); }
+    let mut has_text = false;
+    let mut tool_requested = false;
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        if let Ok(event) = serde_json::from_str::<Value>(line) {
+            if event["type"] == "error" {
+                return Err(crate::services::diagnostics::redact(event["error"]["data"]["message"].as_str().unwrap_or("OpenCode inference failed"), &[]));
+            }
+            tool_requested |= event["type"] == "tool_use";
+            has_text |= event_text(&event).is_some_and(|text| !text.trim().is_empty());
+        }
+    }
+    if has_text { Ok(()) }
+    else if tool_requested { Err("OpenCode requested a tool operation. Noninteractive tool authorization was denied".into()) }
+    else { Err("OpenCode returned no assistant text; current access is unconfirmed".into()) }
 }
 
 async fn complete_mode<F>(runtime_dir: &std::path::Path,model: &str,api_key: &str,payload: &Value,anonymous:bool,mut on_chunk:F) -> Result<(String,Option<String>),String>

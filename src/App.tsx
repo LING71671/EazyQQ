@@ -44,6 +44,7 @@ export const App: React.FC = () => {
   const [summaries, setSummaries] = useState<GroupSummaryDto[]>([]);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [diagnosticsPath, setDiagnosticsPath] = useState<string | undefined>(undefined);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // App Configuration
   const [config, setConfig] = useState<AppConfig>({
@@ -98,6 +99,8 @@ export const App: React.FC = () => {
     selectedChatContact,
     isChatDrawerOpen,
     chatMessages,
+    actionError: chatActionError,
+    clearActionError: clearChatActionError,
     fetchContactsAndDrafts,
     handleOpenChat,
     handleCloseChat,
@@ -220,12 +223,9 @@ export const App: React.FC = () => {
 
   const handleUpdateConfig = async (cfg: Partial<AppConfig>) => {
     const updated = { ...config, ...cfg };
+    const res = await api.updateConfig(updated);
+    if (!res.success || !res.data) throw new Error(res.error?.message || '配置未保存，请重试');
     setConfig(updated);
-    try {
-      await api.updateConfig(updated);
-    } catch (e) {
-      console.error('Failed to update config in SQLite', e);
-    }
   };
 
   const handleCheckHealth = async () => {
@@ -252,25 +252,27 @@ export const App: React.FC = () => {
 
   const handleGenerateSummary = async (targetId: string, hours: number) => {
     setIsSummarizing(true);
+    setActionError(null);
     try {
       const res = await api.generateSummaryStream(targetId, hours);
-      if (res.success && res.data) {
-        const newSummary = res.data;
-        setSummaries((prev) => [newSummary, ...prev.filter((s) => s.id !== newSummary.id)]);
-      }
+      if (!res.success || !res.data) throw new Error(res.error?.message || '生成简报失败');
+      const newSummary = res.data;
+      setSummaries((prev) => [newSummary, ...prev.filter((s) => s.id !== newSummary.id)]);
     } catch (e) {
-      console.error('Failed to generate summary', e);
+      setActionError(`生成简报失败：${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsSummarizing(false);
     }
   };
 
   const handleDeleteSummary = async (id: string) => {
+    setActionError(null);
     try {
-      await api.deleteSummary(id);
+      const res = await api.deleteSummary(id);
+      if (!res.success) throw new Error(res.error?.message || '删除简报失败');
       setSummaries((prev) => prev.filter((s) => s.id !== id));
     } catch (e) {
-      console.error('Failed to delete summary', e);
+      setActionError(`删除简报失败：${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -313,6 +315,11 @@ export const App: React.FC = () => {
           onOpenHealth={() => setIsHealthOpen(true)}
           chainHasFailure={chainHasFailure}
         />
+
+        {(actionError || chatActionError) && <div className="flex items-start justify-between gap-3 border-b border-red-200 bg-red-50 px-6 py-3 text-sm text-red-800">
+          <p role="alert" className="min-w-0 break-words">{actionError || chatActionError}</p>
+          <button type="button" onClick={() => { setActionError(null); clearChatActionError(); }} className="shrink-0 rounded px-2 py-1 text-xs hover:bg-red-100 focus-visible:outline-2 focus-visible:outline-red-700">关闭提示</button>
+        </div>}
 
         {/* View Switcher */}
         <main key={currentView} className="motion-view flex-1 overflow-hidden bg-slate-50/50">
@@ -405,6 +412,7 @@ export const App: React.FC = () => {
         onClose={handleCloseChat}
         contact={selectedChatContact}
         messages={chatMessages}
+        actionError={chatActionError}
         onSendMessage={handleSendMessage}
         onTriggerAiReply={handleTriggerAiReply}
         onUpdateMode={handleUpdateMode}

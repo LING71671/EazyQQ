@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { usePresence } from '@/hooks/usePresence';
 import {
   X, Send, Bot, Shield, User, Copy, Check,
@@ -11,6 +11,7 @@ interface ChatDrawerProps {
   onClose: () => void;
   contact: ContactItemDto | null;
   messages: MessageItemDto[];
+  actionError?: string | null;
   onSendMessage: (targetType: string, targetId: string, content: string) => Promise<void>;
   onTriggerAiReply?: (targetId: string, contextSnippet: string) => Promise<string>;
   onUpdateMode?: (targetId: string, mode: RoutingRuleDto['mode']) => void;
@@ -243,15 +244,25 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   onClose,
   contact,
   messages,
+  actionError,
   onSendMessage,
   onTriggerAiReply,
   onUpdateMode,
 }) => {
-  const [inputText, setInputText] = useState('');
+  const targetKey = contact ? `${contact.targetType === 'group' ? 'group' : 'private'}:${contact.targetId}` : '';
+  const [draftsByTarget, setDraftsByTarget] = useState<Record<string, string>>({});
+  const inputText = draftsByTarget[targetKey] || '';
   const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const sending = useRef(false);
+  const generation = useRef(0);
   const [isAiDrafting, setIsAiDrafting] = useState(false);
   const [copiedUin, setCopiedUin] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    generation.current++;
+    setSendError(null);
+  }, [targetKey, isOpen]);
 
   // Deduplicate messages by content & direction within 60s
   const displayMessages = React.useMemo(() => {
@@ -293,15 +304,20 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
 
   const handleSend = async () => {
     const text = inputText.trim();
-    if (!text || isSending) return;
+    if (!text || sending.current) return;
 
+    const epoch = generation.current;
+    const key = targetKey;
+    sending.current = true;
     setIsSending(true);
+    setSendError(null);
     try {
       await onSendMessage(contact.targetType, contact.targetId, text);
-      setInputText('');
+      if (generation.current === epoch) setDraftsByTarget(current => (current[key] || '').trim() === text ? { ...current, [key]: '' } : current);
     } catch (err) {
-      console.error('Failed to send message:', err);
+      if (generation.current === epoch) setSendError(`发送失败：${err instanceof Error ? err.message : String(err)}。输入内容已保留，请重试。`);
     } finally {
+      sending.current = false;
       setIsSending(false);
     }
   };
@@ -315,15 +331,19 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
 
   const handleAskAiDraft = async () => {
     if (isAiDrafting || !onTriggerAiReply) return;
+    const epoch = generation.current;
+    const key = targetKey;
+    const initialDraft = inputText;
     setIsAiDrafting(true);
+    setSendError(null);
     try {
       const lastIncoming = [...messages].reverse().find(m => !m.isFromMe)?.content || '你好！';
       const aiGenerated = await onTriggerAiReply(contact.targetId, lastIncoming);
-      if (aiGenerated) {
-        setInputText(aiGenerated);
+      if (aiGenerated && generation.current === epoch) {
+        setDraftsByTarget(current => (current[key] || '') === initialDraft ? { ...current, [key]: aiGenerated } : current);
       }
     } catch (err) {
-      console.error('Failed to generate AI draft:', err);
+      if (generation.current === epoch) setSendError(`AI 构思失败：${err instanceof Error ? err.message : String(err)}。请重试。`);
     } finally {
       setIsAiDrafting(false);
     }
@@ -393,6 +413,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
 
             <button
               onClick={onClose}
+              aria-label="关闭会话"
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <X className="w-5 h-5" />
@@ -597,6 +618,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
 
         {/* Input & Quick AI Bar */}
         <div className="p-3 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2">
+          {(sendError || actionError) && <p role="alert" className="break-words text-sm text-red-700 dark:text-red-400">{sendError || actionError}</p>}
           {/* Quick AI Trigger */}
           <div className="flex items-center justify-between">
             <button
@@ -617,9 +639,10 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
           <div className="flex items-end gap-2 bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2 border border-slate-200 dark:border-slate-700 focus-within:border-sky-500 focus-within:bg-white dark:focus-within:bg-slate-800 transition-all">
             <textarea
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
+              aria-label="消息内容"
+              onChange={(e) => { const value = e.currentTarget.value; setDraftsByTarget(current => ({ ...current, [targetKey]: value })); }}
               onKeyDown={handleKeyDown}
-              placeholder={`给 ${contact.name} 发送私聊消息...`}
+              placeholder={`给 ${contact.name} 发送${contact.targetType === 'group' ? '群聊' : '私聊'}消息...`}
               rows={2}
               className="flex-1 bg-transparent text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 resize-none outline-none leading-relaxed"
             />
@@ -628,6 +651,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
               disabled={!inputText.trim() || isSending}
               className="p-2 rounded-lg bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white disabled:opacity-40 transition-colors shrink-0 shadow-xs"
               title="发送"
+              aria-label="发送消息"
             >
               <Send className={`w-4 h-4 ${isSending ? 'animate-pulse' : ''}`} />
             </button>

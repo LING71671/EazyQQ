@@ -48,3 +48,20 @@ it('reports malformed evidence without crashing date rendering', async () => {
   expect(screen.getByRole('alert').textContent).toContain('格式无效');
   expect(screen.queryByText('安装程序已结束，待核验版本')).toBeNull();
 });
+
+it('shows core deployment and the correlated lifecycle without claiming a running core', async () => {
+  mocks.history.mockResolvedValue({ success: true, data: [{ ...receipt, component: 'napcat', operation: 'install', phase: 'deployed', installerExitCode: null,
+    events: [{ phase: 'checking', atMs: 1 }, { phase: 'deployed', atMs: 2 }] }] });
+  render(<UpdateHistory />);
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.getByText('NapCat 核心 v0.7.0')).toBeTruthy();
+  expect(screen.getAllByText('核心文件已部署，运行版本待确认').length).toBeGreaterThan(0);
+  expect(screen.queryByText('新主程序已启动，版本已核验')).toBeNull();
+});
+
+it('rejects verified success without matching observed version evidence', async () => {
+  mocks.history.mockResolvedValue({ success: true, data: [{ ...receipt, phase: 'succeeded', verifiedVersion: '0.6.4' }] });
+  render(<UpdateHistory />);
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.getByRole('alert').textContent).toContain('格式无效');
+});

@@ -119,7 +119,10 @@ try:
     status = run("status", "--account", "10002")
     assert status["loggedIn"] and status["qqNumber"] == "10002"
     health = run("health", "--account", "10002")
-    assert next(item for item in health["items"] if item["item"] == "QQ login")["detail"].startswith("Authenticated Fixture (10002)")
+    assert next(item for item in health["items"] if item["item"] == "QQ login")["detail"].startswith("身份已确认：Fixture (10002)")
+    ai_health = next(item for item in health["items"] if item["item"] == "大模型")
+    assert ai_health["health"] == "unknown" and ai_health["recommendedAction"] == "test_model"
+    assert not health["hasFailure"], "Unobserved inference and consumers must stay unknown, not failed"
     assert any(str(second["webuiPort"]) in item["item"] for item in health["items"])
     assert any(str(second["httpPort"]) in item["item"] for item in health["items"])
     chain = run("chain-status", "--account", "10001")
@@ -160,6 +163,25 @@ try:
     assert len(responses) == 2 and responses[0]["result"]["serverInfo"]["version"] == schema["version"]
     assert len(responses[1]["result"]["tools"]) >= 9
     checks.append("MCP metadata and tools discovery use clean JSON-RPC stdout")
+
+    document = ROOT / "extraction-fixture.txt"
+    document.write_text("Local extraction stays local.\n无需模型调用。", encoding="utf-8", newline="\n")
+    calls = [
+        {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"extract_document","arguments":{"file_path":str(document)}}},
+        {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"get_system_health","arguments":{"deep":False}}},
+        {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"restart_napcat","arguments":{}}},
+    ]
+    result = subprocess.run([str(CLI), "--account", "10001", "mcp"], input="\n".join(json.dumps(call) for call in calls)+"\n", env=ENV, capture_output=True, text=True, encoding="utf-8", timeout=20)
+    assert result.returncode == 0, result.stderr
+    results = [json.loads(line) for line in result.stdout.splitlines()]
+    assert [item["id"] for item in results] == [3,4,5]
+    values = [json.loads(item["result"]["content"][0]["text"]) for item in results]
+    assert values[0]["text"] == document.read_text(encoding="utf-8") and not values[0]["truncated"]
+    assert not values[1]["hasFailure"] and values[1]["deep_ai_status"] == "not_probed"
+    assert next(item for item in values[1]["links"] if item["link"]=="ai_provider")["health"] == "unknown"
+    assert values[2]["attempted"] is False, "Read-only health and healthy recovery must not launch a protocol"
+    checks.append("MCP local extraction never infers and passive health shares tri-state evidence")
+    checks.append("MCP fault-specific recovery preserves a healthy authenticated session")
 
     if os.name == "nt":
         unrelated = subprocess.Popen(["ping", "-n", "30", "127.0.0.1"], stdout=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
