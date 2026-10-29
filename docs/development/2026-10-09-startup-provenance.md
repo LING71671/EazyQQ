@@ -55,12 +55,12 @@ napcat-doctor --json 增加 startupTrace；诊断 ZIP 增加 protocol/startup-tr
 
 ```mermaid
 flowchart LR
-  A[Codex 后代工具打开逻辑 AppData] --> B[写入 Codex LocalCache 物理目录]
-  B --> C[加载桥实际存在]
-  A --> D[package.main 保存逻辑路径]
-  D --> E[WMI 脱离启动 QQ]
-  E --> F[QQ 普通文件系统视图找不到路径]
-  F --> G[入口未执行 / 协议端口未就绪]
+  A["Codex 后代工具打开逻辑 AppData"] --> B["写入 Codex LocalCache 物理目录"]
+  B --> C["加载桥实际存在"]
+  A --> D["package.main 保存逻辑路径"]
+  D --> E["WMI 脱离启动 QQ"]
+  E --> F["QQ 普通文件系统视图找不到路径"]
+  F --> G["入口未执行 / 协议端口未就绪"]
 ```
 
 注意：GetCurrentPackageFullName 在 Python 工具中返回 15700（无当前包身份），但最终文件句柄路径仍被重定向。不能只用当前包身份判断路径是否虚拟化，必须记录句柄解析后的物理目录及接收进程的实际结果。

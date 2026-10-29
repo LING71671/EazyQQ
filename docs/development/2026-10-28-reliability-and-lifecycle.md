@@ -31,6 +31,15 @@
 
 本机 `pnpm tauri:build` 产物完整（eazyqq.exe、eazyqq_cli.exe、NSIS 安装包均生成，版本 0.6.5），但进程以非零码结束：收尾阶段宿主安全策略拦截 vcvars 内部的 reg.exe 调用。产物已被上述原生验收实际使用验证；CI 环境无此限制，release.yml 将完整重跑构建。
 
+## CI 门禁与文档渲染修复（2026-10-29）
+
+首轮推送后 Development checks（run 40795686737）在 `Windows Rust and CLI` 的模拟 CLI 步骤失败，Release EazyQQ（run 40795708777）同因失败且未建立公开 Release。定位与修复：
+
+1. `cli_smoke.py` 新增的 AI 健康断言（大模型链路必须为 unknown / test_model）依赖宿主是否安装 OpenCode：干净 runner 上 `inference_health` 命中「未找到本机 OpenCode 运行时」的确定失败分支，判为 failed。产品行为正确（缺运行时是可确定故障而非未观察状态），缺陷在测试环境假设；修复为在 smoke 的隔离环境显式设置 `EAZYQQ_OPENCODE_BIN`，使该断言只验证「无推理证据保持 unknown」，不依赖宿主安装。
+2. 用户截图确认 `docs/ARCHITECTURE.md` 与 `docs/development/2026-10-09-startup-provenance.md` 的 mermaid 在 GitHub 渲染失败（"Unable to render rich display"）。本地 mermaid 10.9 与 11 解析均通过，属 GitHub 渲染管线对无引号 Unicode 标签的兼容问题；修复为所有节点标签加英文双引号，两个代码块复验解析通过。
+
+标签更新：v0.6.5 未公开（Release 未建立），用户授权按正式发布推进，标签由 687e720 移至包含上述修复的提交，使用精确 force-with-lease 并在此记录旧、新来源。
+
 ## 待完成检查
 
 1. 完成并审阅三个实现分支与共享契约。（已实现，生成覆盖 58 个桌面命令、60 个 CLI 命令）

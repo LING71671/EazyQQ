@@ -8,17 +8,17 @@
 
 ```mermaid
 flowchart TD
-  GUI[桌面 React / Tauri IPC] --> Accounts[账号操作与身份验证]
-  CLI[CLI / MCP] --> Accounts
-  Accounts --> Identity[机器账号登记与启动状态]
-  Accounts --> Runtime[协议目录和生命周期]
-  Runtime --> Job[独立监督进程与 Windows Job]
-  Job --> QQ[本次启动的协议进程树]
-  GUI --> Workers[账号工作进程]
+  GUI["桌面 React / Tauri IPC"] --> Accounts["账号操作与身份验证"]
+  CLI["CLI / MCP"] --> Accounts
+  Accounts --> Identity["机器账号登记与启动状态"]
+  Accounts --> Runtime["协议目录和生命周期"]
+  Runtime --> Job["独立监督进程与 Windows Job"]
+  Job --> QQ["本次启动的协议进程树"]
+  GUI --> Workers["账号工作进程"]
   CLI --> Workers
-  Workers --> DB[独立 SQLite]
-  Workers --> Transport[绑定身份的 HTTP / WebSocket]
-  Workers --> AI[独立 AI 运行时]
+  Workers --> DB["独立 SQLite"]
+  Workers --> Transport["绑定身份的 HTTP / WebSocket"]
+  Workers --> AI["独立 AI 运行时"]
 ```
 
 “当前账号”只决定显示和数据上下文，不是让其他 QQ 下线的指令。认证证据必须包含目标身份；确认后才写入启动选择。桌面切换通过重建应用上下文生效，旧数据库和模型句柄不在原地改绑，避免执行中的任务写入另一个账号。

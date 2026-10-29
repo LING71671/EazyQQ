@@ -21,6 +21,10 @@ ROOT = Path(tempfile.mkdtemp(prefix="cli-", dir=FIXTURES))
 ENV = {**os.environ, "EAZYQQ_ROOT": str(ROOT)}
 for key in ["LLM_API_KEY", "OPENAI_API_KEY", "AI_API_KEY", "OPENCODE_API_KEY", "OPENCODE_GO_API_KEY"]:
     ENV.pop(key, None)
+# Pin the OpenCode runtime lookup to an existing executable so this run never
+# depends on whether the host has OpenCode installed. The health assertion below
+# must observe "no inference evidence" (unknown), not a deterministic runtime miss.
+ENV["EAZYQQ_OPENCODE_BIN"] = str(CLI)
 checks = []
 
 
