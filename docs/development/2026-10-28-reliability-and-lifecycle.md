@@ -42,6 +42,15 @@
 
 标签移动使首轮工作流留下的 draft（id 427362928，零资产）与标签引用脱钩，`/releases/tags/v0.6.5` 返回 404，发布驱动按设计停止（"Release draft disappeared"）。该 draft 未公开且无资产，已删除；改用 `workflow_dispatch`（tag 参数 v0.6.5）重新触发发布，避免覆盖任何公开内容。
 
+第二轮重跑暴露发布驱动自身缺陷：GitHub 不在 `/releases/tags/{tag}` 索引 draft，驱动看不到自己刚创建的草稿，且旧回归测试 mock 了这一不存在的 API 行为。修复 `scripts/release/publish.mjs`：标签端点 404 时回退 `/releases?per_page=100` 列表按 tag_name 查找，公开版本仍拒绝覆盖；新增回归用例 "finds a draft that the tag endpoint does not expose"（8 项通过）。第三次 `workflow_dispatch`（run 40802006781）成功发布。
+
+## 发布结果
+
+- Release：https://github.com/LING71671/EazyQQ/releases/tag/v0.6.5 ，公开、非预发布，2026-10-29T01:53:48Z。
+- 工作流来源 f2bfbba（含驱动修复），应用源码标签 17df1c6；`latest.json` 的 sourceRevision 为 17df1c6。
+- 资产：setup.exe（33451756）、eazyqq-cli-windows-x64.zip（53467983）、eazyqq_cli.exe 与 ezq.exe（18031616）、latest.json、SHA256SUMS.txt。
+- 验证：独立目录下载 ZIP，SHA256 与清单一致；解压后 `eazyqq_cli.exe version --json` 返回 0.6.5；setup 与 CLI 大小与 latest.json 一致。
+
 ## 待完成检查
 
 1. 完成并审阅三个实现分支与共享契约。（已实现，生成覆盖 58 个桌面命令、60 个 CLI 命令）
