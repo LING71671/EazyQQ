@@ -12,12 +12,24 @@ function runGh(args) {
 }
 
 export function inspectRelease({ repository, tag, run = runGh }) {
-  const result = run(['api', `repos/${repository}/releases/tags/${encodeURIComponent(tag)}`]);
-  if (result.status !== 0) {
-    if (/\(HTTP 404\)/.test(result.stderr || '')) return null;
-    throw new Error(`Cannot inspect release; publication stopped: ${result.stderr || 'GitHub CLI failed'}`);
+  const direct = run(['api', `repos/${repository}/releases/tags/${encodeURIComponent(tag)}`]);
+  let release;
+  if (direct.status === 0) {
+    release = JSON.parse(direct.stdout);
+  } else {
+    if (!/\(HTTP 404\)/.test(direct.stderr || '')) {
+      throw new Error(`Cannot inspect release; publication stopped: ${direct.stderr || 'GitHub CLI failed'}`);
+    }
+    // GitHub does not index draft releases under the tag endpoint, so an
+    // interrupted upload is invisible there; enumerate releases before
+    // treating the tag as absent.
+    const listing = run(['api', `repos/${repository}/releases?per_page=100`]);
+    if (listing.status !== 0) {
+      throw new Error(`Cannot inspect releases; publication stopped: ${listing.stderr || 'GitHub CLI failed'}`);
+    }
+    release = JSON.parse(listing.stdout).find(item => item.tag_name === tag);
+    if (!release) return null;
   }
-  const release = JSON.parse(result.stdout);
   if (release.tag_name !== tag || typeof release.draft !== 'boolean') {
     throw new Error('GitHub returned an unexpected release identity or draft state');
   }

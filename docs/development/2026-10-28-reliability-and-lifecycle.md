@@ -38,7 +38,9 @@
 1. `cli_smoke.py` 新增的 AI 健康断言（大模型链路必须为 unknown / test_model）依赖宿主是否安装 OpenCode：干净 runner 上 `inference_health` 命中「未找到本机 OpenCode 运行时」的确定失败分支，判为 failed。产品行为正确（缺运行时是可确定故障而非未观察状态），缺陷在测试环境假设；修复为在 smoke 的隔离环境显式设置 `EAZYQQ_OPENCODE_BIN`，使该断言只验证「无推理证据保持 unknown」，不依赖宿主安装。
 2. 用户截图确认 `docs/ARCHITECTURE.md` 与 `docs/development/2026-10-09-startup-provenance.md` 的 mermaid 在 GitHub 渲染失败（"Unable to render rich display"）。本地 mermaid 10.9 与 11 解析均通过，属 GitHub 渲染管线对无引号 Unicode 标签的兼容问题；修复为所有节点标签加英文双引号，两个代码块复验解析通过。
 
-标签更新：v0.6.5 未公开（Release 未建立），用户授权按正式发布推进，标签由 687e720 移至包含上述修复的提交，使用精确 force-with-lease 并在此记录旧、新来源。
+标签更新：v0.6.5 未公开（Release 未建立），用户授权按正式发布推进，标签由 687e720 移至包含上述修复的提交，使用精确 force-with-lease 并在此记录旧、新来源（tag 对象 aea152e → 2db4f97，目标提交 687e720 → 17df1c6）。
+
+标签移动使首轮工作流留下的 draft（id 427362928，零资产）与标签引用脱钩，`/releases/tags/v0.6.5` 返回 404，发布驱动按设计停止（"Release draft disappeared"）。该 draft 未公开且无资产，已删除；改用 `workflow_dispatch`（tag 参数 v0.6.5）重新触发发布，避免覆盖任何公开内容。
 
 ## 待完成检查
 
