@@ -92,6 +92,64 @@ pub fn cmd_ai_config(svc: &Services, args: &Args) -> Result<(), String> {
     Ok(())
 }
 
+fn apply_provider_choice(ai: &mut serde_json::Value, provider: &str, keep_url: bool, keep_model: bool) -> bool {
+    let previous = ai["activeProvider"].as_str().unwrap_or("deepseek").to_string();
+    let (preset_url, preset_model) = eazyqq_lib::services::ai::provider_preset(provider);
+    if previous != provider {
+        let mut providers = ai["providers"].as_object().cloned().unwrap_or_default();
+        providers.insert(previous, serde_json::json!({
+            "baseUrl": ai["baseUrl"].as_str().unwrap_or(""),
+            "model": ai["model"].as_str().unwrap_or(""),
+            "apiKey": ai["apiKey"].as_str().unwrap_or("")
+        }));
+        let saved = providers.get(provider).cloned().unwrap_or(serde_json::json!({}));
+        ai["providers"] = serde_json::Value::Object(providers);
+        ai["apiKey"] = serde_json::json!(saved["apiKey"].as_str().unwrap_or(""));
+        if !keep_url { ai["baseUrl"] = serde_json::json!(saved["baseUrl"].as_str().filter(|value| !value.trim().is_empty()).map(str::to_string).or(preset_url.clone()).unwrap_or_default()); }
+        if !keep_model { ai["model"] = serde_json::json!(saved["model"].as_str().filter(|value| !value.trim().is_empty()).map(str::to_string).or(preset_model.clone()).unwrap_or_default()); }
+    } else {
+        if !keep_url && ai["baseUrl"].as_str().is_none_or(|value| value.trim().is_empty()) { ai["baseUrl"] = serde_json::json!(preset_url.clone().unwrap_or_default()); }
+        if !keep_model && ai["model"].as_str().is_none_or(|value| value.trim().is_empty()) { ai["model"] = serde_json::json!(preset_model.clone().unwrap_or_default()); }
+    }
+    ai["activeProvider"] = serde_json::json!(provider);
+    preset_url.is_none() || preset_model.is_none()
+}
+
+#[cfg(test)]
+mod provider_choice_tests {
+    use super::apply_provider_choice;
+    use serde_json::json;
+
+    #[test]
+    fn provider_switch_keeps_credentials_separate_and_restores_the_saved_relay() {
+        let mut ai = json!({"activeProvider":"openai","baseUrl":"https://relay.example/v1","model":"dsv4.1f","apiKey":"relay-fixture-key"});
+        apply_provider_choice(&mut ai, "nvidia", false, false);
+        assert_eq!(ai["baseUrl"], "https://integrate.api.nvidia.com/v1");
+        assert_eq!(ai["apiKey"], "");
+        ai["apiKey"] = json!("nvidia-fixture-key");
+        apply_provider_choice(&mut ai, "amd", false, false);
+        assert_eq!(ai["apiKey"], "");
+        apply_provider_choice(&mut ai, "openai", false, false);
+        assert_eq!(ai["baseUrl"], "https://relay.example/v1");
+        assert_eq!(ai["model"], "dsv4.1f");
+        assert_eq!(ai["apiKey"], "relay-fixture-key");
+        apply_provider_choice(&mut ai, "nvidia", false, false);
+        assert_eq!(ai["apiKey"], "nvidia-fixture-key");
+    }
+
+    #[test]
+    fn reselecting_a_provider_preserves_custom_values_and_new_targets_respect_explicit_flags() {
+        let mut ai = json!({"activeProvider":"deepseek","baseUrl":"https://saved.example/v1","model":"saved-model","apiKey":"saved-key"});
+        apply_provider_choice(&mut ai, "deepseek", false, false);
+        assert_eq!(ai["baseUrl"], "https://saved.example/v1");
+        assert_eq!(ai["model"], "saved-model");
+        apply_provider_choice(&mut ai, "amd", true, true);
+        assert_eq!(ai["baseUrl"], "https://saved.example/v1");
+        assert_eq!(ai["model"], "saved-model");
+        assert_eq!(ai["apiKey"], "");
+    }
+}
+
 /// Patch the `ai` block of `app_config`.
 pub fn cmd_ai_set(svc: &Services, args: &Args) -> Result<(), String> {
     let raw = svc
@@ -120,27 +178,7 @@ pub fn cmd_ai_set(svc: &Services, args: &Args) -> Result<(), String> {
 
     if let Some(v) = args.flag("provider") {
         let provider = v.trim().to_lowercase();
-        ai["activeProvider"] = serde_json::json!(provider);
-
-        // Refresh the endpoint and model from the preset unless the caller pinned them
-        // in this same call. Without this, a previously stored explicit baseUrl keeps
-        // winning and the provider switch silently does nothing.
-        let (preset_url, preset_model) = eazyqq_lib::services::ai::provider_preset(&provider);
-        match (preset_url, preset_model) {
-            (Some(url), Some(model)) => {
-                if args.flag("base-url").is_none() {
-                    ai["baseUrl"] = serde_json::json!(url);
-                }
-                if args.flag("model").is_none() {
-                    ai["model"] = serde_json::json!(model);
-                }
-            }
-            _ => {
-                // Custom provider: nothing to derive from, so whatever is stored stays.
-                // Flag it so the user is told what still has to be filled in.
-                custom_provider = true;
-            }
-        }
+        custom_provider = apply_provider_choice(&mut ai, &provider, args.flag("base-url").is_some(), args.flag("model").is_some());
         changed.push(format!("provider={}", provider));
     }
     if let Some(v) = args.flag("base-url") {

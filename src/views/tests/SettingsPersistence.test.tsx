@@ -17,6 +17,7 @@ vi.mock('../settings/SummaryConfigCard', () => ({ SummaryConfigCard: () => null 
 vi.mock('../settings/DiagnosticsCard', () => ({ DiagnosticsCard: () => null }));
 vi.mock('../settings/QqPathConfigCard', () => ({ QqPathConfigCard: () => null }));
 vi.mock('../settings/AppUpdateCard', () => ({ AppUpdateCard: () => null }));
+vi.mock('../settings/StylePackCard', () => ({ StylePackCard: () => null }));
 
 const config = { ai: { activeProvider: 'opencode', model: 'saved-model', baseUrl: 'https://example.test', temperature: 0.7, maxContextMessages: 10 },
   summary: { enabled: false, intervalType: '6h', customIntervalMinutes: 360, slidingWindowHours: 6, autoForwardToPhone: false, customPrompt: 'Summary' },

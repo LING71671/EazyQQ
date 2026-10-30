@@ -12,7 +12,9 @@ function inspect(dir) {
     const absolute = path.join(dir, entry.name);
     const relative = path.relative(directory, absolute).replaceAll('\\', '/').toLowerCase();
     if (entry.isSymbolicLink()) throw new Error(`Resource symlink is not permitted: ${relative}`);
-    if (/(^|\/)(cache|logs|plugins|\.git)(\/|$)/.test(relative)
+    if (/(^|\/)(cache|logs|plugins|\.git|style-packs|private-style-packs)(\/|$)/.test(relative)
+        || /(^|\/)style-pack\.(json|lock)$/.test(relative)
+        || /\.qqstyle\.json$/.test(relative)
         || entry.name.toLowerCase().startsWith('eazyqq-')
         || entry.name.toLowerCase().startsWith('.env')
         || /\.(db|db-wal|db-shm|sqlite|sqlite3|log|bak)$/.test(relative)) {

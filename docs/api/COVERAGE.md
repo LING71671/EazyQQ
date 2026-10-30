@@ -43,6 +43,7 @@
 | `get_update_history` | `updates history` |
 | `list_accounts` | `accounts list` |
 | `logout` | `logout` |
+| `manage_style_packs` | `style-packs` |
 | `mark_read` | `mark-read` |
 | `open_folder` | `folder` |
 | `quick_login` | `quick-login` |

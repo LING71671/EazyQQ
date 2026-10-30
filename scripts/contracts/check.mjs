@@ -14,6 +14,7 @@ const commands = [...read('src-tauri/src/bin/eazyqq_cli/commands/system/schema.r
 const route = new Map([...main.matchAll(/"([a-z-]+)"\s*=>\s*commands::(\w+)::(\w+)/g)].map(match => [match[1], [match[2], match[3]]]));
 for (const match of main.matchAll(/if args\.command == "([a-z-]+)"\s*\{\s*return match commands::(\w+)::(\w+)/g)) route.set(match[1], [match[2], match[3]]);
 const map = {
+  manage_style_packs: 'style-packs',
   detect_free_models: 'ai-free-models',
   cancel_free_model_detection: 'ai-free-models (Ctrl+C)',
   get_telemetry_status: 'telemetry status', test_telemetry: 'telemetry test',

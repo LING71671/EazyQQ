@@ -8,6 +8,10 @@ pub mod diagnostics;
 pub mod startup_trace;
 #[path = "messaging/events.rs"]
 pub mod events;
+#[path = "messaging/context.rs"]
+pub mod context;
+#[path = "messaging/native_face.rs"]
+pub mod native_face;
 #[path = "health/health.rs"]
 pub mod health;
 #[path = "runtime/instance_pool.rs"]

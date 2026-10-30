@@ -14,6 +14,7 @@ import { AiProviderCard, AI_PRESETS } from '@/views/settings/AiProviderCard';
 import { DiagnosticsCard } from '@/views/settings/DiagnosticsCard';
 import { QqPathConfigCard } from '@/views/settings/QqPathConfigCard';
 import { AppUpdateCard } from '@/views/settings/AppUpdateCard';
+import { StylePackCard } from '@/views/settings/StylePackCard';
 
 interface SettingsViewProps {
   config: AppConfig;
@@ -34,7 +35,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   // AI Settings
   const [provider, setProvider] = useState<AiProviderId>(
-    (config.ai?.activeProvider as AiProviderId) || 'opencode'
+    (config.ai?.activeProvider as AiProviderId) || 'deepseek'
   );
   const [model, setModel] = useState(config.ai?.model || '');
   const [apiKey, setApiKey] = useState(config.ai?.apiKey || '');
@@ -47,6 +48,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [fetchedModels, setFetchedModels] = useState<ModelInfoDto[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelError, setFetchModelError] = useState<string | null>(null);
+  const modelFetchSequence = useRef(0);
+  useEffect(() => () => { modelFetchSequence.current++; }, []);
 
   const fetchModelsForEndpoint = async (
     targetProvider: string,
@@ -54,10 +57,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     targetKey?: string,
     autoSelectFirstIfEmpty = false
   ) => {
-    setFetchingModels(true);
+    const sequence = ++modelFetchSequence.current;
+    setFetchedModels([]);
     setFetchModelError(null);
+    const nativeOpenCode = targetProvider === 'opencode' && (() => { try { return new URL(targetUrl || '').hostname === 'opencode.ai'; } catch { return false; } })();
+    const local = (() => { try { return ['localhost', '127.0.0.1', '0.0.0.0', '[::1]'].includes(new URL(targetUrl || '').hostname); } catch { return false; } })();
+    if (!nativeOpenCode && !local && !targetKey?.trim()) {
+      setFetchingModels(false);
+      return;
+    }
+    setFetchingModels(true);
     try {
       const res = await api.fetchProviderModels(targetProvider, targetUrl, targetKey);
+      if (sequence !== modelFetchSequence.current) return;
       if (res.success && res.data && res.data.length > 0) {
         const modelList = res.data;
         setFetchedModels(modelList);
@@ -74,9 +86,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         setFetchModelError(res.error?.message || '未获取到模型列表');
       }
     } catch (e: any) {
+      if (sequence !== modelFetchSequence.current) return;
       setFetchModelError(e?.message || '无法连接该端点获取模型');
     } finally {
-      setFetchingModels(false);
+      if (sequence === modelFetchSequence.current) setFetchingModels(false);
     }
   };
 
@@ -94,11 +107,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
     setProvider(id);
     const existing = updatedMap[id];
-    const preset = AI_PRESETS[id] || AI_PRESETS.opencode;
+    const preset = AI_PRESETS[id];
     const nextBaseUrl = existing?.baseUrl || preset.baseUrl;
-    const nextModel = existing?.model || '';
-    const nextKey =
-      existing?.apiKey !== undefined ? existing.apiKey : id === 'opencode' ? apiKey : '';
+    const nextModel = existing?.model || preset.model || '';
+    const nextKey = existing?.apiKey || '';
 
     setBaseUrl(nextBaseUrl);
     setModel(nextModel);
@@ -160,15 +172,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Sync state whenever async config from SQLite changes
   useEffect(() => {
-    const curProvider = (config.ai?.activeProvider as AiProviderId) || 'opencode';
+    const curProvider = (config.ai?.activeProvider as AiProviderId) || 'deepseek';
     const savedMap = config.ai?.providers || {};
     setProvidersMap(savedMap);
 
     const saved = savedMap[curProvider];
-    const preset = AI_PRESETS[curProvider] || AI_PRESETS.opencode;
+    const preset = AI_PRESETS[curProvider];
 
-    const curBaseUrl = config.ai?.baseUrl || saved?.baseUrl || preset.baseUrl;
-    const curModel = config.ai?.model || saved?.model || '';
+    const curBaseUrl = config.ai?.baseUrl || saved?.baseUrl || preset?.baseUrl || '';
+    const curModel = config.ai?.model || saved?.model || preset?.model || '';
     const curKey = config.ai?.apiKey !== undefined ? config.ai.apiKey : saved?.apiKey || '';
 
     setProvider(curProvider);
@@ -176,7 +188,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setApiKey(curKey);
     setBaseUrl(curBaseUrl);
 
-    fetchModelsForEndpoint(curProvider, curBaseUrl, curKey, !curModel);
+    void fetchModelsForEndpoint(curProvider, curBaseUrl, curKey, !curModel);
+    return () => { modelFetchSequence.current++; };
   }, [config.ai]);
 
   useEffect(() => {
@@ -290,20 +303,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {/* 3. AI Model Provider Selector Card */}
         <AiProviderCard
           provider={provider}
-          isDraft={provider !== (config.ai?.activeProvider || 'opencode') || model.trim() !== (config.ai?.model || '').trim() || baseUrl.trim() !== (config.ai?.baseUrl || AI_PRESETS[provider].baseUrl).trim() || apiKey.trim() !== (config.ai?.apiKey || '').trim()}
+          isDraft={provider !== (config.ai?.activeProvider || 'deepseek') || model.trim() !== (config.ai?.model || AI_PRESETS[provider]?.model || '').trim() || baseUrl.trim() !== (config.ai?.baseUrl || AI_PRESETS[provider]?.baseUrl || '').trim() || apiKey.trim() !== (config.ai?.apiKey || '').trim()}
           onSelectProvider={handleSelectProvider}
           baseUrl={baseUrl}
-          onChangeBaseUrl={setBaseUrl}
+          onChangeBaseUrl={value => { modelFetchSequence.current++; setFetchingModels(false); setFetchedModels([]); setFetchModelError(null); setBaseUrl(value); }}
           model={model}
           onChangeModel={value => { setIsSaved(false); setModel(value); }}
           apiKey={apiKey}
-          onChangeApiKey={setApiKey}
+          onChangeApiKey={value => { modelFetchSequence.current++; setFetchingModels(false); setFetchedModels([]); setFetchModelError(null); setApiKey(value); }}
           fetchedModels={fetchedModels}
           fetchingModels={fetchingModels}
           fetchModelError={fetchModelError}
           onRefreshModels={() => fetchModelsForEndpoint(provider, baseUrl, apiKey, true)}
         />
         </fieldset>
+
+        <StylePackCard />
 
         {/* 4. Pre-flight Health & End-to-end Chain Diagnostics Card */}
         <DiagnosticsCard

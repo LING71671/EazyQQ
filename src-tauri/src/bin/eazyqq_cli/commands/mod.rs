@@ -1,5 +1,7 @@
 #[path = "ai/ai.rs"]
 pub mod ai;
+#[path = "ai/style_packs.rs"]
+pub mod style_packs;
 #[path = "chat/chat.rs"]
 pub mod chat;
 #[path = "system/config.rs"]

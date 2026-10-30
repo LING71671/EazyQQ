@@ -89,9 +89,11 @@ mod tests {
     }
     #[test]
     fn repeated_save_and_native_prefix_keep_matching_proof() {
-        let cfg = config("a"); let mut next = config("opencode/a"); next.temperature = 0.2;
+        let cfg = AiRuntimeConfig { provider: "opencode".into(), base_url: super::super::config::PRESET_OPENCODE.into(), ..config("a") };
+        let mut next = cfg.clone(); next.model = "opencode/a".into(); next.temperature = 0.2;
         let mut cache = InferenceEvidence::default(); cache.record(&cfg, &cfg, 1, None);
         cache.reconfigure(&cfg, &next); assert_eq!(cache.current(&next).verified, Some(true));
+        assert!(!same_target(&config("a"), &config("opencode/a")));
     }
     #[test]
     fn native_and_proxy_routes_are_different_targets() {

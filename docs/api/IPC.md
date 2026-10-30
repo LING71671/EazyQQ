@@ -1,6 +1,12 @@
 # 桌面 IPC 契约
 
-适用于 0.6.5 源码候选；公开版仍为 0.6.4，不包含本文标注的候选增量。传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`，私有登记文件使用 `snake_case`。
+0.6.5 已发布；本文同时记录尚未发布的后续源码增量，不能据此宣称公开安装包已包含新功能。传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`。
+
+## 未发布增量：风格包与消息来源
+
+`manage_style_packs` 接收 `{operation, packJson?, packId?, destination?}`。操作为 `list/import/select/enable/disable/remove/export`；返回 `{enabled, activeId, packs, exportedPath?}`。包格式、容量、当前账号绑定与隐私边界见 [风格包说明](../ai/STYLE_PACKS.md)。导出只写表达包本体，不输出账号安装索引；路径必须为不存在的 JSON 文件。
+
+`trigger_ai_reply` 新增可选 `sourceMessageId/targetType`。桌面从最后一条实际来信提交来源编号，服务按编号读取并核验固定账号与会话，不能按相同文本或昵称猜作者；旧调用仅作为号主提供的上下文片段，原作者标记为未知。自动回复、草稿和重生成复用带来源的上下文链路。本轮来信按消息 ID 从历史中排除一次。
 
 ## 0.6.5 候选范围
 

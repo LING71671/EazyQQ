@@ -185,7 +185,7 @@ pub fn sync_onebot_config(
                     "host": "127.0.0.1",
                     "port": ws_port,
                     "messagePostFormat": "array",
-                    "reportSelfMessage": false,
+                    "reportSelfMessage": true,
                     "token": "",
                     "enableForcePushEvent": true,
                     "debug": false,
@@ -226,6 +226,13 @@ pub fn sync_onebot_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn generated_account_onebot_config_reports_owner_messages() {
+        let root=crate::services::logging::workspace_root().join("self-message-onebot-config");
+        sync_onebot_config(&root,"10001",3000,3001).unwrap();
+        let value:serde_json::Value=serde_json::from_slice(&std::fs::read(root.join("config/onebot11_10001.json")).unwrap()).unwrap();
+        assert_eq!(value["network"]["websocketServers"][0]["reportSelfMessage"],true);
+    }
     #[test]
     fn private_protocol_files_are_independent_from_installer_payloads() {
         let root=crate::services::logging::workspace_root().join("protocol-copy-isolation");

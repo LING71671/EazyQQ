@@ -15,222 +15,213 @@ pub struct ModelInfoDto {
     pub cost_output: Option<f64>,
 }
 
-/// Dynamically fetch or load the OpenCode models metadata registry.
-/// Checks local cache `~/.cache/opencode/models.json` first, falls back to `https://models.opencode.ai/api.json`.
-async fn load_opencode_models_registry() -> Option<Value> {
-    // 1. Try local cache ~/.cache/opencode/models.json
-    let home = std::env::var("USERPROFILE")
-        .or_else(|_| std::env::var("HOME"))
-        .ok();
-
-    if let Some(ref h) = home {
-        let cache_path = std::path::PathBuf::from(h)
-            .join(".cache")
-            .join("opencode")
-            .join("models.json");
-        if cache_path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&cache_path) {
-                if let Ok(json) = serde_json::from_str::<Value>(&content) {
-                    return Some(json);
-                }
-            }
+fn parse_models(value: &Value, is_local: bool) -> Vec<ModelInfoDto> {
+    let entries = value.get("data").and_then(Value::as_array).or_else(|| {
+        if is_local {
+            value.get("models").and_then(Value::as_array)
+        } else {
+            None
         }
-    }
-
-    // 2. Fetch from upstream https://models.opencode.ai/api.json with a strict timeout
-    let client = Client::builder()
-        .timeout(Duration::from_secs(8))
-        .build()
-        .ok()?;
-    if let Ok(resp) = client
-        .get("https://models.opencode.ai/api.json")
-        .send()
-        .await
-    {
-        if resp.status().is_success() {
-            if let Ok(json) = resp.json::<Value>().await {
-                // Try writing back to local cache for subsequent instant queries
-                if let Some(ref h) = home {
-                    let cache_dir = std::path::PathBuf::from(h).join(".cache").join("opencode");
-                    let _ = std::fs::create_dir_all(&cache_dir);
-                    let _ = std::fs::write(
-                        cache_dir.join("models.json"),
-                        serde_json::to_string(&json).unwrap_or_default(),
-                    );
-                }
-                return Some(json);
+    });
+    let mut models: Vec<ModelInfoDto> = entries
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            let id = item
+                .get("id")
+                .and_then(Value::as_str)
+                .or_else(|| {
+                    if is_local {
+                        item.get("name").and_then(Value::as_str)
+                    } else {
+                        None
+                    }
+                })?
+                .trim();
+            if id.is_empty() {
+                return None;
             }
-        }
-    }
-
-    None
+            Some(ModelInfoDto {
+                id: id.into(),
+                name: item
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or(id)
+                    .into(),
+                // A catalogue response is not evidence of a cloud key's remaining quota.
+                is_free: is_local,
+                cost_input: if is_local { Some(0.0) } else { None },
+                cost_output: if is_local { Some(0.0) } else { None },
+            })
+        })
+        .collect();
+    models.sort_by(|a, b| a.id.cmp(&b.id));
+    models.dedup_by(|a, b| a.id == b.id);
+    models
 }
 
-/// Dynamically fetch supported models with pricing metadata from an OpenAI-compatible endpoint or provider registry.
+/// Fetch the configured key's catalogue, without testing inference or assuming free quota.
 pub async fn fetch_models_with_metadata(
     provider: &str,
     base_url: &str,
     api_key: Option<&str>,
 ) -> Result<Vec<ModelInfoDto>, String> {
-    if provider == "opencode" {
-        let root=crate::services::accounts::active_data_dir().join("ai-runtime/model-catalogue");
-        let values=super::free_models::catalogue_with_key(&root,api_key).await?;
-        return Ok(values.into_iter().filter(|value|!matches!(value["status"].as_str(),Some("deprecated"|"retired"))).map(|value|ModelInfoDto {
-            id:value["id"].as_str().unwrap().into(),name:value["name"].as_str().unwrap_or(value["id"].as_str().unwrap()).into(),
-            is_free:false,cost_input:value["cost"]["input"].as_f64(),cost_output:value["cost"]["output"].as_f64(),
-        }).collect());
+    let endpoint = reqwest::Url::parse(base_url).map_err(|_| "模型目录接口地址无效")?;
+    if !matches!(endpoint.scheme(), "http" | "https")
+        || endpoint.host_str().is_none()
+        || !endpoint.username().is_empty()
+        || endpoint.password().is_some()
+    {
+        return Err("模型目录接口必须是无用户名密码的 HTTP(S) 地址".into());
+    }
+    let uses_native_opencode = matches!(provider, "opencode" | "opencode-go")
+        && endpoint.host_str() == Some("opencode.ai");
+    if uses_native_opencode {
+        let root = crate::services::accounts::active_data_dir().join("ai-runtime/model-catalogue");
+        let values = super::free_models::catalogue_with_key(&root, api_key).await?;
+        return Ok(values
+            .into_iter()
+            .filter(|value| !matches!(value["status"].as_str(), Some("deprecated" | "retired")))
+            .filter_map(|value| {
+                let id = value["id"].as_str()?;
+                Some(ModelInfoDto {
+                    id: id.into(),
+                    name: value["name"].as_str().unwrap_or(id).into(),
+                    is_free: false,
+                    cost_input: value["cost"]["input"].as_f64(),
+                    cost_output: value["cost"]["output"].as_f64(),
+                })
+            })
+            .collect());
     }
     let is_local = is_local_endpoint(base_url);
-
-    // 1. If provider is OpenCode or base_url targets opencode.ai, leverage dynamic models.json metadata
-    let is_opencode = provider == "opencode"
-        || provider == "opencode-go"
-        || base_url.to_lowercase().contains("opencode.ai");
-
-    let registry = if is_opencode {
-        load_opencode_models_registry().await
+    let key = api_key.map(str::trim).filter(|key| !key.is_empty());
+    if matches!(provider, "deepseek" | "nvidia" | "amd") && !is_local && key.is_none() {
+        return Err("请先填写当前供应方的 API Key，再获取该 Key 可访问的模型目录".into());
+    }
+    let builder = Client::builder().timeout(Duration::from_secs(15));
+    let client = if is_local {
+        builder.no_proxy()
     } else {
-        None
+        builder
+    }
+    .build()
+    .map_err(|_| "无法创建模型目录连接")?;
+    let base = base_url.trim_end_matches('/');
+    let url = if base.ends_with("/models") {
+        base.to_owned()
+    } else {
+        format!("{base}/models")
     };
+    let mut request = client.get(url);
+    if let Some(key) = key {
+        request = request.bearer_auth(key);
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|_| "无法连接模型目录，请检查接口地址或网络后重试")?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(match status.as_u16() {
+            401 => "模型目录鉴权失败（HTTP 401），请检查当前供应方的 API Key".into(),
+            403 => "当前 Key 无权访问模型目录（HTTP 403），请检查账号权限或服务地区".into(),
+            429 => "模型目录请求受额度或限流约束（HTTP 429），请稍后重试或检查供应方额度".into(),
+            _ => format!(
+                "模型目录接口返回 HTTP {}，请检查 Base URL 后重试",
+                status.as_u16()
+            ),
+        });
+    }
+    let value = response
+        .json::<Value>()
+        .await
+        .map_err(|_| "模型目录未返回有效 JSON，请检查 Base URL")?;
+    let models = parse_models(&value, is_local);
+    if models.is_empty() {
+        return Err("当前 Key 的模型目录为空或格式不受支持，仍可手动填写官方模型 ID".into());
+    }
+    Ok(models)
+}
 
-    let mut result_models = Vec::new();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    if is_opencode {
-        if let Some(reg) = registry {
-            let provider_data = reg
-                .get("opencode")
-                .or_else(|| reg.get("opencode-go"))
-                .or_else(|| reg.get("zenifra"));
-
-            if let Some(p_obj) = provider_data {
-                if let Some(models_map) = p_obj.get("models").and_then(|m| m.as_object()) {
-                    for (m_key, m_val) in models_map {
-                        let id = m_val
-                            .get("id")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or(m_key)
-                            .to_string();
-                        let name = m_val
-                            .get("name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or(&id)
-                            .to_string();
-
-                        let cost_obj = m_val.get("cost");
-                        let cost_input = cost_obj
-                            .and_then(|c| c.get("input"))
-                            .and_then(|v| v.as_f64());
-                        let cost_output = cost_obj
-                            .and_then(|c| c.get("output"))
-                            .and_then(|v| v.as_f64());
-
-                        let is_free = cost_input == Some(0.0) && cost_output == Some(0.0);
-
-                        result_models.push(ModelInfoDto {
-                            id,
-                            name,
-                            is_free,
-                            cost_input,
-                            cost_output,
-                        });
-                    }
-                }
+    async fn fixture(status: u16, body: Value) -> (String, tokio::task::JoinHandle<String>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = tokio::time::timeout(Duration::from_secs(5), listener.accept())
+                .await
+                .unwrap()
+                .unwrap();
+            let mut bytes = Vec::new();
+            while !bytes.windows(4).any(|window| window == b"\r\n\r\n") {
+                let mut chunk = [0; 2048];
+                let count = socket.read(&mut chunk).await.unwrap();
+                assert!(count > 0);
+                bytes.extend_from_slice(&chunk[..count]);
             }
+            let body = body.to_string();
+            socket.write_all(format!("HTTP/1.1 {status} Fixture\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+            String::from_utf8(bytes).unwrap()
+        });
+        (format!("http://{address}/v1"), server)
+    }
+
+    #[tokio::test]
+    async fn presets_use_only_key_scoped_models_endpoint_without_inference_or_tags_requests() {
+        for provider in ["deepseek", "nvidia", "amd", "opencode"] {
+            let (url, server) = fixture(200, json!({"data":[{"id":"DeepSeek-V4.1-Flash"}]})).await;
+            let models = fetch_models_with_metadata(provider, &url, Some("fixture-provider-key"))
+                .await
+                .unwrap();
+            assert_eq!(models[0].id, "DeepSeek-V4.1-Flash");
+            let request = server.await.unwrap();
+            assert!(request.starts_with("GET /v1/models HTTP/1.1"));
+            assert!(request
+                .to_ascii_lowercase()
+                .contains("authorization: bearer fixture-provider-key"));
+            assert!(!request.contains("/api/tags"));
+            assert!(!request.contains("/chat/completions"));
         }
     }
 
-    // 2. If models were not loaded from registry (or for any generic provider), query the endpoint directly
-    if result_models.is_empty() {
-        let client = if is_local {
-            Client::builder()
-                .timeout(Duration::from_secs(15))
-                .no_proxy()
-                .build()
-                .unwrap_or_default()
-        } else {
-            Client::builder()
-                .timeout(Duration::from_secs(15))
-                .build()
-                .unwrap_or_default()
-        };
-
-        let base = base_url.trim_end_matches('/');
-        let url = if base.ends_with("/models") {
-            base.to_string()
-        } else {
-            format!("{}/models", base)
-        };
-
-        let mut req = client.get(&url);
-        if let Some(key) = api_key.filter(|k| !k.trim().is_empty()) {
-            req = req.header("Authorization", format!("Bearer {}", key.trim()));
+    #[tokio::test]
+    async fn catalogue_failures_preserve_authentication_and_quota_meaning() {
+        for (status, expected) in [(401, "鉴权失败"), (403, "无权访问"), (429, "额度或限流")]
+        {
+            let (url, server) = fixture(status, json!({"error":"fixture"})).await;
+            let error = fetch_models_with_metadata("amd", &url, Some("fixture-key"))
+                .await
+                .unwrap_err();
+            assert!(error.contains(expected));
+            server.await.unwrap();
         }
-
-        if let Ok(resp) = req.send().await {
-            if resp.status().is_success() {
-                if let Ok(json) = resp.json::<Value>().await {
-                    if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
-                        for item in data {
-                            if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
-                                let is_free = is_local;
-                                result_models.push(ModelInfoDto {
-                                    id: id.to_string(),
-                                    name: id.to_string(),
-                                    is_free,
-                                    cost_input: if is_local || is_free { Some(0.0) } else { None },
-                                    cost_output: if is_local || is_free { Some(0.0) } else { None },
-                                });
-                            }
-                        }
-                    } else if let Some(models) = json.get("models").and_then(|m| m.as_array()) {
-                        for item in models {
-                            if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
-                                let is_free = is_local;
-                                result_models.push(ModelInfoDto {
-                                    id: name.to_string(),
-                                    name: name.to_string(),
-                                    is_free,
-                                    cost_input: if is_local || is_free { Some(0.0) } else { None },
-                                    cost_output: if is_local || is_free { Some(0.0) } else { None },
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        assert!(
+            fetch_models_with_metadata("nvidia", "https://integrate.api.nvidia.com/v1", None)
+                .await
+                .unwrap_err()
+                .contains("请先填写")
+        );
     }
 
-    if result_models.is_empty() {
-        return Err("未从端点或元数据中心解析到可用模型，请检查网络或地址".to_string());
+    #[test]
+    fn cloud_catalogue_and_prices_are_not_free_quota_evidence() {
+        let models = parse_models(
+            &json!({"data":[{"id":"trial-model","pricing":{"prompt":"0","completion":"0"}},{"id":"trial-model"}]}),
+            false,
+        );
+        assert_eq!(models.len(), 1);
+        assert!(!models[0].is_free);
+        assert_eq!(models[0].cost_input, None);
+        assert!(parse_models(
+            &json!({"models":[{"name":"public-cloud-catalogue"}]}),
+            false
+        )
+        .is_empty());
     }
-
-    if is_opencode {
-        let available = super::opencode::models().await?;
-        result_models.retain(|m| available.contains(&m.id));
-        for id in available {
-            if !result_models.iter().any(|m| m.id == id) {
-                result_models.push(ModelInfoDto {
-                    name: id.clone(),
-                    is_free: false,
-                    id,
-                    cost_input: None,
-                    cost_output: None,
-                });
-            }
-        }
-    }
-
-    // Deduplicate by model ID
-    result_models.sort_by(|a, b| a.id.cmp(&b.id));
-    result_models.dedup_by(|a, b| a.id == b.id);
-
-    // Prioritize free models at the top, then alphabetically
-    result_models.sort_by(|a, b| match (a.is_free, b.is_free) {
-        (true, false) => std::cmp::Ordering::Less,
-        (false, true) => std::cmp::Ordering::Greater,
-        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-    });
-
-    Ok(result_models)
 }

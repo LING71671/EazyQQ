@@ -193,9 +193,9 @@ impl OneBotClient {
     ) -> Result<Value, String> {
         self.require_bound_account().await?;
         let url = format!("{}/send_msg", self.http_base_url);
-        let mut body = serde_json::json!({
-            "message": message
-        });
+        let outgoing = super::native_face::outgoing_message(message)?
+            .unwrap_or_else(|| Value::String(message.to_string()));
+        let mut body = serde_json::json!({ "message": outgoing });
         if target_type == "group" {
             if let Ok(gid) = target_id.parse::<i64>() {
                 body["group_id"] = serde_json::json!(gid);
@@ -433,3 +433,5 @@ fn validate_response(status: reqwest::StatusCode, value: &Value) -> Result<(), S
     }
     Ok(())
 }
+#[path = "message_sources.rs"]
+mod message_sources;

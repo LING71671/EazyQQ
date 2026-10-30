@@ -18,7 +18,7 @@
         "port": 3001,
         "token": "",
         "messagePostFormat": "array",
-        "reportSelfMessage": false,
+        "reportSelfMessage": true,
         "heartInterval": 30000
       }
     ],

@@ -72,6 +72,14 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
     );
 
     conn.execute(
+        "CREATE TABLE IF NOT EXISTS message_sources (
+            msg_id TEXT PRIMARY KEY REFERENCES messages_log(msg_id) ON DELETE CASCADE,
+            source_json TEXT NOT NULL
+        );",
+        [],
+    )?;
+
+    conn.execute(
         "CREATE TABLE IF NOT EXISTS pending_drafts (
             id TEXT PRIMARY KEY,
             target_id TEXT NOT NULL,

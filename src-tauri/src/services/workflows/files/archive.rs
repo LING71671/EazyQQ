@@ -133,13 +133,19 @@ fn read_local_payload(data: &[u8], entry: &ZipEntry) -> Result<Vec<u8>, String> 
 }
 
 pub fn read_entry(data: &[u8], wanted: &str) -> Result<Option<Vec<u8>>, String> {
+    read_entry_limited(data, wanted, MAX_ENTRY_BYTES)
+}
+
+/// The caller can impose a smaller actual inflation limit without changing legacy readers.
+pub fn read_entry_limited(data: &[u8], wanted: &str, max_bytes: usize) -> Result<Option<Vec<u8>>, String> {
+    let limit = max_bytes.min(MAX_ENTRY_BYTES);
     let entries = list_entries(data)?;
     let entry = match entries.iter().find(|e| e.name.eq_ignore_ascii_case(wanted)) {
         Some(e) => e.clone(),
         None => return Ok(None),
     };
 
-    if entry.uncompressed_size > MAX_ENTRY_BYTES {
+    if entry.uncompressed_size > limit {
         return Err(format!(
             "文档内部条目过大（{} MB），已拒绝解压",
             entry.uncompressed_size / 1024 / 1024
@@ -149,15 +155,18 @@ pub fn read_entry(data: &[u8], wanted: &str) -> Result<Option<Vec<u8>>, String> 
     let payload = read_local_payload(data, &entry)?;
 
     match entry.method {
-        0 => Ok(Some(payload)),
+        0 => {
+            if payload.len() > limit { return Err(format!("条目 {} 实际内容超过读取上限", entry.name)); }
+            Ok(Some(payload))
+        },
         8 => {
             let mut out = Vec::new();
             let mut decoder = flate2::read::DeflateDecoder::new(payload.as_slice());
-            let mut limited = (&mut decoder).take((MAX_ENTRY_BYTES + 1) as u64);
+            let mut limited = (&mut decoder).take((limit + 1) as u64);
             limited
                 .read_to_end(&mut out)
                 .map_err(|e| format!("解压条目 {} 失败: {}", entry.name, e))?;
-            if out.len() > MAX_ENTRY_BYTES {
+            if out.len() > limit {
                 return Err(format!("条目 {} 解压后过大，已中止", entry.name));
             }
             Ok(Some(out))

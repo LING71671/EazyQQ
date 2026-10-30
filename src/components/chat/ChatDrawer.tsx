@@ -5,6 +5,7 @@ import {
   ArrowDownCircle, RefreshCw, MessageSquare, FileText
 } from 'lucide-react';
 import type { ContactItemDto, MessageItemDto, RoutingRuleDto } from '@/api/contracts';
+import { NativeFace } from './NativeFace';
 
 interface ChatDrawerProps {
   isOpen: boolean;
@@ -13,7 +14,7 @@ interface ChatDrawerProps {
   messages: MessageItemDto[];
   actionError?: string | null;
   onSendMessage: (targetType: string, targetId: string, content: string) => Promise<void>;
-  onTriggerAiReply?: (targetId: string, contextSnippet: string) => Promise<string>;
+  onTriggerAiReply?: (targetId: string, contextSnippet: string, sourceMessageId?: string, targetType?: string) => Promise<string>;
   onUpdateMode?: (targetId: string, mode: RoutingRuleDto['mode']) => void;
 }
 
@@ -28,6 +29,7 @@ interface MessageSegment {
   title?: string;
   desc?: string;
   icon?: string;
+  faceId?: string;
 }
 
 function unescapeCq(str: string): string {
@@ -207,9 +209,10 @@ function parseCqMessage(content: string): MessageSegment[] {
         text: `@${params['qq'] || '全体成员'}`,
       });
     } else if (type === 'face') {
+      const params = parseParams(paramsStr);
       segments.push({
         type: 'face',
-        text: '[表情]',
+        faceId: params['id'] || '',
       });
     } else if (type === 'record') {
       segments.push({
@@ -264,28 +267,10 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
     setSendError(null);
   }, [targetKey, isOpen]);
 
-  // Deduplicate messages by content & direction within 60s
+  // Protocol message identity is the only deduplication key.
   const displayMessages = React.useMemo(() => {
-    const deduped: MessageItemDto[] = [];
-    for (const msg of messages) {
-      if (deduped.length > 0) {
-        const prev = deduped[deduped.length - 1];
-        const sameContent = prev.content === msg.content;
-        const sameDir = prev.isFromMe === msg.isFromMe;
-        const closeTime = Math.abs(prev.timestamp - msg.timestamp) < 60000;
-        if (sameContent && sameDir && closeTime) {
-          if (prev.aiReplyStatus === 'none' && msg.aiReplyStatus !== 'none') {
-            prev.aiReplyStatus = msg.aiReplyStatus;
-          }
-          if ((prev.senderName === '好友' || prev.senderName === '我') && msg.senderName !== '好友' && msg.senderName !== '我') {
-            prev.senderName = msg.senderName;
-          }
-          continue;
-        }
-      }
-      deduped.push({ ...msg });
-    }
-    return deduped;
+    const byId = new Map(messages.map(message => [message.id, message]));
+    return [...byId.values()];
   }, [messages]);
 
   // Auto scroll to bottom
@@ -337,8 +322,8 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
     setIsAiDrafting(true);
     setSendError(null);
     try {
-      const lastIncoming = [...messages].reverse().find(m => !m.isFromMe)?.content || '你好！';
-      const aiGenerated = await onTriggerAiReply(contact.targetId, lastIncoming);
+      const lastIncoming = [...messages].reverse().find(m => !m.isFromMe);
+      const aiGenerated = await onTriggerAiReply(contact.targetId, lastIncoming?.content || '', lastIncoming?.id, contact.targetType);
       if (aiGenerated && generation.current === epoch) {
         setDraftsByTarget(current => (current[key] || '') === initialDraft ? { ...current, [key]: aiGenerated } : current);
       }
@@ -586,6 +571,10 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                           );
                         }
 
+                        if (seg.type === 'face') {
+                          return <NativeFace key={`${idx}:${seg.faceId}`} id={seg.faceId || ''} />;
+                        }
+
                         if (seg.type === 'at') {
                           return (
                             <span
@@ -602,7 +591,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                         }
 
                         return (
-                          <span key={idx} className="whitespace-pre-wrap break-words block">
+                          <span key={idx} className="whitespace-pre-wrap break-words">
                             {seg.text}
                           </span>
                         );

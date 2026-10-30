@@ -144,10 +144,6 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
     }
 
     return matchesSearch && matchesType;
-  }).sort((a, b) => {
-    if (a.targetId === '1739677116') return -1;
-    if (b.targetId === '1739677116') return 1;
-    return 0;
   });
 
   const getMessageBadge = (mode: string) => {
@@ -232,7 +228,6 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
               const summaryInterval = contact.rule.summaryIntervalHours ?? 0;
               const summaryLabel =
                 summaryInterval > 0 ? `每${summaryInterval}h` : '跟随全局周期';
-              const isTestUser = contact.targetId === '1739677116';
 
               return (
                 <div

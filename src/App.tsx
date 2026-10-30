@@ -49,9 +49,9 @@ export const App: React.FC = () => {
   // App Configuration
   const [config, setConfig] = useState<AppConfig>({
     ai: {
-      activeProvider: 'opencode',
-      model: '',
-      baseUrl: 'https://opencode.ai/zen/v1',
+      activeProvider: 'deepseek',
+      model: 'deepseek-flash',
+      baseUrl: 'https://api.deepseek.com',
       temperature: 0.7,
       maxContextMessages: 10,
     },

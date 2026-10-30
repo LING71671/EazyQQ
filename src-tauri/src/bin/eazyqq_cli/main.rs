@@ -177,6 +177,7 @@ async fn main() -> ExitCode {
                 "selftest" => commands::diagnostics::cmd_selftest(&svc, &args).await,
                 "napcat-doctor" => commands::diagnostics::cmd_napcat_doctor(&args),
                 "ai-config" => commands::ai::cmd_ai_config(&svc, &args),
+                "style-packs" => commands::style_packs::cmd_style_packs(&svc, &args),
                 "ai-set" => commands::ai::cmd_ai_set(&svc, &args),
                 "ai-test" => commands::ai::cmd_ai_test(&svc, &args).await,
                 "ai-detect" => commands::ai::cmd_ai_detect(&svc, &args).await,

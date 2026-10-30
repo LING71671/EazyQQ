@@ -13,118 +13,9 @@ pub async fn get_messages(
 ) -> Result<ApiResponse<Vec<MessageItemDto>>, String> {
     let req_limit = limit.unwrap_or(50).clamp(10, 100);
 
-    // 1. Sync roaming history from OneBot if available
-    let is_group = target_type.as_deref() == Some("group") || {
-        state
-            .db
-            .get_all_rules()
-            .ok()
-            .and_then(|rules| rules.into_iter().find(|r| r.target_id == target_id))
-            .map(|r| r.target_type == "group")
-            .unwrap_or(false)
-    };
-
-    let ob_msgs = if is_group {
-        state
-            .onebot
-            .get_group_msg_history(&target_id, req_limit)
-            .await
-            .unwrap_or_default()
-    } else {
-        let friend_res = state
-            .onebot
-            .get_friend_msg_history(&target_id, req_limit)
-            .await
-            .unwrap_or_default();
-        if friend_res.is_empty() {
-            state
-                .onebot
-                .get_group_msg_history(&target_id, req_limit)
-                .await
-                .unwrap_or_default()
-        } else {
-            friend_res
-        }
-    };
-
-    for item in ob_msgs {
-        let raw_msg = item
-            .get("raw_message")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        if raw_msg.trim().is_empty() {
-            continue;
-        }
-        let time_sec = item.get("time").and_then(|v| v.as_i64()).unwrap_or(0);
-        let time_ms = if time_sec > 10_000_000_000 {
-            time_sec
-        } else {
-            time_sec * 1000
-        };
-        let msg_id_val = item
-            .get("message_id")
-            .map(|v| v.to_string().replace('"', ""))
-            .unwrap_or_else(|| format!("ob_{}", time_ms));
-        let unique_id = format!("msg_{}_{}", target_id, msg_id_val);
-
-        let sender = item.get("sender");
-        let sender_id = item
-            .get("user_id")
-            .or_else(|| sender.and_then(|s| s.get("user_id")))
-            .map(|v| v.to_string().replace('"', ""))
-            .unwrap_or_default();
-        let self_id = item
-            .get("self_id")
-            .map(|v| v.to_string().replace('"', ""))
-            .unwrap_or_default();
-        let is_from_me = !self_id.is_empty() && self_id == sender_id;
-
-        let sender_name = if is_from_me {
-            "我".to_string()
-        } else {
-            sender
-                .and_then(|s| {
-                    s.get("card")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.trim())
-                        .filter(|s| !s.is_empty())
-                        .or_else(|| {
-                            s.get("nickname")
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.trim())
-                                .filter(|s| !s.is_empty())
-                        })
-                })
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| {
-                    if !sender_id.is_empty() {
-                        sender_id.clone()
-                    } else if is_group {
-                        "群成员".to_string()
-                    } else {
-                        "好友".to_string()
-                    }
-                })
-        };
-
-        let chat_msg = MessageItemDto {
-            id: unique_id,
-            target_id: target_id.clone(),
-            sender_id,
-            sender_name,
-            content: raw_msg.to_string(),
-            is_from_me,
-            ai_reply_status: "none".to_string(),
-            timestamp: time_ms,
-        };
-        let _ = state.db.save_message(&chat_msg);
-    }
-
-    // 2. Query unified SQLite storage
-    let list = state
-        .db
-        .get_messages_by_target(&target_id, req_limit as usize)
-        .map_err(|e| e.to_string())?;
+    let kind = crate::services::protocol::context::target_type(&state.db, &target_id, target_type.as_deref())?;
+    let scope = crate::services::protocol::context::ConversationScope::for_client(&state.onebot, &kind, &target_id)?;
+    let list = crate::services::protocol::context::load_history(&state.db, &state.onebot, &scope, req_limit).await?;
     Ok(ApiResponse::ok(list))
 }
 
@@ -177,7 +68,7 @@ pub async fn send_message(
     let chat_msg = MessageItemDto {
         id: msg_id.clone(),
         target_id: target_id.clone(),
-        sender_id: "me".to_string(),
+        sender_id: state.onebot.expected_account().unwrap_or_default().to_string(),
         sender_name: "我".to_string(),
         content,
         is_from_me: true,
@@ -185,7 +76,10 @@ pub async fn send_message(
         timestamp: now_ms,
     };
 
-    let _ = state.db.save_message(&chat_msg);
+    let scope = crate::services::protocol::context::ConversationScope::for_client(&state.onebot, &t_type, &target_id)?;
+    if let Err(error) = crate::services::protocol::context::save_outgoing_source(&state.db, &scope, &chat_msg, &msg_id_val, "owner_manual") {
+        tracing::error!("Sent manual message source could not be saved: {}", error);
+    }
 
     Ok(ApiResponse::ok(serde_json::json!({
         "messageId": msg_id,
@@ -267,7 +161,7 @@ pub async fn send_draft(
     let chat_msg = MessageItemDto {
         id: format!("msg_{}_{}", draft.target_id, msg_id_val),
         target_id: draft.target_id.clone(),
-        sender_id: "me".to_string(),
+        sender_id: state.onebot.expected_account().unwrap_or_default().to_string(),
         sender_name: "我 (AI草稿放行)".to_string(),
         content: send_content,
         is_from_me: true,
@@ -275,7 +169,10 @@ pub async fn send_draft(
         timestamp: now_ms,
     };
 
-    let _ = state.db.save_message(&chat_msg);
+    let scope = crate::services::protocol::context::ConversationScope::for_client(&state.onebot, target_type, &draft.target_id)?;
+    if let Err(error) = crate::services::protocol::context::save_outgoing_source(&state.db, &scope, &chat_msg, &msg_id_val, "approved_ai_draft") {
+        tracing::error!("Approved draft source could not be saved: {}", error);
+    }
     let _ = state.db.delete_draft(&draft_id);
 
     Ok(ApiResponse::ok(serde_json::json!({
@@ -309,11 +206,21 @@ pub async fn regenerate_draft(
         .find(|d| d.id == draft_id)
         .ok_or_else(|| "找不到指定的草稿".to_string())?;
 
-    let inst = custom_instruction.unwrap_or_else(|| "请换一个说法更加自然幽默".to_string());
+    let inst = custom_instruction.unwrap_or_else(|| "针对对方最后一句重新拟写，保留实际信息，语气自然简短，不强加幽默".to_string());
+    let scope = crate::services::protocol::context::ConversationScope::for_client(&state.onebot, &draft.target_type, &draft.target_id)?;
+    let context = crate::services::protocol::context::source_message(&state.db, &scope, &draft.reply_to_msg_id);
+    let source_exists = state.db.get_message_source(&draft.reply_to_msg_id).map_err(|error| error.to_string())?.is_some();
+    let (history, incoming) = match context {
+        Ok(message) => crate::services::protocol::pipeline::prepare_context(&state.db, &state.onebot, &message, &draft.target_type, state.ai.current().max_context_messages).await?,
+        Err(error) if source_exists => return Err(error),
+        Err(_) => (crate::services::protocol::context::build_context_history(&state.db, &scope, None, state.ai.current().max_context_messages)?, crate::services::protocol::context::requested_input(&scope, &draft.incoming_message_snippet)),
+    };
     let (new_content, new_thinking) = state
         .ai
-        .regenerate_with_instruction(
-            &draft.incoming_message_snippet,
+        .regenerate_context_reply(
+            &history,
+            &incoming,
+            &draft.target_name,
             &draft.generated_content,
             &inst,
         )
@@ -336,26 +243,22 @@ pub async fn trigger_ai_reply(
     state: State<'_, AppState>,
     target_id: String,
     context_snippet: String,
+    source_message_id: Option<String>,
+    target_type: Option<String>,
 ) -> Result<ApiResponse<String>, String> {
-    let history = state
-        .db
-        .get_messages_by_target(&target_id, 10)
-        .unwrap_or_default();
-    let chat_history: Vec<crate::services::ai::ChatMessage> = history
-        .iter()
-        .map(|m| crate::services::ai::ChatMessage {
-            role: if m.is_from_me {
-                "assistant".to_string()
-            } else {
-                "user".to_string()
-            },
-            content: m.content.clone(),
-        })
-        .collect();
+    let kind = crate::services::protocol::context::target_type(&state.db, &target_id, target_type.as_deref())?;
+    let scope = crate::services::protocol::context::ConversationScope::for_client(&state.onebot, &kind, &target_id)?;
+    let (chat_history, incoming, name) = if let Some(id) = source_message_id {
+        let message = crate::services::protocol::context::source_message(&state.db, &scope, &id)?;
+        let (history, incoming) = crate::services::protocol::pipeline::prepare_context(&state.db, &state.onebot, &message, &kind, state.ai.current().max_context_messages).await?;
+        (history, incoming, message.sender_name)
+    } else {
+        (crate::services::protocol::context::build_context_history(&state.db, &scope, None, state.ai.current().max_context_messages)?, crate::services::protocol::context::requested_input(&scope, &context_snippet), "当前会话".to_string())
+    };
 
     let (reply, _thinking) = state
         .ai
-        .generate_reply(&chat_history, &context_snippet, "好友")
+        .generate_context_reply(&chat_history, &incoming, &name)
         .await
         .map_err(|e| format!("AI构思回复失败: {}", e))?;
 

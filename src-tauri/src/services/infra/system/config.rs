@@ -6,11 +6,11 @@ use serde_json::{json, Value};
 pub fn default_app_config() -> Value {
     json!({
         "ai": {
-            "activeProvider": "opencode",
-            "model": "",
+            "activeProvider": "deepseek",
+            "model": "deepseek-flash",
             "temperature": 0.7,
             "maxContextMessages": 10,
-            "baseUrl": "https://opencode.ai/zen/v1",
+            "baseUrl": "https://api.deepseek.com",
             "apiKey": ""
         },
         "napcat": {

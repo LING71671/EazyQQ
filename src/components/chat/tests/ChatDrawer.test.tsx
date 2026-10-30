@@ -1,11 +1,35 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ChatDrawer } from '../ChatDrawer';
-import type { ContactItemDto } from '@/api/contracts';
+import type { ContactItemDto, MessageItemDto } from '@/api/contracts';
 
 vi.mock('@/hooks/usePresence', () => ({ usePresence: (open: boolean) => open }));
 const contact = { id: 'group-10001', targetId: '10001', targetType: 'group', name: 'Group', rule: { mode: 'ignore' } } as ContactItemDto;
 const props = { isOpen: true, onClose: vi.fn(), contact, messages: [] };
+
+it('retains identical short messages from separate group speakers and passes the exact source identity', async () => {
+  const messages: MessageItemDto[] = ['10002', '10003'].map((senderId, index) => ({
+    id: `msg-${index}`, targetId: '10001', senderId, senderName: '同名成员', content: '好',
+    isFromMe: false, aiReplyStatus: 'none', timestamp: 1000 + index,
+  }));
+  const generate = vi.fn().mockResolvedValue('收到');
+  render(<ChatDrawer {...props} messages={messages} onSendMessage={vi.fn()} onTriggerAiReply={generate} />);
+  expect(screen.getAllByText('好')).toHaveLength(2);
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '让 AI 替我构思一条回复' })); });
+  expect(generate).toHaveBeenCalledWith('10001', '好', 'msg-1', 'group');
+});
+
+it('renders native face identity inline and keeps a named fallback when its image fails', () => {
+  const message: MessageItemDto = { id: 'face', targetId: '10001', senderId: 'me', senderName: '我',
+    content: '收到[CQ:face,id=76]明天说', isFromMe: true, aiReplyStatus: 'none', timestamp: 1000 };
+  render(<ChatDrawer {...props} messages={[message]} onSendMessage={vi.fn()} />);
+  const face = screen.getByRole('img', { name: '[赞]' });
+  expect(face.getAttribute('title')).toBe('QQ原生表情：赞');
+  fireEvent.error(face);
+  expect(screen.getByText('[赞]')).toBeTruthy();
+  expect(screen.getByText('收到')).toBeTruthy();
+  expect(screen.getByText('明天说')).toBeTruthy();
+});
 beforeEach(() => { Element.prototype.scrollIntoView = vi.fn(); });
 afterEach(cleanup);
 

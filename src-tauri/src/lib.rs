@@ -542,6 +542,7 @@ pub fn run() {
             fetch_provider_models,
             detect_free_models,
             cancel_free_model_detection,
+            manage_style_packs,
             check_dependencies,
             restart_napcat,
             export_diagnostics_bundle,

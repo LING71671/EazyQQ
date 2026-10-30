@@ -29,9 +29,11 @@ import type {
   ModelInfoDto,
   FreeModelsReport,
   FreeModelProgress,
+  StylePackStatus,
 } from './contracts';
 
 export const api = {
+  manageStylePacks: (operation: string, packJson?: string, packId?: string, destination?: string): Promise<ApiResponse<StylePackStatus>> => invoke('manage_style_packs', { operation, packJson, packId, destination }),
   getTelemetryStatus: (): Promise<ApiResponse<TelemetryStatus>> => invoke('get_telemetry_status'),
   testTelemetry: (): Promise<ApiResponse<TelemetryTest>> => invoke('test_telemetry'),
   detectFreeModels: (probe: boolean, requestId: string): Promise<ApiResponse<FreeModelsReport>> => invoke('detect_free_models', { probe, requestId }),
@@ -209,8 +211,8 @@ export const api = {
     return invoke('export_diagnostics_bundle');
   },
 
-  triggerAiReply: async (targetId: string, contextSnippet: string): Promise<ApiResponse<string>> => {
-    return invoke('trigger_ai_reply', { targetId, contextSnippet });
+  triggerAiReply: async (targetId: string, contextSnippet: string, sourceMessageId?: string, targetType?: string): Promise<ApiResponse<string>> => {
+    return invoke('trigger_ai_reply', { targetId, contextSnippet, sourceMessageId, targetType });
   },
 
   // Event Listeners

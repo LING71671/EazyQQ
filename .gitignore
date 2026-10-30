@@ -57,5 +57,7 @@ Thumbs.db
 .test-runtime/
 .playwright-cli/
 output/
+/private-style-packs/
+/*.qqstyle.json
 
 .workbuddy/

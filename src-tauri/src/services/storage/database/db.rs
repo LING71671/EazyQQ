@@ -104,6 +104,16 @@ impl Database {
         messages::save_message(&conn, msg)
     }
 
+    pub fn save_message_source(&self, msg_id: &str, source: &serde_json::Value) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        messages::save_message_source(&conn, msg_id, source)
+    }
+
+    pub fn get_message_source(&self, msg_id: &str) -> Result<Option<serde_json::Value>> {
+        let conn = self.conn.lock().unwrap();
+        messages::get_message_source(&conn, msg_id)
+    }
+
     pub fn get_messages_by_target(
         &self,
         target_id: &str,

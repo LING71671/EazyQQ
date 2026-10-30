@@ -1,5 +1,5 @@
 use crate::models::MessageItemDto;
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, OptionalExtension, Result};
 
 pub fn save_message(conn: &Connection, msg: &MessageItemDto) -> Result<()> {
     conn.execute(
@@ -7,6 +7,10 @@ pub fn save_message(conn: &Connection, msg: &MessageItemDto) -> Result<()> {
             msg_id, target_id, sender_id, sender_name, content, is_from_me, ai_reply_status, timestamp
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
         ON CONFLICT(msg_id) DO UPDATE SET
+            sender_id = excluded.sender_id,
+            sender_name = excluded.sender_name,
+            is_from_me = excluded.is_from_me,
+            timestamp = excluded.timestamp,
             content = excluded.content,
             ai_reply_status = CASE 
                 WHEN messages_log.ai_reply_status != 'none' THEN messages_log.ai_reply_status 
@@ -35,7 +39,7 @@ pub fn get_messages_by_target(
         "SELECT msg_id, target_id, sender_id, sender_name, content, is_from_me, ai_reply_status, timestamp
          FROM messages_log 
          WHERE target_id = ?1 
-         ORDER BY timestamp DESC 
+         ORDER BY timestamp DESC, rowid DESC
          LIMIT ?2"
     )?;
 
@@ -58,41 +62,27 @@ pub fn get_messages_by_target(
     }
     list.reverse();
 
-    let mut deduped: Vec<MessageItemDto> = Vec::new();
-    let mut ids_to_delete: Vec<String> = Vec::new();
+    Ok(list)
+}
 
-    for m in list {
-        if let Some(last) = deduped.last_mut() {
-            let same_content = last.content == m.content;
-            let same_dir = last.is_from_me == m.is_from_me;
-            let close_time = (last.timestamp - m.timestamp).abs() < 60_000;
-            if same_content && same_dir && close_time {
-                if last.ai_reply_status == "none" && m.ai_reply_status != "none" {
-                    last.ai_reply_status = m.ai_reply_status.clone();
-                }
-                if (last.sender_name == "好友" || last.sender_name == "我")
-                    && m.sender_name != "好友"
-                    && m.sender_name != "我"
-                {
-                    last.sender_name = m.sender_name.clone();
-                }
-                ids_to_delete.push(m.id);
-                continue;
-            }
-        }
-        deduped.push(m);
-    }
+pub fn save_message_source(conn: &Connection, msg_id: &str, source: &serde_json::Value) -> Result<()> {
+    conn.execute(
+        "INSERT INTO message_sources (msg_id, source_json) VALUES (?1, ?2)
+         ON CONFLICT(msg_id) DO UPDATE SET source_json = excluded.source_json",
+        params![msg_id, source.to_string()],
+    )?;
+    Ok(())
+}
 
-    if !ids_to_delete.is_empty() {
-        for del_id in ids_to_delete {
-            let _ = conn.execute(
-                "DELETE FROM messages_log WHERE msg_id = ?1",
-                params![del_id],
-            );
-        }
-    }
-
-    Ok(deduped)
+pub fn get_message_source(conn: &Connection, msg_id: &str) -> Result<Option<serde_json::Value>> {
+    let source: Option<String> = conn.query_row(
+        "SELECT source_json FROM message_sources WHERE msg_id = ?1",
+        [msg_id],
+        |row| row.get(0),
+    ).optional()?;
+    source.map(|source| serde_json::from_str(&source).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(error))
+    })).transpose()
 }
 
 pub fn get_messages_in_window(

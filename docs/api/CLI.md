@@ -1,6 +1,10 @@
 # CLI 使用与契约
 
-适用于 0.6.5 源码候选；公开版仍为 0.6.4，不包含本文标注的候选增量。源码构建：`pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli`。桌面安装包包含同名 CLI；独立压缩包还提供 `ezq.exe` 兼容名。
+0.6.5 已发布；本文同时包含尚未发布的后续源码增量。源码构建：`pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli`。桌面安装包包含同名 CLI；独立压缩包还提供 `ezq.exe` 兼容名。
+
+## 未发布增量：风格包
+
+`style-packs` 默认列出当前固定账号的已安装包。`--action import --file <JSON>` 导入并启用；`--action select --id <编号>` 切换；`--action enable|disable|remove` 启停或移除当前包；`--action export --id <编号> --output <新JSON路径>` 导出不含账号绑定的表达包。GUI、CLI 和 MCP 复用同一服务；[格式及本地记录提炼](../ai/STYLE_PACKS.md) 不需要联网或真实 QQ。
 
 ## 0.6.5 候选范围
 

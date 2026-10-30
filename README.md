@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/LING71671/EazyQQ/releases"><img alt="版本 0.6.4" src="https://img.shields.io/badge/版本-0.6.4-0284c7?style=flat-square" /></a>
+  <a href="https://github.com/LING71671/EazyQQ/releases"><img alt="版本 0.6.5" src="https://img.shields.io/badge/版本-0.6.5-0284c7?style=flat-square" /></a>
   <img alt="Windows x64" src="https://img.shields.io/badge/Windows-x64-334155?style=flat-square" />
   <a href="LICENSE"><img alt="Apache 2.0" src="https://img.shields.io/badge/License-Apache_2.0-334155?style=flat-square" /></a>
 </p>
@@ -21,7 +21,7 @@
 
 ## 多个账号，一个工作台
 
-当前源码为未发布的 `0.6.5` 候选，新增修复与验收边界见 [开发记录](docs/development/2026-10-28-reliability-and-lifecycle.md)。下方公开下载仍指向已交付的 `0.6.4`；人设与任务型智能体见 [增长方向](docs/development/2026-10-29-persona-agent-context.md)，尚未包含在候选中。
+公开版本为 `0.6.5`。当前源码另含尚未发布的消息来源修复、多模态、QQ 原生表情和[本地风格包](docs/ai/STYLE_PACKS.md)，详见[本轮开发记录](docs/development/2026-10-29-conversation-context-style-packs.md)。私人风格包不随项目分发；多气泡批次与任务型智能体仍属于[后续方向](docs/development/2026-10-29-persona-agent-context.md)。
 
 | 账号独立 | 回复可控 | 自动化接入 |
 | :--- | :--- | :--- |
@@ -50,7 +50,7 @@ eazyqq_cli mcp
 2. 打开账号管理，登记 QQ 号，使用对应账号扫码确认；多个账号可以独立保持在线。
 3. 在系统设置选择模型并测试，再启用所需联系人规则；自动回复和草稿发送会影响真实 QQ 联系人。
 
-`0.6.4` 修复包：[桌面安装包](https://github.com/LING71671/EazyQQ/releases/download/v0.6.4/EazyQQ_0.6.4_x64-setup.exe) · [CLI ZIP](https://github.com/LING71671/EazyQQ/releases/download/v0.6.4/eazyqq-cli-windows-x64.zip) · [发布说明与校验和](https://github.com/LING71671/EazyQQ/releases/tag/v0.6.4)。
+`0.6.5` 修复包：[桌面安装包](https://github.com/LING71671/EazyQQ/releases/download/v0.6.5/EazyQQ_0.6.5_x64-setup.exe) · [CLI ZIP](https://github.com/LING71671/EazyQQ/releases/download/v0.6.5/eazyqq-cli-windows-x64.zip) · [发布说明与校验和](https://github.com/LING71671/EazyQQ/releases/tag/v0.6.5)。
 
 ## 用你选择的模型
 

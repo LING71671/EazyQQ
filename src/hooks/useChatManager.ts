@@ -151,8 +151,8 @@ export function useChatManager(options?: UseChatManagerOptions) {
   );
 
   const handleTriggerAiReply = useCallback(
-    async (targetId: string, contextSnippet: string): Promise<string> => {
-      const res = await api.triggerAiReply(targetId, contextSnippet);
+    async (targetId: string, contextSnippet: string, sourceMessageId?: string, targetType?: string): Promise<string> => {
+      const res = await api.triggerAiReply(targetId, contextSnippet, sourceMessageId, targetType);
       if (!res.success || !res.data) throw new Error(res.error?.message || 'AI 构思回复失败');
       return res.data;
     },

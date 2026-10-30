@@ -194,11 +194,11 @@ fn blank_account_falls_back_to_unbound() {
 
 #[test]
 fn normal_account_gets_its_own_directory() {
-    let a = account_dir(Some("462564834"));
-    let b = account_dir(Some("1739677116"));
+    let a = account_dir(Some("10001"));
+    let b = account_dir(Some("10002"));
     assert_ne!(a, b, "different accounts must not share a directory");
-    assert!(a.ends_with("462564834"));
-    assert!(b.ends_with("1739677116"));
+    assert!(a.ends_with("10001"));
+    assert!(b.ends_with("10002"));
 }
 
 #[test]

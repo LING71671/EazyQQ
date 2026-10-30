@@ -6,7 +6,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const source = path.join(root, 'napcat');
 const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
 const target = path.join(root, 'src-tauri/resources/protocol', version);
-const privateNames = new Set(['config', 'cache', 'logs', 'plugins', '.git', 'loadnapcat.js', 'loadnapcat.cjs', 'qqnt.json']);
+const privateNames = new Set(['config', 'cache', 'logs', 'plugins', '.git', 'loadnapcat.js', 'loadnapcat.cjs', 'qqnt.json', 'style-packs', 'private-style-packs', 'style-pack.json', 'style-pack.lock']);
 const within = candidate => candidate.toLowerCase().startsWith(root.toLowerCase() + path.sep);
 if (!within(target)) throw new Error('Resource target escaped the workspace');
 const backupParent = path.join(root, '.test-runtime/resource-backups');
@@ -23,7 +23,7 @@ fs.mkdirSync(target, { recursive: true });
 function copy(dir, dest) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const name = entry.name.toLowerCase();
-    if (privateNames.has(name) || name.startsWith('eazyqq-') || /\.(db|db-wal|db-shm|sqlite|sqlite3|log|bak)$/.test(name) || name.startsWith('.env') || entry.isSymbolicLink()) continue;
+    if (privateNames.has(name) || name.startsWith('eazyqq-') || /\.(db|db-wal|db-shm|sqlite|sqlite3|log|bak)$/.test(name) || name.endsWith('.qqstyle.json') || name.startsWith('.env') || entry.isSymbolicLink()) continue;
     const from = path.join(dir, entry.name), to = path.join(dest, entry.name);
     if (entry.isDirectory()) { fs.mkdirSync(to, { recursive: true }); copy(from, to); }
     else fs.copyFileSync(from, to);
@@ -47,7 +47,7 @@ write('webui.json', { host: '127.0.0.1', port: 6099, token: '', autoLoginAccount
 write('napcat.json', { fileLog: true, consoleLog: true, fileLogLevel: 'info', consoleLogLevel: 'info' });
 write('onebot11.json', { network: {
   httpServers: [{ name: 'eazyqq-http', enable: true, host: '127.0.0.1', port: 3000, token: '', messagePostFormat: 'array' }],
-  websocketServers: [{ name: 'eazyqq-ws', enable: true, host: '127.0.0.1', port: 3001, token: '', messagePostFormat: 'array', reportSelfMessage: false, heartInterval: 30000 }],
+  websocketServers: [{ name: 'eazyqq-ws', enable: true, host: '127.0.0.1', port: 3001, token: '', messagePostFormat: 'array', reportSelfMessage: true, heartInterval: 30000 }],
   httpClients: [], httpSseServers: [], websocketClients: [], plugins: [],
 } });
 fs.writeFileSync(path.join(target, 'loadNapCat.js'), 'import("./napcat.mjs");\n');

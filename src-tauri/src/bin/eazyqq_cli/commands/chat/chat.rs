@@ -1,5 +1,6 @@
 use eazyqq_lib::models::MessageItemDto;
 use eazyqq_lib::services::policy;
+use eazyqq_lib::services::protocol::{context, pipeline};
 
 use crate::args::Args;
 use crate::context::Services;
@@ -24,6 +25,9 @@ pub async fn cmd_send(svc: &Services, args: &Args) -> Result<(), String> {
     } else {
         svc.onebot.clone()
     };
+    if client.expected_account() != svc.onebot.expected_account() {
+        return Err("发送账号与数据库上下文不一致，请用 --account 绑定本次命令".into());
+    }
 
     let resolved_type = if target_type == "auto" {
         let groups = client.get_group_list().await.unwrap_or_default();
@@ -47,6 +51,11 @@ pub async fn cmd_send(svc: &Services, args: &Args) -> Result<(), String> {
         .and_then(|d| d.get("message_id"))
         .map(|v| v.to_string())
         .unwrap_or_else(|| "-".to_string());
+    let scope = context::ConversationScope::for_client(&client, resolved_type, &target)?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+    let platform_id = context::identifier(&resp["data"]["message_id"]).unwrap_or_else(|| format!("manual_{now}"));
+    let outgoing = MessageItemDto { id: format!("msg_{}_{}", target, platform_id), target_id: target.clone(), sender_id: scope.account_uin.clone(), sender_name: "我".into(), content: text.clone(), is_from_me: true, ai_reply_status: "none".into(), timestamp: now };
+    context::save_outgoing_source(&svc.db, &scope, &outgoing, &platform_id, "owner_manual").map_err(|error| format!("消息已发送，但本地记录保存失败，请勿重复发送: {error}"))?;
 
     tracing::info!("message sent to {} ({})", target, resolved_type);
 
@@ -69,10 +78,9 @@ pub async fn cmd_ask(svc: &Services, args: &Args) -> Result<(), String> {
         .flag("target")
         .ok_or_else(|| "缺少 --target <目标ID>".to_string())?
         .to_string();
-    let prompt = args
-        .flag("text")
-        .ok_or_else(|| "缺少 --text <对方消息或提示>".to_string())?
-        .to_string();
+    let source_id = args.flag("source-message-id");
+    let prompt = args.flag("text").unwrap_or("").to_string();
+    if source_id.is_none() && prompt.trim().is_empty() { return Err("提供 --text 或 --source-message-id 指定当前输入".into()); }
 
     let name = svc
         .db
@@ -83,9 +91,15 @@ pub async fn cmd_ask(svc: &Services, args: &Args) -> Result<(), String> {
         .map(|r| r.name)
         .unwrap_or_else(|| target.clone());
 
+    let kind = context::target_type(&svc.db, &target, args.flag("type"))?;
+    let scope = context::ConversationScope::for_client(&svc.onebot, &kind, &target)?;
+    let (history, incoming) = if let Some(id) = source_id {
+        let message = context::source_message(&svc.db, &scope, id)?;
+        pipeline::prepare_context(&svc.db, &svc.onebot, &message, &kind, svc.ai.current().max_context_messages).await?
+    } else { (context::build_context_history(&svc.db, &scope, None, svc.ai.current().max_context_messages)?, context::requested_input(&scope, &prompt)) };
     let (content, thinking) = svc
         .ai
-        .generate_reply(&[], &prompt, &name)
+        .generate_context_reply(&history, &incoming, &name)
         .await
         .map_err(|e| format!("AI 生成失败: {}", e))?;
 
@@ -215,17 +229,19 @@ pub async fn cmd_draft_send(svc: &Services, args: &Args) -> Result<(), String> {
         .unwrap_or_default()
         .as_millis() as i64;
 
+    let platform_id = context::identifier(&resp["data"]["message_id"]).unwrap_or_else(|| format!("draft_{now_ms}"));
+    let scope = context::ConversationScope::for_client(&svc.onebot, target_type, &draft.target_id)?;
     let outgoing = MessageItemDto {
-        id: format!("draft_out_{}", now_ms),
+        id: format!("msg_{}_{}", draft.target_id, platform_id),
         target_id: draft.target_id.clone(),
-        sender_id: "me".to_string(),
+        sender_id: scope.account_uin.clone(),
         sender_name: "我 (草稿放行)".to_string(),
         content: content.clone(),
         is_from_me: true,
         ai_reply_status: "auto_replied".to_string(),
         timestamp: now_ms,
     };
-    svc.db.save_message(&outgoing).map_err(|e| e.to_string())?;
+    context::save_outgoing_source(&svc.db, &scope, &outgoing, &platform_id, "approved_ai_draft").map_err(|error| format!("草稿已发送，但本地记录保存失败，请勿重复发送: {error}"))?;
     svc.db.delete_draft(id).map_err(|e| e.to_string())?;
 
     tracing::info!("draft {} approved and sent to {}", id, draft.target_id);
@@ -275,10 +291,19 @@ pub async fn cmd_draft_regenerate(svc: &Services, args: &Args) -> Result<(), Str
         .find(|d| d.id == id)
         .ok_or_else(|| format!("找不到草稿 {}", id))?;
 
+    let scope = context::ConversationScope::for_client(&svc.onebot, &draft.target_type, &draft.target_id)?;
+    let source_exists = svc.db.get_message_source(&draft.reply_to_msg_id).map_err(|error| error.to_string())?.is_some();
+    let (history, incoming) = match context::source_message(&svc.db, &scope, &draft.reply_to_msg_id) {
+        Ok(message) => pipeline::prepare_context(&svc.db, &svc.onebot, &message, &draft.target_type, svc.ai.current().max_context_messages).await?,
+        Err(error) if source_exists => return Err(error),
+        Err(_) => (context::build_context_history(&svc.db, &scope, None, svc.ai.current().max_context_messages)?, context::requested_input(&scope, &draft.incoming_message_snippet)),
+    };
     let (content, thinking) = svc
         .ai
-        .regenerate_with_instruction(
-            &draft.incoming_message_snippet,
+        .regenerate_context_reply(
+            &history,
+            &incoming,
+            &draft.target_name,
             &draft.generated_content,
             instruction,
         )

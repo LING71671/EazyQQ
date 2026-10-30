@@ -5,7 +5,7 @@ use tracing::{error, info};
 
 use super::onebot::OneBotClient;
 use super::pipeline::{execute_auto_reply, execute_draft};
-use crate::models::MessageItemDto;
+use super::context::{self, ConversationScope};
 use crate::services::ai::AiService;
 use crate::services::db::Database;
 
@@ -46,6 +46,7 @@ impl MessageOutcome {
         match self.action {
             "auto_replied" => format!("目标 {} 已自动秒回", self.target_id),
             "draft_created" => format!("目标 {} 已生成待审核草稿", self.target_id),
+            "scheduled" => format!("目标 {} 已进入自动回复处理", self.target_id),
             "trigger_skipped" => format!(
                 "目标 {} 已记录，但未满足触发条件（{}）",
                 self.target_id,
@@ -84,7 +85,7 @@ pub async fn handle_onebot_event(
         .unwrap_or("");
 
     match post_type {
-        "message" => handle_message_event(app_handle, event, db, onebot, ai, inline_ai).await,
+        "message" | "message_sent" => handle_message_event(app_handle, event, db, onebot, ai, inline_ai).await,
         "notice" => {
             handle_notice_event(app_handle, event, db, onebot).await;
             MessageOutcome::ignored()
@@ -181,65 +182,25 @@ async fn handle_message_event(
         .get("message_type")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let sender = event.get("sender");
-    let user_id = event
-        .get("user_id")
-        .map(|v| v.to_string().replace('\"', ""))
-        .unwrap_or_default();
-    let sender_name = sender
-        .and_then(|s| {
-            s.get("card")
-                .and_then(|v| v.as_str())
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .or_else(|| {
-                    s.get("nickname")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.trim())
-                        .filter(|s| !s.is_empty())
-                })
-        })
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| {
-            if !user_id.is_empty() {
-                user_id.clone()
-            } else if message_type == "group" {
-                "群成员".to_string()
-            } else {
-                "好友".to_string()
-            }
-        });
-
+    let expected = onebot.expected_account();
+    if expected.is_none() || super::session::account_id(&event["self_id"]).as_deref() != expected {
+        let mut outcome = MessageOutcome::ignored();
+        outcome.detail = Some("消息账号与固定账号不一致，已忽略".into());
+        return outcome;
+    }
+    let user_id = context::sender_uin(event).unwrap_or_default();
+    let sender_name = context::sender_name(event, (!user_id.is_empty()).then_some(user_id.as_str()));
     let target_id = if message_type == "group" {
-        event
-            .get("group_id")
-            .map(|v| v.to_string().replace('\"', ""))
-            .unwrap_or_else(|| user_id.clone())
-    } else {
-        user_id.clone()
+        context::identifier(&event["group_id"]).unwrap_or_default()
+    } else if message_type == "private" && Some(user_id.as_str()) == expected {
+        ["target_id", "peer_id", "target_user_id", "recipient_id"].iter()
+            .find_map(|key| super::session::account_id(&event[key]).filter(|id| Some(id.as_str()) != expected)).unwrap_or_default()
+    } else if message_type == "private" { user_id.clone() } else { String::new() };
+    let scope = match ConversationScope::for_client(onebot, message_type, &target_id) {
+        Ok(scope) => scope,
+        Err(error) => { let mut outcome = MessageOutcome::ignored(); outcome.detail = Some(error); return outcome; }
     };
-
-    let raw_message = if let Some(raw) = event.get("raw_message").and_then(|v| v.as_str()) {
-        raw.to_string()
-    } else if let Some(msg_arr) = event.get("message").and_then(|v| v.as_array()) {
-        let mut text = String::new();
-        for seg in msg_arr {
-            if let Some(t) = seg
-                .get("data")
-                .and_then(|d| d.get("text"))
-                .and_then(|v| v.as_str())
-            {
-                text.push_str(t);
-            }
-        }
-        text
-    } else {
-        event
-            .get("message")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string()
-    };
+    let raw_message = context::display_content(event);
 
     if raw_message.trim().is_empty() {
         return MessageOutcome {
@@ -277,32 +238,17 @@ async fn handle_message_event(
         .unwrap_or_default()
         .as_millis() as i64;
 
-    let msg_id_val = event
-        .get("message_id")
-        .map(|v| v.to_string().replace('"', ""))
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| now_ms.to_string());
-    let msg_id = format!("msg_{}_{}", target_id, msg_id_val);
-
-    let self_id = event
-        .get("self_id")
-        .map(|v| v.to_string().replace('\"', ""))
-        .unwrap_or_default();
-    let is_from_me = !self_id.is_empty() && self_id == user_id;
-
-    let chat_msg = MessageItemDto {
-        id: msg_id.clone(),
-        target_id: target_id.clone(),
-        sender_id: user_id.clone(),
-        sender_name: sender_name.clone(),
-        content: raw_message.clone(),
-        is_from_me,
-        ai_reply_status: "none".to_string(),
-        timestamp: now_ms,
+    let self_id = scope.account_uin.clone();
+    let chat_msg = match context::message_from_protocol(&scope, event, now_ms) {
+        Ok(message) => message,
+        Err(error) => { let mut outcome = MessageOutcome::ignored(); outcome.detail = Some(error); return outcome; }
     };
+    let is_from_me = chat_msg.is_from_me;
 
-    if let Err(e) = db.save_message(&chat_msg) {
-        error!("cannot persist message for {}: {}", target_id, e);
+    match context::store_message(db, &scope, &chat_msg, &context::source_record(&scope, if is_from_me { "owner_live" } else { "peer_live" }, event), true) {
+        Ok(false) => return MessageOutcome { not_a_message: false, bypassed: false, recorded: true, target_id, mode: policy.mode, action: "skipped", detail: Some("重复消息事件，未再次触发 AI".into()) },
+        Ok(true) => {},
+        Err(error) => { error!("cannot persist message source: {}", error); return MessageOutcome { not_a_message: false, bypassed: false, recorded: false, target_id, mode: policy.mode, action: "error", detail: Some("消息及来源保存失败，未调用 AI".into()) }; }
     }
     if let Some(handle) = app_handle {
         let _ = handle.emit("new-chat-message", &chat_msg);
@@ -384,25 +330,26 @@ async fn handle_message_event(
             );
             let task = execute_auto_reply(
                 app_handle.cloned(),
-                target_id.clone(),
+                chat_msg.clone(),
                 target_type,
-                raw_message,
-                sender_name,
                 db.clone(),
                 onebot.clone(),
                 ai.clone(),
             );
             if inline_ai {
                 match task.await {
-                    Ok(()) => outcome.action = "auto_replied",
+                    Ok(true) => outcome.action = "auto_replied",
+                    Ok(false) => { outcome.action = "skipped"; outcome.detail = Some("会话或授权已有更新，已停止过时的自动回复".into()); },
                     Err(e) => {
                         outcome.action = "error";
                         outcome.detail = Some(e);
                     }
                 }
             } else {
-                tauri::async_runtime::spawn(task);
-                outcome.action = "auto_replied";
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = task.await { tracing::error!("Automatic reply processing failed: {}", error); }
+                });
+                outcome.action = "scheduled";
             }
         }
         "copilot" => {
@@ -413,12 +360,10 @@ async fn handle_message_event(
             );
             let task = execute_draft(
                 app_handle.cloned(),
-                target_id.clone(),
-                sender_name,
+                chat_msg,
                 target_type,
-                msg_id,
-                raw_message,
                 db.clone(),
+                onebot.clone(),
                 ai.clone(),
             );
             if inline_ai {
@@ -438,4 +383,41 @@ async fn handle_message_event(
     }
 
     outcome
+}
+
+#[cfg(test)]
+mod context_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn fixture(tag: &str, mode: &str) -> (Arc<Database>, Arc<OneBotClient>, Arc<AiService>) {
+        let root=crate::services::logging::workspace_root().join(format!("event-attribution-{tag}"));
+        let db=Arc::new(Database::init(root.join("account/eazyqq.db")).unwrap());
+        db.upsert_rule(&crate::services::db::ContactRuleRecord { target_id:"20001".into(),target_type:"friend".into(),name:"peer".into(),avatar_url:String::new(),mode:mode.into(),trigger_condition:"all".into(),keywords:"[]".into(),cooldown_seconds:0,enabled:true,is_summary_whitelist:false,summary_interval_hours:0,updated_at:0 }).unwrap();
+        (db,Arc::new(OneBotClient::for_account("http://127.0.0.1:9".into(),Some("10001".into()))),Arc::new(AiService::for_account(Default::default(),root.join("account"))))
+    }
+
+    #[tokio::test]
+    async fn manual_owner_message_sent_keeps_its_peer_target_without_ai() {
+        for key in ["target_id","peer_id","recipient_id"] {
+            let (db,onebot,ai)=fixture(key,"auto_reply");
+            let mut raw=json!({"post_type":"message_sent","message_type":"private","self_id":10001,"user_id":10001,"message_id":71,"sender":{"user_id":10001,"nickname":"Owner"},"message":[{"type":"face","data":{"id":"76"}}]});
+            raw[key]=json!(20001);
+            let outcome=handle_onebot_event(None,&raw,&db,&onebot,&ai,true).await;
+            assert!(outcome.recorded);assert_eq!(outcome.action,"skipped");assert!(outcome.detail.unwrap().contains("不触发 AI"));
+            let saved=db.get_messages_by_target("20001",10).unwrap();assert_eq!(saved.len(),1);assert!(saved[0].is_from_me);assert_eq!(saved[0].content,"[CQ:face,id=76]");
+        }
+    }
+
+    #[tokio::test]
+    async fn foreign_live_event_is_ignored_and_replay_does_not_create_another_context() {
+        let (db,onebot,ai)=fixture("replay","summary_only");
+        let mut raw=json!({"post_type":"message","message_type":"private","self_id":10002,"user_id":20001,"message_id":81,"sender":{"user_id":20001,"nickname":"我"},"raw_message":"相同内容"});
+        assert!(!handle_onebot_event(None,&raw,&db,&onebot,&ai,true).await.recorded);
+        raw["self_id"]=json!(10001);
+        assert!(handle_onebot_event(None,&raw,&db,&onebot,&ai,true).await.recorded);
+        let second=handle_onebot_event(None,&raw,&db,&onebot,&ai,true).await;
+        assert_eq!(second.action,"skipped");assert!(second.detail.unwrap().contains("重复消息"));
+        let saved=db.get_messages_by_target("20001",10).unwrap();assert_eq!(saved.len(),1);assert!(!saved[0].is_from_me);
+    }
 }

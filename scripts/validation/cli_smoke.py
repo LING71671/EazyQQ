@@ -98,6 +98,30 @@ try:
     assert {"accounts", "run", "repair", "updates", "ai-models"}.issubset({item["name"] for item in schema["commands"]})
     first = run("accounts", "add", "--uin", "10001")
     second = run("accounts", "add", "--uin", "10002")
+    default_ai = run("ai-config", "--account", "10001")
+    assert default_ai["provider"] == "deepseek" and default_ai["requiresApiKey"] and not default_ai["apiKeyConfigured"]
+    # Remaining passive-health fixtures explicitly select the existing no-key runtime.
+    for uin in ["10001", "10002"]:
+        run("ai-set", "--account", uin, "--provider", "opencode")
+    pack = {"schemaVersion": 1, "id": "smoke-style", "name": "合成风格", "version": "1.0.0", "rules": {
+        "sentenceLength": "short", "punctuation": "minimal", "tone": "neutral", "lineBreaks": "natural",
+        "preferredPhrases": [], "avoidPhrases": [], "qqFaceIds": ["76", "124"]}}
+    pack_file = ROOT / "smoke-style.json"
+    pack_file.write_text(json.dumps(pack, ensure_ascii=False), encoding="utf-8")
+    status = run("style-packs", "--account", "10001", "--action", "import", "--file", str(pack_file))
+    assert status["enabled"] and status["activeId"] == "smoke-style"
+    assert run("style-packs", "--account", "10002")["packs"] == []
+    assert not run("style-packs", "--account", "10001", "--action", "disable")["enabled"]
+    assert run("style-packs", "--account", "10001", "--action", "enable")["enabled"]
+    exported = ROOT / "exported-style.qqstyle.json"
+    run("style-packs", "--account", "10001", "--action", "export", "--id", "smoke-style", "--output", str(exported))
+    assert json.loads(exported.read_text(encoding="utf-8")) == pack
+    rejected = dict(pack, systemPrompt="untrusted injected instructions")
+    pack_file.write_text(json.dumps(rejected), encoding="utf-8")
+    run("style-packs", "--account", "10001", "--action", "import", "--file", str(pack_file), success=False)
+    assert run("style-packs", "--account", "10001")["activeId"] == "smoke-style"
+    assert run("style-packs", "--account", "10001", "--action", "remove")["packs"] == []
+    checks.append("style packs remain account-private, reject arbitrary prompts, and export no owner binding")
     ports = [item[key] for item in [first, second] for key in ["httpPort", "wsPort", "webuiPort"]]
     assert len(set(ports)) == 6
     assert run("accounts", "start", "--all", "--dry-run")["uins"] == ["10001", "10002"]

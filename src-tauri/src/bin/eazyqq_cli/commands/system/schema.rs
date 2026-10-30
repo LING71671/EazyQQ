@@ -55,6 +55,7 @@ pub const COMMANDS: &[&str] = &[
     "start",
     "status",
     "stop",
+    "style-packs",
     "summaries",
     "summarize",
     "summary-delete",

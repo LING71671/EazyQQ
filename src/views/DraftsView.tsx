@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Send, Trash2, RefreshCw, ChevronDown, ChevronUp, Check, Bot } from 'lucide-react';
 import type { PendingDraftDto } from '@/api/contracts';
 import emptyDraftsUrl from '@/assets/empty-drafts.svg';
+import { NativeMessageText } from '@/components/chat/NativeFace';
 
 interface DraftsViewProps {
   drafts: PendingDraftDto[];
@@ -101,11 +102,15 @@ export const DraftsView: React.FC<DraftsViewProps> = ({
                   <div className="space-y-1">
                     <span className="text-[11px] font-semibold text-slate-500 block">拟回复正文（可直接编辑）：</span>
                     <textarea
+                      aria-label={`回复正文：${draft.targetName}`}
                       value={currentText}
                       onChange={(e) => setEditingContent((prev) => ({ ...prev, [draft.id]: e.target.value }))}
                       rows={3}
                       className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500 resize-y"
                     />
+                    {currentText.includes('[CQ:face,') && <div className="whitespace-pre-wrap break-words p-3 text-sm text-slate-800 dark:text-slate-200" aria-label="QQ表情发送预览">
+                      <NativeMessageText content={currentText} />
+                    </div>}
                   </div>
 
                   {/* Actions Toolbar */}

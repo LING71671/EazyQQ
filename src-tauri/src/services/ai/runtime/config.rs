@@ -5,6 +5,12 @@ use super::auth::detect_api_key;
 
 pub const PRESET_OPENCODE: &str = "https://opencode.ai/zen/v1";
 pub const DEFAULT_MODEL_OPENCODE: &str = "fledge-alpha-free";
+pub const PRESET_DEEPSEEK: &str = "https://api.deepseek.com";
+pub const DEFAULT_MODEL_DEEPSEEK: &str = "deepseek-flash";
+pub const PRESET_NVIDIA: &str = "https://integrate.api.nvidia.com/v1";
+pub const DEFAULT_MODEL_NVIDIA: &str = "deepseek-ai/deepseek-v4-pro";
+pub const PRESET_AMD: &str = "https://developer.amd.com.cn/radeon/api/v1";
+pub const DEFAULT_MODEL_AMD: &str = "DeepSeek-V4.1-Flash";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AiRuntimeConfig {
@@ -19,10 +25,10 @@ pub struct AiRuntimeConfig {
 impl Default for AiRuntimeConfig {
     fn default() -> Self {
         Self {
-            provider: "opencode".to_string(),
-            base_url: PRESET_OPENCODE.to_string(),
+            provider: "deepseek".to_string(),
+            base_url: PRESET_DEEPSEEK.to_string(),
             api_key: String::new(),
-            model: DEFAULT_MODEL_OPENCODE.to_string(),
+            model: DEFAULT_MODEL_DEEPSEEK.to_string(),
             temperature: 0.7,
             max_context_messages: 10,
         }
@@ -45,6 +51,9 @@ pub fn is_local_endpoint(base_url: &str) -> bool {
 
 pub fn preset_base_url(provider: &str) -> Option<&'static str> {
     match provider {
+        "deepseek" => Some(PRESET_DEEPSEEK),
+        "nvidia" => Some(PRESET_NVIDIA),
+        "amd" => Some(PRESET_AMD),
         "opencode" | "opencode-go" => Some(PRESET_OPENCODE),
         _ => None,
     }
@@ -52,6 +61,9 @@ pub fn preset_base_url(provider: &str) -> Option<&'static str> {
 
 pub fn preset_model(provider: &str) -> Option<&'static str> {
     match provider {
+        "deepseek" => Some(DEFAULT_MODEL_DEEPSEEK),
+        "nvidia" => Some(DEFAULT_MODEL_NVIDIA),
+        "amd" => Some(DEFAULT_MODEL_AMD),
         "opencode" | "opencode-go" => Some(DEFAULT_MODEL_OPENCODE),
         _ => None,
     }
@@ -66,17 +78,20 @@ pub fn provider_preset(provider: &str) -> (Option<String>, Option<String>) {
 }
 
 pub fn known_providers() -> Vec<(String, String, String, bool)> {
-    vec![(
-        "opencode".to_string(),
-        PRESET_OPENCODE.to_string(),
-        DEFAULT_MODEL_OPENCODE.to_string(),
-        false,
-    )]
+    [
+        ("deepseek", PRESET_DEEPSEEK, DEFAULT_MODEL_DEEPSEEK, false),
+        ("nvidia", PRESET_NVIDIA, DEFAULT_MODEL_NVIDIA, false),
+        ("amd", PRESET_AMD, DEFAULT_MODEL_AMD, false),
+        ("opencode", PRESET_OPENCODE, DEFAULT_MODEL_OPENCODE, false),
+    ]
+    .into_iter()
+    .map(|(id, url, model, key)| (id.into(), url.into(), model.into(), key))
+    .collect()
 }
 
 impl AiRuntimeConfig {
     /// Build a runtime config from the persisted `app_config.ai` block.
-    /// Preserves OpenCode integration while omitting third-party commercial advertisements.
+    /// Saved endpoint, model and credentials take precedence over new installation presets.
     pub fn from_app_config(ai: Option<&Value>, fallback_key: &str) -> Self {
         let mut cfg = AiRuntimeConfig::default();
 
@@ -130,22 +145,28 @@ impl AiRuntimeConfig {
             .or_else(|| preset_model(&provider).map(|s| s.to_string()))
             .unwrap_or_default();
 
+        let dedicated_credentials = matches!(
+            provider.as_str(),
+            "deepseek" | "nvidia" | "amd" | "opencode" | "opencode-go"
+        );
         let mut key = ai
             .get("apiKey")
             .and_then(|v| v.as_str())
             .map(|s| s.trim().to_string())
-            .filter(|key| provider == "opencode" || provider == "opencode-go" || !key.is_empty())
+            .filter(|key| dedicated_credentials || !key.is_empty())
             .or(p_key)
             .unwrap_or_else(|| {
-                if provider == "opencode" || provider == "opencode-go" {
+                if dedicated_credentials {
                     String::new()
                 } else {
                     fallback_key.to_string()
                 }
             });
 
-        if key.is_empty() && provider != "opencode" && provider != "opencode-go" {
-            if let Some(auto_k) = detect_api_key() { key = auto_k; }
+        if key.is_empty() && !dedicated_credentials {
+            if let Some(auto_k) = detect_api_key() {
+                key = auto_k;
+            }
         }
         cfg.api_key = key;
 

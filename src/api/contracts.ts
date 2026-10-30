@@ -146,6 +146,9 @@ export interface DependencyHealthReport {
  * OpenCode uses its native executable; other providers use compatible HTTP endpoints.
  */
 export type AiProviderId =
+  | 'deepseek'
+  | 'nvidia'
+  | 'amd'
   | 'opencode'
   | 'ollama'
   | 'lmstudio'
@@ -286,3 +289,67 @@ export interface AccountReport {
 }
 export interface BatchAccountOutcome { uin: string; ok: boolean; detail: string }
 export interface RepairReport { action: string; attempted: boolean; ok: boolean; detail: string }
+export type StyleSituation = 'acknowledgement' | 'question' | 'coordination' | 'explanation' | 'disagreement' | 'support' | 'repair' | 'casual';
+export interface StyleProfile {
+  methodology: string;
+  sample: {
+    messageCount: number;
+    textMessageCount: number;
+    turnCount: number;
+    conversationCount: number;
+    fromDate: string;
+    toDate: string;
+    holdoutTurnCount: number;
+  };
+  metrics: {
+    textMedianChars: number;
+    textP90Chars: number;
+    bubblesPerTurnMedian: number;
+    bubblesPerTurnP90: number;
+    noTerminalPunctuationRate: number;
+    questionOnlyRate: number;
+    faceOnlyRate: number;
+    mixedFaceRate: number;
+    faceCoverageRate: number;
+  };
+  patterns: {
+    id: string;
+    situation: StyleSituation;
+    observation: string;
+    evidenceCount: number;
+    conversationCount: number;
+    confidence: 'low' | 'medium' | 'high';
+  }[];
+  demonstrations: {
+    situation: StyleSituation;
+    context: string;
+    replies: string[];
+    evidenceRefs: string[];
+  }[];
+  limitations: string[];
+}
+interface StylePackFields {
+  id: string;
+  name: string;
+  version: string;
+  rules: {
+    sentenceLength: 'short' | 'balanced' | 'detailed';
+    punctuation: 'minimal' | 'standard' | 'expressive';
+    tone: 'casual' | 'neutral' | 'warm' | 'direct';
+    lineBreaks: 'single' | 'natural' | 'frequent';
+    preferredPhrases: string[];
+    avoidPhrases: string[];
+    qqFaceIds: string[];
+  };
+  statistics?: Record<string, number>;
+}
+export type StylePack = StylePackFields & (
+  { schemaVersion: 1; profile?: never } | { schemaVersion: 2; profile: StyleProfile }
+);
+
+export interface StylePackStatus {
+  enabled: boolean;
+  activeId: string | null;
+  packs: StylePack[];
+  exportedPath?: string | null;
+}

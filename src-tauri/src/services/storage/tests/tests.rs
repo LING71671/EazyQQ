@@ -3,7 +3,9 @@ use crate::models::MessageItemDto;
 use std::fs;
 
 fn temp_db(tag: &str) -> Database {
-    let dir = std::env::temp_dir().join("eazyqq_db_tests");
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../.test-runtime")
+        .join(format!("storage-unit-{}", std::process::id()));
     let _ = fs::create_dir_all(&dir);
     let path = dir.join(format!("{}_{}.db", tag, std::process::id()));
     let _ = fs::remove_file(&path);
@@ -116,6 +118,61 @@ fn history_limit_keeps_the_newest_messages() {
         vec![4000, 5000],
         "the window must keep the newest, not the oldest"
     );
+}
+
+#[test]
+fn refreshing_history_corrects_owner_identity_without_losing_ai_receipt() {
+    let db = temp_db("history_owner_correction");
+    let mut original = msg("owner-history", "g1", 1000, false);
+    original.sender_id = "12345".into();
+    original.ai_reply_status = "auto_replied".into();
+    db.save_message(&original).unwrap();
+    let mut corrected = original.clone();
+    corrected.is_from_me = true;
+    corrected.sender_name = "我".into();
+    corrected.timestamp = 900;
+    corrected.ai_reply_status = "none".into();
+    db.save_message(&corrected).unwrap();
+    let history = db.get_messages_by_target("g1", 10).unwrap();
+    assert_eq!(history.len(), 1);
+    assert!(history[0].is_from_me);
+    assert_eq!(history[0].sender_id, "12345");
+    assert_eq!(history[0].timestamp, 900);
+    assert_eq!(history[0].ai_reply_status, "auto_replied");
+}
+
+#[test]
+fn repeated_short_messages_keep_distinct_speakers_and_ids_after_reading() {
+    let db = temp_db("history_distinct_repeats");
+    for (index, sender) in ["10001", "10002", "10002"].iter().enumerate() {
+        let mut item = msg(&format!("repeat-{index}"), "g1", 1000 + index as i64, false);
+        item.sender_id = (*sender).into();
+        item.sender_name = "同名群成员".into();
+        item.content = "好".into();
+        db.save_message(&item).unwrap();
+    }
+    for _ in 0..2 {
+        let history = db.get_messages_by_target("g1", 10).unwrap();
+        assert_eq!(history.len(), 3);
+        assert_eq!(history[0].sender_id, "10001");
+        assert_eq!(history[1].sender_id, "10002");
+        assert_eq!(history[2].id, "repeat-2");
+    }
+}
+
+#[test]
+fn message_sources_round_trip_structured_materials_without_changing_body() {
+    let db = temp_db("history_sources");
+    db.save_message(&msg("source-1", "g1", 1000, false)).unwrap();
+    let source = serde_json::json!({
+        "self_id": "12345", "user_id": "10001", "message_type": "group",
+        "message": [{"type":"face","data":{"id":"76"}},
+                    {"type":"image","data":{"url":"https://example.invalid/image.png"}}]
+    });
+    db.save_message_source("source-1", &source).unwrap();
+    assert_eq!(db.get_message_source("source-1").unwrap(), Some(source));
+    assert!(db.get_message_source("missing").unwrap().is_none());
+    assert_eq!(db.get_messages_by_target("g1", 10).unwrap()[0].content, "内容_source-1");
 }
 
 #[test]

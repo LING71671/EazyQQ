@@ -3,15 +3,44 @@ import { Cpu, RefreshCw, AlertCircle, CheckCircle2, Send } from 'lucide-react';
 import type { AiProviderId, ModelInfoDto } from '@/api/contracts';
 import { api } from '@/api/client';
 import { notifyAiTestFinished } from '@/features/health/useChainStatus';
+import { open } from '@tauri-apps/plugin-shell';
 import { FreeModelDiscovery } from './models/FreeModelDiscovery';
 
 export const AI_PRESETS: Record<
   AiProviderId,
-  { baseUrl: string; label: string; local: boolean }
+  { baseUrl: string; label: string; local: boolean; model?: string; accessNote?: string; officialUrl?: string; keyPlaceholder?: string }
 > = {
+  deepseek: {
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-flash',
+    label: 'DeepSeek 官方',
+    local: false,
+    accessNote: '填写官方 API Key，按官方价格计费。',
+    officialUrl: 'https://platform.deepseek.com/api_keys',
+    keyPlaceholder: 'DeepSeek API Key',
+  },
+  nvidia: {
+    baseUrl: 'https://integrate.api.nvidia.com/v1',
+    model: 'deepseek-ai/deepseek-v4-pro',
+    label: 'NVIDIA 开发试用',
+    local: false,
+    accessNote: '需申请 API Key；免费开发试用，受额度和限流约束。',
+    officialUrl: 'https://build.nvidia.com/deepseek-ai/deepseek-v4-pro',
+    keyPlaceholder: 'nvapi-...',
+  },
+  amd: {
+    baseUrl: 'https://developer.amd.com.cn/radeon/api/v1',
+    model: 'DeepSeek-V4.1-Flash',
+    label: 'AMD 开发试用',
+    local: false,
+    accessNote: '中国站 Token Factory，需 API Key；免费开发试用，受每日点数和限流约束。',
+    officialUrl: 'https://amd-aim.github.io/radeon-cloud-docs/guides/token-factory/',
+    keyPlaceholder: 'rc-...',
+  },
   opencode: {
     baseUrl: 'https://opencode.ai/zen/v1',
     label: '本机 OpenCode',
+    model: 'fledge-alpha-free',
     local: false,
   },
   ollama: {
@@ -42,12 +71,15 @@ export const AI_PRESETS: Record<
 };
 
 export const AI_PROVIDER_ORDER: AiProviderId[] = [
-  'opencode',
+  'deepseek',
+  'nvidia',
+  'amd',
   'ollama',
   'lmstudio',
   'llamacpp',
   'vllm',
   'openai',
+  'opencode',
 ];
 
 export function isLocalEndpoint(url: string): boolean {
@@ -87,6 +119,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
   onRefreshModels,
 }) => {
   const [onlyFreeFilter, setOnlyFreeFilter] = useState(false);
+  const [officialLinkError, setOfficialLinkError] = useState<string | null>(null);
   const [verifiedFreeModels, setVerifiedFreeModels] = useState<string[]>([]);
   const [testingModel, setTestingModel] = useState(false);
   const [testResult, setTestResult] = useState<{
@@ -99,11 +132,13 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
   } | null>(null);
 
   const generation = useRef(0);
-  useEffect(() => { generation.current++; setTestResult(null); setTestingModel(false); }, [provider, model, baseUrl, apiKey]);
+  useEffect(() => { generation.current++; setTestResult(null); setTestingModel(false); setOfficialLinkError(null); }, [provider, model, baseUrl, apiKey]);
   useEffect(() => () => { generation.current++; }, []);
 
   const isLocal = isLocalEndpoint(baseUrl);
   const usesNativeOpenCode = provider === 'opencode' && (() => { try { return new URL(baseUrl).hostname === 'opencode.ai'; } catch { return false; } })();
+  const preset = AI_PRESETS[provider];
+  const needsKey = !isLocal && !usesNativeOpenCode;
 
   const isModelFree = (m: ModelInfoDto) => {
     return provider === 'opencode' ? verifiedFreeModels.includes(m.id) : isLocal || m.isFree;
@@ -118,6 +153,10 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
         success: false,
         error: '请先填写或选择要测试的模型名称',
       });
+      return;
+    }
+    if (needsKey && !apiKey.trim()) {
+      setTestResult({ success: false, error: '请先填写当前供应方的 API Key，再测试模型' });
       return;
     }
     const current = ++generation.current;
@@ -176,7 +215,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
       <div className="space-y-4">
         <div>
           <label className="text-xs font-semibold text-slate-700 block mb-2">
-            选择大脑类型：
+            选择推理供应方：
           </label>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {AI_PROVIDER_ORDER.map((id) => {
@@ -186,6 +225,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
                 <button
                   key={id}
                   type="button"
+                  aria-pressed={active}
                   onClick={() => onSelectProvider(id)}
                   className={`p-3 rounded-xl text-left border transition-all flex items-center justify-between cursor-pointer ${
                     active
@@ -197,9 +237,9 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
                     {preset.label}
                   </span>
                   <div className="flex items-center gap-1 shrink-0">
-                    {id === 'opencode' && (
+                    {id === 'deepseek' && (
                       <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 font-medium">
-                        官方推荐
+                        优先
                       </span>
                     )}
                     {preset.local && (
@@ -212,16 +252,26 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
               );
             })}
           </div>
+          {preset?.accessNote && <div className="mt-2 text-xs text-slate-600 leading-relaxed">
+            <span>{preset.accessNote}</span>{' '}
+            {preset.officialUrl && <button type="button" className="text-sky-700 underline underline-offset-2 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600" onClick={async () => {
+              setOfficialLinkError(null);
+              try { await open(preset.officialUrl!); } catch { setOfficialLinkError('无法打开官方入口，请检查默认浏览器后重试。'); }
+            }}>申请 Key / 官方入口</button>}
+          </div>}
+          {officialLinkError && <p role="alert" className="mt-2 text-xs text-red-700">{officialLinkError}</p>}
         </div>
 
         <div className="space-y-3 pt-1">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">
+              <label htmlFor="ai-provider-url" className="text-xs font-semibold text-slate-700 block mb-1">
                 接口地址 (Base URL)：
               </label>
               <input
                 type="text"
+                id="ai-provider-url"
+                spellCheck={false}
                 value={baseUrl}
                 onChange={(e) => onChangeBaseUrl(e.target.value)}
                 placeholder="http://127.0.0.1:11434/v1"
@@ -230,13 +280,13 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-semibold text-slate-700">
+                <label htmlFor="ai-provider-model" className="text-xs font-semibold text-slate-700">
                   模型名称 (Model)：
                 </label>
                 <button
                   type="button"
                   onClick={onRefreshModels}
-                  disabled={fetchingModels}
+                  disabled={fetchingModels || (needsKey && !apiKey.trim())}
                   className="flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-700 transition-colors cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw className={`w-3 h-3 ${fetchingModels ? 'animate-spin' : ''}`} />
@@ -245,6 +295,8 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
               </div>
               <input
                 type="text"
+                id="ai-provider-model"
+                spellCheck={false}
                 value={model}
                 onChange={(e) => onChangeModel(e.target.value)}
                 list="dynamic-models-list"
@@ -328,7 +380,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
           )}
 
           {fetchModelError && (
-            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-center gap-1.5">
+            <div role="alert" className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               <span>动态拉取模型提示: {fetchModelError} (您仍可手动在输入框填写任意模型)</span>
             </div>
@@ -343,7 +395,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
           ) : usesNativeOpenCode ? (
             <div className="p-3 rounded-xl bg-sky-50/50 border border-sky-100 space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-800">
+                <label htmlFor="ai-provider-key" className="text-xs font-semibold text-slate-800">
                   OpenCode API Key（可选）：
                 </label>
                 <span className="text-[10px] text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
@@ -353,6 +405,8 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
               </div>
               <input
                 type="password"
+                id="ai-provider-key"
+                autoComplete="off"
                 value={apiKey}
                 onChange={(e) => onChangeApiKey(e.target.value)}
                 placeholder="免费模型可留空；付费模型使用 OpenCode Key"
@@ -364,14 +418,16 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
             </div>
           ) : (
             <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">
-                API Key：
+              <label htmlFor="ai-provider-key" className="text-xs font-semibold text-slate-700 block mb-1">
+                API Key（必填）：
               </label>
               <input
                 type="password"
+                id="ai-provider-key"
+                autoComplete="off"
                 value={apiKey}
                 onChange={(e) => onChangeApiKey(e.target.value)}
-                placeholder="sk-..."
+                placeholder={preset?.keyPlaceholder || '当前端点的 API Key'}
                 className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-sky-500"
               />
             </div>
@@ -457,7 +513,7 @@ export const AiProviderCard: React.FC<AiProviderCardProps> = ({
           </div>
 
           <div className="text-[11px] text-slate-400 leading-relaxed">
-            模型不硬编码，实时从供应商端点拉取。使用自建网关或官方渠道均可即时更新；保存后立即生效，无需重启。
+            预设模型可手动修改；动态目录来自当前接口。保存后用于后续任务，无需重启。
           </div>
         </div>
       </div>

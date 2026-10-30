@@ -70,6 +70,20 @@ fn tool_json_response<T: Serialize>(id: Option<Value>, data: &T) -> JsonRpcRespo
 fn mcp_tool_definitions() -> Value {
     json!([
         {
+            "name": "manage_style_packs",
+            "description": "Manage local expression-only style packs for the fixed account. No messages are sent.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "operation": { "type": "string", "enum": ["list", "import", "select", "enable", "disable", "remove", "export"] },
+                    "pack_json": { "type": "string", "maxLength": 65536 },
+                    "pack_id": { "type": "string" },
+                    "destination": { "type": "string" }
+                },
+                "required": ["operation"], "additionalProperties": false
+            }
+        },
+        {
             "name": "send_message",
             "description": "Send a QQ message to a user or group via OneBot",
             "inputSchema": {
@@ -183,6 +197,21 @@ async fn handle_tool_call(
     args: &Value,
 ) -> JsonRpcResponse {
     match name {
+        "manage_style_packs" => {
+            let Some(account_dir) = svc.ai.runtime_dir().parent() else {
+                return tool_text_response(id, "账号目录不可用".into(), true);
+            };
+            match eazyqq_lib::commands::ai::style_packs::manage_for_account(
+                account_dir,
+                args.get("operation").and_then(Value::as_str).unwrap_or("list"),
+                args.get("pack_json").and_then(Value::as_str),
+                args.get("pack_id").and_then(Value::as_str),
+                args.get("destination").and_then(Value::as_str),
+            ) {
+                Ok(status) => tool_json_response(id, &status),
+                Err(error) => tool_text_response(id, error, true),
+            }
+        }
         "send_message" => {
             let target_type = args
                 .get("target_type")
@@ -371,7 +400,7 @@ async fn handle_tool_call(
                     "sub_type": "normal",
                     "group_id": target_id,
                     "user_id": sender_id,
-                    "self_id": "10000",
+                    "self_id": svc.onebot.expected_account().unwrap_or("10000"),
                     "sender": { "nickname": "SimulationSender" },
                     "raw_message": content,
                     "message": content,
@@ -382,7 +411,7 @@ async fn handle_tool_call(
                     "message_type": "private",
                     "sub_type": "friend",
                     "user_id": target_id,
-                    "self_id": "10000",
+                    "self_id": svc.onebot.expected_account().unwrap_or("10000"),
                     "sender": { "nickname": "SimulationSender" },
                     "raw_message": content,
                     "message": content,
