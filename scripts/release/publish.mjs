@@ -42,13 +42,38 @@ function mutate(run, args) {
   if (result.status !== 0) throw new Error(result.stderr || 'GitHub release operation failed');
 }
 
-export function publishRelease({ repository, tag, installer, otherAssets, notes, run = runGh }) {
+// The listing endpoint is cached at the edge, so a release created moments ago
+// can still be missing from it. Retry the read before declaring a draft gone.
+function sleep(milliseconds) {
+  if (milliseconds > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+export function findDraft(options, { attempts = 12, delayMs = 5000 } = {}) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const release = inspectRelease(options);
+    if (release) return release;
+    if (attempt < attempts) sleep(delayMs);
+  }
+  return null;
+}
+
+export function publishRelease({ repository, tag, installer, otherAssets, notes, run = runGh, retry = {} }) {
   const options = { repository, tag, run };
-  if (!inspectRelease(options)) {
-    mutate(run, ['release', 'create', tag, '--repo', repository, '--verify-tag', '--draft', '--title', `EazyQQ ${tag}`, '--notes-file', notes]);
+  const attempts = retry.attempts ?? 12;
+  const delayMs = retry.delayMs ?? 5000;
+  const waitForDraft = () => findDraft(options, { attempts, delayMs });
+  if (!findDraft(options, { attempts: Math.min(3, attempts), delayMs })) {
+    try {
+      mutate(run, ['release', 'create', tag, '--repo', repository, '--verify-tag', '--draft', '--title', `EazyQQ ${tag}`, '--notes-file', notes]);
+    } catch (error) {
+      // A cached listing can hide an existing draft; only a real conflict on a
+      // release that subsequently appears may continue.
+      if (!/already exists/i.test(error.message)) throw error;
+    }
+    if (!waitForDraft()) throw new Error('Release draft disappeared; publication stopped');
   }
   const requireDraft = () => {
-    if (!inspectRelease(options)) throw new Error('Release draft disappeared; publication stopped');
+    if (!waitForDraft()) throw new Error('Release draft disappeared; publication stopped');
   };
   // Recheck before each write, including resumptions after a partial upload.
   requireDraft();

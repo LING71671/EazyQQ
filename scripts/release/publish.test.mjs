@@ -25,7 +25,7 @@ test('rejects a public release without making any writes', () => {
     commands.push(args);
     return args[0] === 'api' ? { ...ok, stdout: JSON.stringify(publicRelease) } : ok;
   };
-  assert.throws(() => publishRelease({ ...target, run }), /already public/);
+  assert.throws(() => publishRelease({ ...target, retry: { delayMs: 0 }, run }), /already public/);
   assert.equal(commands.length, 1);
   assert.equal(commands[0][0], 'api');
 });
@@ -57,7 +57,7 @@ test('creates a draft and uploads installer before the remaining assets', () => 
     if (args[1] === 'create') releases = [draft];
     return ok;
   };
-  publishRelease({ ...target, run });
+  publishRelease({ ...target, retry: { delayMs: 0 }, run });
   assert.deepEqual(writes.map(args => args[1]), ['create', 'upload', 'upload', 'edit']);
   assert.ok(writes[0].includes('--draft'));
   assert.ok(writes[1].includes(target.installer));
@@ -67,7 +67,7 @@ test('creates a draft and uploads installer before the remaining assets', () => 
 
 test('resumes a partial draft without creating another release', () => {
   const writes = [];
-  publishRelease({ ...target, run: args => {
+  publishRelease({ ...target, retry: { delayMs: 0 }, run: args => {
     if (args[0] === 'api') return reader([draft])(args);
     writes.push(args);
     return ok;
@@ -78,7 +78,7 @@ test('resumes a partial draft without creating another release', () => {
 test('stops if an external actor publishes the draft during upload', () => {
   let published = false;
   const writes = [];
-  assert.throws(() => publishRelease({ ...target, run: args => {
+  assert.throws(() => publishRelease({ ...target, retry: { delayMs: 0 }, run: args => {
     if (args[0] === 'api') {
       return args[1].includes('/releases/tags/') ? missing : list(published ? [publicRelease] : [draft]);
     }
@@ -91,10 +91,55 @@ test('stops if an external actor publishes the draft during upload', () => {
 
 test('an upload failure leaves the draft unpublished', () => {
   const writes = [];
-  assert.throws(() => publishRelease({ ...target, run: args => {
+  assert.throws(() => publishRelease({ ...target, retry: { delayMs: 0 }, run: args => {
     if (args[0] === 'api') return reader([draft])(args);
     writes.push(args);
     return { status: 1, stderr: 'upload interrupted' };
   } }), /upload interrupted/);
   assert.equal(writes.length, 1);
+});
+
+// GitHub caches the release listing, so a draft created seconds ago can be
+// missing from the next read. Publication must wait instead of declaring the
+// draft gone while it still exists.
+test('waits for a created draft that the cached listing reports late', () => {
+  let releases = [];
+  let staleReads = 2;
+  const writes = [];
+  publishRelease({ ...target, retry: { attempts: 4, delayMs: 0 }, run: args => {
+    if (args[0] === 'api') {
+      if (args[1].includes('/releases/tags/')) return missing;
+      if (releases.length && staleReads > 0) { staleReads--; return list([]); }
+      return list(releases);
+    }
+    writes.push(args);
+    if (args[1] === 'create') releases = [draft];
+    return ok;
+  } });
+  assert.deepEqual(writes.map(args => args[1]), ['create', 'upload', 'upload', 'edit']);
+});
+
+test('stops without uploading when a created draft never appears', () => {
+  const writes = [];
+  assert.throws(() => publishRelease({ ...target, retry: { attempts: 3, delayMs: 0 }, run: args => {
+    if (args[0] === 'api') return args[1].includes('/releases/tags/') ? missing : list([]);
+    writes.push(args);
+    return ok;
+  } }), /draft disappeared/);
+  assert.deepEqual(writes.map(args => args[1]), ['create']);
+});
+
+test('continues when the hidden draft rejects a duplicate creation', () => {
+  let created = false;
+  const writes = [];
+  publishRelease({ ...target, retry: { attempts: 3, delayMs: 0 }, run: args => {
+    if (args[0] === 'api') return args[1].includes('/releases/tags/') ? missing : list(created ? [draft] : []);
+    if (args[1] === 'create') {
+      created = true;
+      return { status: 1, stderr: 'a release with the same tag name already exists' };
+    }
+    writes.push(args);
+    return ok;
+  } });
+  assert.deepEqual(writes.map(args => args[1]), ['upload', 'upload', 'edit']);
 });
