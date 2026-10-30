@@ -1,6 +1,6 @@
 # EazyQQ 智能体操作指南
 
-0.7.0 已进入发布准备，公开产物仍待核验；已核验的公开版本为 0.6.6。0.7.0 新增独立任务、表达偏好继承、多气泡与逐条回执，保留会话归属、多模态正文和本地风格包。修改前阅读 AGENTS.md、docs/ARCHITECTURE.md 和最新中文开发记录。接口以 docs/api/IPC.md、docs/api/CLI.md、docs/api/TASKS.md 和生成的 cli.schema.json 为准。运行 `eazyqq_cli schema --json` 获取当前构建的命令参数；MCP 使用 tools/list 获取实际工具定义，不根据历史示例猜参数。风格包仅控制措辞，不提供身份事实或发送授权；个人包、安装索引与原始聊天不得提交或分发。
+已核验的公开版本为 0.7.0，公开下载、校验和及 CLI 版本证据见 docs/development/2026-10-30-release-0.7.0.md。0.7.0 新增独立任务、表达偏好继承、多气泡与逐条回执，保留会话归属、多模态正文和本地风格包。修改前阅读 AGENTS.md、docs/ARCHITECTURE.md 和最新中文开发记录。接口以 docs/api/IPC.md、docs/api/CLI.md、docs/api/TASKS.md 和生成的 cli.schema.json 为准。运行 `eazyqq_cli schema --json` 获取当前构建的命令参数；MCP 使用 tools/list 获取实际工具定义，不根据历史示例猜参数。风格包仅控制措辞，不提供身份事实或发送授权；个人包、安装索引与原始聊天不得提交或分发。
 
 ## 运行约束
 

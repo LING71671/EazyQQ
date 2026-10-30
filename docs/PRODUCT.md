@@ -2,7 +2,7 @@
 
 <!-- impeccable:product-schema 1 -->
 
-0.7.0 已进入发布准备，公开产物仍待核验；已核验的公开版本为 0.6.6。本文包含 0.7.0 实现，旧安装包不包含新增任务与多气泡批次。接口细节以 [接口文档](API_SPECIFICATION.md) 和生成的 CLI schema 为准。
+公开版本为 0.7.0，公开下载、校验和及 CLI 版本已核验，见[发布记录](development/2026-10-30-release-0.7.0.md)。本文描述该安装包的能力；旧版 0.6.6 不包含新增任务与多气泡批次。接口细节以 [接口文档](API_SPECIFICATION.md) 和生成的 CLI schema 为准。
 
 保留 0.6.6 的账号独立[聊天风格包](ai/STYLE_PACKS.md)、消息归属与引用来源、实际图片和受限文件正文、独立 QQ 原生表情和同条混排。新用户优先配置 DeepSeek 官方，NVIDIA/AMD 为需 Key 且受限额约束的开发试用预设，OpenCode 推荐顺序调低；已有模型与密钥保持本人选择。
 

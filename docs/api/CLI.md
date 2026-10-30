@@ -1,6 +1,6 @@
 # CLI 使用与契约
 
-0.6.6 已发布；基础命令延续该版本。当前开发增量新增 `tasks`、`personas`、`reply-batches` 和多气泡草稿参数，见[任务与回复契约](TASKS.md)，尚未进入公开安装包。源码构建：`pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli`。桌面安装包包含同名 CLI；独立压缩包还提供 `ezq.exe` 兼容名。
+0.7.0 已公开发布，新增 `tasks`、`personas`、`reply-batches` 和多气泡草稿参数，见[任务与回复契约](TASKS.md)；旧版 0.6.6 不包含这些新增接口。源码构建：`pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli`。桌面安装包包含同名 CLI；独立压缩包还提供 `ezq.exe` 兼容名。
 
 ## 风格包
 
@@ -110,7 +110,7 @@ eazyqq_cli repair --json
 
 ## MCP 与环境
 
-0.6.5包含尚未公开的可选诊断命令：`telemetry status --json`读取诊断状态；`telemetry test --confirm --json`向Sentry发送合成测试。没有confirm则拒绝发送。SDK在普通程序中默认关闭，具体变量与数据范围见[接入文档](../observability/SENTRY.md)。
+可选诊断命令自0.6.5起提供：`telemetry status --json`读取诊断状态；`telemetry test --confirm --json`向Sentry发送合成测试。没有confirm则拒绝发送。SDK在普通程序中默认关闭，具体变量与数据范围见[接入文档](../observability/SENTRY.md)。
 
 运行 `eazyqq_cli [--account QQ] mcp`，使用 JSON-RPC `initialize`、`tools/list`、`tools/call`。通知不返回响应，实际工具 schema 由服务返回，版本来自当前构建。
 

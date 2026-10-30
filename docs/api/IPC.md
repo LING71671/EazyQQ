@@ -1,6 +1,6 @@
 # 桌面 IPC 契约
 
-0.6.6 已发布；基础契约延续该版本。当前开发增量的任务、人设继承、多气泡与回执接口见[任务与回复契约](TASKS.md)，尚未进入公开安装包。传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`。
+0.7.0 已公开发布；新增的任务、人设继承、多气泡与回执接口见[任务与回复契约](TASKS.md)，旧版 0.6.6 不包含这些新增接口。传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`。
 
 ## 风格包与消息来源
 
@@ -117,7 +117,7 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 
 ## 更新状态与事件
 
-0.6.5包含尚未公开的可选诊断接口：`get_telemetry_status()`返回`{enabled,configured,component,release}`；`test_telemetry()`发送合成诊断，返回`{eventId,flushed,release}`。状态读取不发送测试，测试由用户显式操作。flushed只证明队列处理完成，服务器接收需按eventId核对。配置与隐私范围见[接入文档](../observability/SENTRY.md)。
+可选诊断接口自0.6.5起提供：`get_telemetry_status()`返回`{enabled,configured,component,release}`；`test_telemetry()`发送合成诊断，返回`{eventId,flushed,release}`。状态读取不发送测试，测试由用户显式操作。flushed只证明队列处理完成，服务器接收需按eventId核对。配置与隐私范围见[接入文档](../observability/SENTRY.md)。
 
 0.6.5的 `get_update_history({})` 返回 `ApiResponse<UpdateReceipt[]>`，与 CLI `updates history` 读取同一暂存上下文的回执，按开始时间倒序最多 50 条。历史查询不创建目录、不运行安装、不改变 QQ。主程序及核心的检查、下载、校验、安装交接和部署分别留证；一次安装流程的再次检查、下载、校验和交接沿同一操作编号关联，重试创建新编号。
 
