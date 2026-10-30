@@ -94,77 +94,109 @@ class Protocol(BaseHTTPRequestHandler):
 
 
 def run(*args):
+    stage("fixture.cli." + args[0])
     result = subprocess.run([str(CLI), *args, "--json"], env=ENV, capture_output=True, text=True, encoding="utf-8", timeout=30)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
 
 
+def stage(name):
+    print(json.dumps({"nativeStage": name}), flush=True)
+
+
 class CDP:
-    def __init__(self, endpoint):
+    def __init__(self, endpoint, timeout=10):
         url = urlsplit(endpoint)
-        self.socket = socket.create_connection((url.hostname, url.port), timeout=10)
-        self.socket.settimeout(10)
-        key = base64.b64encode(os.urandom(16)).decode()
-        request = f"GET {url.path} HTTP/1.1\r\nHost: {url.netloc}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
-        self.socket.sendall(request.encode())
+        deadline = time.monotonic() + timeout
+        self.socket = socket.create_connection((url.hostname, url.port), timeout=timeout)
         response = b""
-        while not response.endswith(b"\r\n\r\n"): response += self.socket.recv(1)
-        assert b"101" in response.split(b"\r\n")[0], response
+        try:
+            key = base64.b64encode(os.urandom(16)).decode()
+            path = (url.path or "/") + ("?" + url.query if url.query else "")
+            request = f"GET {path} HTTP/1.1\r\nHost: {url.netloc}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
+            self._remaining(deadline)
+            self.socket.sendall(request.encode())
+            while not response.endswith(b"\r\n\r\n"):
+                self._remaining(deadline)
+                part = self.socket.recv(1)
+                if not part:
+                    raise EOFError(f"CDP handshake closed before complete headers ({self._handshake_state(response)})")
+                response += part
+                if len(response) > 16_384:
+                    raise AssertionError(f"CDP handshake headers exceeded 16384 bytes ({self._handshake_state(response)})")
+            status = response.split(b"\r\n", 1)[0].split()
+            if len(status) < 2 or status[1] != b"101":
+                raise AssertionError(f"CDP handshake rejected ({self._handshake_state(response)})")
+        except TimeoutError as error:
+            self.socket.close()
+            raise TimeoutError(f"CDP handshake deadline exceeded ({self._handshake_state(response)})") from error
+        except BaseException:
+            self.socket.close()
+            raise
         self.sequence = 0
+
+    @staticmethod
+    def _handshake_state(response):
+        # Report only byte count and numeric HTTP status, never cookies, auth or URLs.
+        status = response[:512].split(b"\r\n", 1)[0].split()
+        code = status[1].decode("ascii") if len(status) >= 2 and len(status[1]) == 3 and status[1].isdigit() else "unknown"
+        return f"receivedBytes={len(response)}, httpStatus={code}"
+
+    def _remaining(self, deadline):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("CDP operation deadline exceeded")
+        self.socket.settimeout(remaining)
+        return remaining
+
     def close(self): self.socket.close()
-    def read(self, size):
+    def read(self, size, deadline):
         result = b""
         while len(result) < size:
+            self._remaining(deadline)
             part = self.socket.recv(size - len(result))
             if not part: raise EOFError("CDP connection closed")
             result += part
         return result
-    def frame(self, opcode, data):
+    def frame(self, opcode, data, deadline):
         mask = os.urandom(4)
         length = len(data)
         header = bytes([0x80 | opcode, 0x80 | length]) if length < 126 else bytes([0x80 | opcode, 0x80 | 126]) + struct.pack("!H", length)
+        self._remaining(deadline)
         self.socket.sendall(header + mask + bytes(value ^ mask[index % 4] for index, value in enumerate(data)))
-    def screenshot(self, path):
-        self.sequence += 1
-        self.frame(1,json.dumps({"id":self.sequence,"method":"Page.captureScreenshot","params":{"format":"png"}}).encode())
-        while True:
-            head=self.read(2); opcode,length=head[0]&15,head[1]&127
-            if length==126: length=struct.unpack("!H",self.read(2))[0]
-            elif length==127: length=struct.unpack("!Q",self.read(8))[0]
-            mask=self.read(4) if head[1]&128 else None
-            data=self.read(length)
-            if mask: data=bytes(value^mask[index%4] for index,value in enumerate(data))
-            if opcode==9: self.frame(10,data); continue
-            if opcode==8: raise EOFError("CDP closed during screenshot")
-            if opcode!=1: continue
-            response=json.loads(data)
-            if response.get("id")==self.sequence:
-                assert "error" not in response,response
-                path.write_bytes(base64.b64decode(response["result"]["data"]))
-                return
-    def command(self, method, params):
-        self.sequence += 1
-        payload = {"id": self.sequence, "method": method, "params": params}
-        self.frame(1, json.dumps(payload).encode())
-        while True:
-            head = self.read(2)
-            opcode, length = head[0] & 15, head[1] & 127
-            if length == 126: length = struct.unpack("!H", self.read(2))[0]
-            elif length == 127: length = struct.unpack("!Q", self.read(8))[0]
-            mask = self.read(4) if head[1] & 128 else None
-            data = self.read(length)
-            if mask: data = bytes(value ^ mask[index % 4] for index, value in enumerate(data))
-            if opcode == 8: raise EOFError("CDP closed")
-            if opcode == 9: self.frame(10, data); continue
-            if opcode != 1: continue
-            response = json.loads(data)
-            if response.get("id") == self.sequence:
-                assert "error" not in response, response
-                assert "exceptionDetails" not in response["result"], response
-                return response["result"]
 
-    def evaluate(self, expression):
-        return self.command('Runtime.evaluate', {"expression": expression, "awaitPromise": True, "returnByValue": True})["result"].get("value")
+    def screenshot(self, path, timeout=20):
+        response = self.command("Page.captureScreenshot", {"format": "png"}, timeout=timeout)
+        path.write_bytes(base64.b64decode(response["data"]))
+
+    def command(self, method, params, timeout=15):
+        deadline = time.monotonic() + timeout
+        self.sequence += 1
+        request_id = self.sequence
+        payload = {"id": request_id, "method": method, "params": params}
+        try:
+            self.frame(1, json.dumps(payload).encode(), deadline)
+            while True:
+                head = self.read(2, deadline)
+                opcode, length = head[0] & 15, head[1] & 127
+                if length == 126: length = struct.unpack("!H", self.read(2, deadline))[0]
+                elif length == 127: length = struct.unpack("!Q", self.read(8, deadline))[0]
+                mask = self.read(4, deadline) if head[1] & 128 else None
+                data = self.read(length, deadline)
+                if mask: data = bytes(value ^ mask[index % 4] for index, value in enumerate(data))
+                if opcode == 8: raise EOFError(f"CDP closed during {method} (id={request_id})")
+                if opcode == 9: self.frame(10, data, deadline); continue
+                if opcode != 1: continue
+                response = json.loads(data)
+                if response.get("id") == request_id:
+                    assert "error" not in response, {"method": method, "id": request_id, "error": response.get("error")}
+                    assert "exceptionDetails" not in response["result"], {"method": method, "id": request_id, "exceptionDetails": response["result"].get("exceptionDetails")}
+                    return response["result"]
+        except TimeoutError as error:
+            raise TimeoutError(f"CDP {method} deadline exceeded after {timeout:g}s (id={request_id})") from error
+
+    def evaluate(self, expression, timeout=15):
+        return self.command('Runtime.evaluate', {"expression": expression, "awaitPromise": True, "returnByValue": True}, timeout=timeout)["result"].get("value")
 
 
 def connect(uin, timeout=90):
@@ -174,14 +206,22 @@ def connect(uin, timeout=90):
         client = None
         for host in ['127.0.0.1', '[::1]']:
             try:
-                with LOCAL_HTTP.open(f"http://{host}:{debug_port}/json/list", timeout=2) as response: pages = json.load(response)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0: break
+                with LOCAL_HTTP.open(f"http://{host}:{debug_port}/json/list", timeout=min(2, remaining)) as response: pages = json.load(response)
                 page = next(item for item in pages if item.get("type") == "page" and "tauri.localhost" in item.get("url", ""))
-                client = CDP(page["webSocketDebuggerUrl"])
-                value = client.evaluate("(async () => { if (!window.__TAURI_INTERNALS__) return null; const r = await window.__TAURI_INTERNALS__.invoke('get_protocol_status'); return r.data?.qqNumber; })()")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0: break
+                client = CDP(page["webSocketDebuggerUrl"], timeout=min(10, remaining))
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    client.close(); client = None
+                    break
+                value = client.evaluate("(async () => { if (!window.__TAURI_INTERNALS__) return null; const r = await window.__TAURI_INTERNALS__.invoke('get_protocol_status'); return r.data?.qqNumber; })()", timeout=min(10, remaining))
                 if value == uin: return client
             except (OSError, EOFError, StopIteration, AssertionError) as error: last_error = f'{host}: {error}'
             if client: client.close(); client = None
-        time.sleep(0.25)
+        time.sleep(min(0.25, max(0, deadline - time.monotonic())))
     raise AssertionError(f"Native frontend for {uin} was not ready: {last_error}")
 
 
@@ -189,6 +229,7 @@ gui = client = None
 registry_override = None
 try:
     assert os.name == "nt", "Native profile validation requires Windows"
+    stage("fixture.registration")
     for uin in ["10001", "10002"]: run("accounts", "add", "--uin", uin)
     registry_path = next((ROOT / "EazyQQ_Data/accounts").glob("*/instances.json"))
     registry = json.loads(registry_path.read_text(encoding="utf-8-sig"))
@@ -214,6 +255,7 @@ try:
     hosted = os.environ.get("GITHUB_ACTIONS") == "true"
     bootstrap.write_text(json.dumps({"lastAccount": "10001", "webviewCompatMode": not hosted}))
     opencode_fixture = ROOT / "opencode-fixture.exe"
+    stage("fixture.opencode.build")
     subprocess.run(["pwsh","-NoProfile","-File",str(PROJECT / "scripts/validation/build-opencode-fixture.ps1"),"-Target",str(opencode_fixture)],check=True,timeout=60)
     ENV["EAZYQQ_OPENCODE_BIN"] = str(opencode_fixture)
     ENV["OPENCODE_API_KEY"] = "host-fixture-key"
@@ -239,9 +281,12 @@ try:
                 previous.append((app_id, value))
                 winreg.SetValueEx(key, app_id, 0, winreg.REG_SZ, arguments)
         registry_override = (key_path, previous)
+    stage("gui.start")
     with (ROOT / "gui-stderr.log").open("wb") as stderr:
         gui = subprocess.Popen([str(GUI)], env=ENV, cwd=ROOT, creationflags=subprocess.CREATE_NO_WINDOW, stdout=subprocess.DEVNULL, stderr=stderr)
+    stage("gui.connect.primary")
     client = connect("10001")
+    stage("checks.window")
     expected_version = json.loads((PROJECT / "package.json").read_text(encoding="utf-8-sig"))["version"]
     assert client.evaluate("window.__TAURI_INTERNALS__.invoke('plugin:app|version')") == expected_version
     assert client.evaluate("(async () => { window.dispatchEvent(new KeyboardEvent('keydown', {key:'F1'})); await new Promise(resolve => setTimeout(resolve, 50)); return !!document.querySelector('button[aria-label=\"关闭使用说明书\"]'); })()") is True
@@ -249,11 +294,13 @@ try:
     assert client.evaluate("window.__TAURI_INTERNALS__.invoke('app_toggle_maximize_window')") is True
     assert client.evaluate("window.__TAURI_INTERNALS__.invoke('app_toggle_maximize_window')") is False
     login_fixture = True
+    stage("checks.login_layout")
     validate_login_layout(client, ROOT)
     login_fixture = False
     # Validate discovery and selected-model preservation through the rendered settings.
     client.evaluate("[...document.querySelectorAll('button')].find(button=>button.textContent.includes('系统设置')).click(); true")
     original_config = run("ai-config", "--account", "10001")
+    stage("checks.free_model_discovery")
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
         if client.evaluate("(()=>{const button=[...document.querySelectorAll('button')].find(button=>button.textContent==='自动检测免费模型' && !button.disabled);if(!button)return false;button.click();return true;})()"):
@@ -278,19 +325,27 @@ try:
     assert run("ai-config", "--account", "10001")["model"] == original_config["model"], "Detection silently changed the model"
     client.evaluate("document.querySelector('section[aria-label=\"OpenCode 免费模型检测\"]').scrollIntoView({block:'center'}); true")
     client.screenshot(ROOT / "free-model-discovery.png")
+    stage("checks.ai_health")
     validate_ai_health(client, ROOT)
+    stage("checks.update_history")
     validate_update_history(client, ROOT, run)
+    stage("checks.free_detection_lifecycle")
     validate_free_detection_lifecycle(client, ROOT, opencode_fixture)
+    stage("checks.reliability")
     validate_reliability(client, ROOT, servers)
+    stage("checks.conversation_context")
     validate_conversation_context(client, ROOT, servers)
+    stage("checks.tasks_replies")
     validate_tasks_replies(client, ROOT, servers)
     if os.environ.get('EAZYQQ_TEST_LIVE_TELEMETRY') == '1':
         validate_sentry_live(client, ROOT)
     assert client.evaluate("localStorage.getItem('eazyqq_profile_validation')") is None
     client.evaluate("localStorage.setItem('eazyqq_profile_validation', '10001'); true")
     assert (registry_path.parent / "10001/webview/main/EBWebView").exists(), "The primary account used a shared browser profile"
+    stage("account.switch.secondary")
     client.evaluate("window.__TAURI_INTERNALS__.invoke('quick_login', {uin:'10002'}); true")
     client.close()
+    stage("gui.connect.secondary")
     client = connect("10002")
     validate_style_pack_account_isolation(client, ROOT)
     assert json.loads(bootstrap.read_text())["lastAccount"] == "10002"
@@ -301,6 +356,7 @@ try:
     delayed_probe_account = "10002"
     client.evaluate("for(let i=0;i<8;i++) window.__TAURI_INTERNALS__.invoke('get_protocol_status').catch(()=>{}); true")
     assert delayed_probe_started.wait(timeout=3), "Old context did not start its status probes"
+    stage("account.switch.primary_with_delayed_status")
     client.evaluate("window.__TAURI_INTERNALS__.invoke('quick_login', {uin:'10001'}); true")
     deadline = time.monotonic() + 3
     while json.loads(bootstrap.read_text())["lastAccount"] != "10001" and time.monotonic() < deadline:
@@ -308,9 +364,11 @@ try:
     assert json.loads(bootstrap.read_text())["lastAccount"] == "10001", "Explicit selection was not committed"
     delayed_probe_release.set()
     client.close()
+    stage("gui.connect.primary_return")
     client = connect("10001")
     validate_style_pack_account_return(client, ROOT)
     assert client.evaluate("localStorage.getItem('eazyqq_profile_validation')") == "10001"
+    stage("gui.close")
     client.evaluate("window.__TAURI_INTERNALS__.invoke('app_close_window'); true")
     client.close()
     client = None
@@ -325,8 +383,10 @@ try:
         time.sleep(0.1)
     else: raise AssertionError("The test desktop did not shut down")
     assert json.loads(bootstrap.read_text())["lastAccount"] == "10001", "An old status response reversed selection"
-    print(json.dumps({"passed": True, "loginFirstViewport": True, "freeModelDiscovery": True, "modelHealthSynchronized": True, "noKeyChannelIsolated": True, "updateHistoryEvidence": True, "conversationContext": True, "stylePackAccountIsolation": True, "nativeFacePreview": True, "accountRoundTrip": True, "delayedStatusSelectionPreserved": True, "privateProfiles": True, "maximizeRoundTrip": True, "manualShortcut": True, "realQQTouched": False, "fixture": str(ROOT)}))
+    stage("checks.complete")
+    print(json.dumps({"passed": True, "loginFirstViewport": True, "freeModelDiscovery": True, "modelHealthSynchronized": True, "noKeyChannelIsolated": True, "updateHistoryEvidence": True, "conversationContext": True, "stylePackAccountIsolation": True, "nativeFacePreview": True, "accountRoundTrip": True, "delayedStatusSelectionPreserved": True, "privateProfiles": True, "maximizeRoundTrip": True, "manualShortcut": True, "realQQTouched": False, "fixture": str(ROOT)}), flush=True)
 except Exception:
+    stage("failure.capture")
     if client:
         try:
             print(json.dumps({'visibleButtons': client.evaluate("[...document.querySelectorAll('button')].filter(button=>button.checkVisibility()).map(button=>button.textContent)" )},ensure_ascii=False),flush=True)
@@ -345,6 +405,7 @@ except Exception:
             print("\n".join(log.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]), flush=True)
     raise
 finally:
+    stage("cleanup.begin")
     delayed_probe_release.set()
     if client:
         try: client.evaluate("window.__TAURI_INTERNALS__.invoke('app_close_window'); true")
@@ -364,3 +425,4 @@ finally:
             for app_id, value in previous:
                 if value is None: winreg.DeleteValue(key, app_id)
                 else: winreg.SetValueEx(key, app_id, 0, value[1], value[0])
+    stage("cleanup.complete")

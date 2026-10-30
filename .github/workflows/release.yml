@@ -132,27 +132,40 @@ jobs:
         run: pwsh -NoProfile -File scripts/validation/install_bundle.ps1
 
       - name: Validate release CLI and native account profiles
+        timeout-minutes: 10
         shell: pwsh
         run: |
           $env:PYTHONUTF8 = '1'
-          Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\*' -ErrorAction SilentlyContinue | Select-Object name,pv
-          Get-ItemProperty 'HKCU:\Software\Microsoft\EdgeUpdate\Clients\*' -ErrorAction SilentlyContinue | Select-Object name,pv
-          pnpm test:smoke
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python scripts/validation/protocol_recovery.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Output 'Validation stage: prepare native drivers'
           # Validation tools follow this workflow revision; application source stays tagged.
           $content = gh api "repos/$env:GITHUB_REPOSITORY/contents/scripts/validation/native_profiles.py?ref=$env:GITHUB_SHA" --jq .content
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $validator = Join-Path $env:RUNNER_TEMP 'native_profiles.py'
           [IO.File]::WriteAllBytes($validator, [Convert]::FromBase64String(($content -join '')))
+          $content = gh api "repos/$env:GITHUB_REPOSITORY/contents/scripts/validation/cdp_transport.py?ref=$env:GITHUB_SHA" --jq .content
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $transportValidator = Join-Path $env:RUNNER_TEMP 'cdp_transport.py'
+          [IO.File]::WriteAllBytes($transportValidator, [Convert]::FromBase64String(($content -join '')))
           $env:EAZYQQ_TEST_PROJECT_ROOT = (Get-Location).Path
+          Write-Output 'Validation stage: CDP transport regressions'
+          python $transportValidator $validator
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\*' -ErrorAction SilentlyContinue | Select-Object name,pv
+          Get-ItemProperty 'HKCU:\Software\Microsoft\EdgeUpdate\Clients\*' -ErrorAction SilentlyContinue | Select-Object name,pv
+          Write-Output 'Validation stage: release CLI smoke'
+          pnpm test:smoke
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Output 'Validation stage: protocol recovery'
+          python scripts/validation/protocol_recovery.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $content = gh api "repos/$env:GITHUB_REPOSITORY/contents/scripts/validation/webview_ipv6.py?ref=$env:GITHUB_SHA" --jq .content
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $ipv6Validator = Join-Path $env:RUNNER_TEMP 'webview_ipv6.py'
           [IO.File]::WriteAllBytes($ipv6Validator, [Convert]::FromBase64String(($content -join '')))
+          Write-Output 'Validation stage: IPv6 CDP discovery'
           python $ipv6Validator $validator
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Output 'Validation stage: native account profiles'
           python $validator
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
