@@ -1,7 +1,5 @@
 #[path = "ai/ai.rs"]
 pub mod ai;
-#[path = "ai/style_packs.rs"]
-pub mod style_packs;
 #[path = "chat/chat.rs"]
 pub mod chat;
 #[path = "system/config.rs"]
@@ -24,8 +22,12 @@ pub mod mcp;
 pub mod protocol;
 #[path = "system/schema.rs"]
 pub mod schema;
+#[path = "ai/style_packs.rs"]
+pub mod style_packs;
 #[path = "ai/summary.rs"]
 pub mod summary;
+#[path = "ai/tasks.rs"]
+pub mod tasks;
 
 #[path = "system/system.rs"]
 pub mod system;

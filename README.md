@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/LING71671/EazyQQ/releases"><img alt="版本 0.6.6" src="https://img.shields.io/badge/版本-0.6.6-0284c7?style=flat-square" /></a>
+  <a href="https://github.com/LING71671/EazyQQ/releases"><img alt="0.7.0 发布准备" src="https://img.shields.io/badge/发布准备-0.7.0-0284c7?style=flat-square" /></a>
   <img alt="Windows x64" src="https://img.shields.io/badge/Windows-x64-334155?style=flat-square" />
   <a href="LICENSE"><img alt="Apache 2.0" src="https://img.shields.io/badge/License-Apache_2.0-334155?style=flat-square" /></a>
 </p>
@@ -21,7 +21,11 @@
 
 ## 多个账号，一个工作台
 
-公开版本为 `0.6.6`，包含消息身份与引用来源修正、实际图片与受限文档正文、407 项 QQ 原生表情动态预览和[本地风格包](docs/ai/STYLE_PACKS.md)，详见[发布说明](docs/release/v0.6.6.md)。私人风格包不随项目分发；多气泡批次与任务型智能体仍属于[后续方向](docs/development/2026-10-29-persona-agent-context.md)。
+`0.7.0` 已进入发布准备，新增独立任务工作台、分层表达偏好、多气泡回复与逐条送达回执，详见[发布说明](docs/release/v0.7.0.md)。公开资产尚待发布后核验；目前已核验的公开版本为 `0.6.6`。
+
+任务可以查找当前会话的缓存消息、读取明确选择且已下载的群文件、整理本任务待办，再将候选转入草稿审核。每个任务有独立 AI 会话；纯文字、纯 QQ 原生表情及混排可以组成多条消息。送达未知时先人工核对，已发送的消息不会因重试再次发送。能力与限制见[任务与回复契约](docs/api/TASKS.md)。
+
+保留 `0.6.6` 的消息身份与引用来源、实际图片与受限文档正文、407 项 QQ 原生表情预览和[本地风格包](docs/ai/STYLE_PACKS.md)。私人风格包不随项目分发。
 
 | 账号独立 | 回复可控 | 自动化接入 |
 | :--- | :--- | :--- |
@@ -32,7 +36,7 @@
 
 ## 选择你的使用方式
 
-**桌面端** — 扫码登录、管理账号、配置联系人规则、审核草稿和查看简报。
+**桌面端** — 扫码登录、管理账号、配置联系人规则、执行独立任务、逐条审核草稿和查看简报。
 
 **CLI** — 给脚本和自动化流程使用，支持批量账号、JSON 输出和独立常驻工作进程。
 
@@ -50,7 +54,7 @@ eazyqq_cli mcp
 2. 打开账号管理，登记 QQ 号，使用对应账号扫码确认；多个账号可以独立保持在线。
 3. 在系统设置选择模型并测试，再启用所需联系人规则；自动回复和草稿发送会影响真实 QQ 联系人。
 
-`0.6.6`：[桌面安装包](https://github.com/LING71671/EazyQQ/releases/download/v0.6.6/EazyQQ_0.6.6_x64-setup.exe) · [CLI ZIP](https://github.com/LING71671/EazyQQ/releases/download/v0.6.6/eazyqq-cli-windows-x64.zip) · [发布说明与校验和](https://github.com/LING71671/EazyQQ/releases/tag/v0.6.6)。既有 0.6.5 安装包不含本轮增量。
+已核验的 `0.6.6`：[桌面安装包](https://github.com/LING71671/EazyQQ/releases/download/v0.6.6/EazyQQ_0.6.6_x64-setup.exe) · [CLI ZIP](https://github.com/LING71671/EazyQQ/releases/download/v0.6.6/eazyqq-cli-windows-x64.zip) · [发布说明与校验和](https://github.com/LING71671/EazyQQ/releases/tag/v0.6.6)。该安装包不含 0.7.0 新增的任务与多气泡批次。
 
 ## 用你选择的模型
 

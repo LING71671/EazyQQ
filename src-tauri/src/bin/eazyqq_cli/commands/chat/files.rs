@@ -7,9 +7,15 @@ pub async fn cmd_files(svc: &Services, args: &Args) -> Result<(), String> {
         .flag("target")
         .ok_or_else(|| "缺少 --target <群号>".to_string())?;
 
-    let records = eazyqq_lib::services::group_files::sync_group_files(&svc.db, &svc.onebot, group)
-        .await
-        .unwrap_or_default();
+    let records = if args.has("cached-only") {
+        svc.db
+            .get_group_files(group)
+            .map_err(|error| error.to_string())?
+    } else {
+        eazyqq_lib::services::group_files::sync_group_files(&svc.db, &svc.onebot, group)
+            .await
+            .unwrap_or_default()
+    };
 
     if args.json() {
         print_json(&serde_json::to_value(&records).unwrap_or(serde_json::json!([])));

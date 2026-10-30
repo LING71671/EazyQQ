@@ -160,16 +160,18 @@ export function useChatManager(options?: UseChatManagerOptions) {
   );
 
   const handleSendDraft = useCallback(
-    async (draftId: string, finalContent?: string) => {
+    async (draftId: string, finalContent?: string, finalBubbles?: string[]) => {
       if (pendingDrafts.current.has(draftId)) return;
       pendingDrafts.current.add(draftId);
       const epoch = chatEpoch.current;
       const key = selectedTargetKeyRef.current;
       setActionError(null);
       try {
-        const res = await api.sendDraft(draftId, finalContent);
+        const res = finalBubbles ? await api.sendDraft(draftId, finalContent, undefined, finalBubbles) : await api.sendDraft(draftId, finalContent);
         if (!res.success) throw new Error(res.error?.message || '发送草稿失败');
-        setDrafts((prev) => prev.filter((d) => d.id !== draftId));
+        const delivery = res.data && 'receipts' in res.data ? res.data : res.data && 'delivery' in res.data ? res.data.delivery : undefined;
+        if (!delivery || ['sent', 'completed'].includes(delivery.status)) setDrafts((prev) => prev.filter((d) => d.id !== draftId));
+        else setDrafts(prev => prev.map(draft => draft.id === draftId ? { ...draft, delivery } : draft));
         if (selectedChatContact && chatEpoch.current === epoch && selectedTargetKeyRef.current === key) {
           const targetId = selectedChatContact.targetId;
           void api.getMessages(targetId).then(response => {

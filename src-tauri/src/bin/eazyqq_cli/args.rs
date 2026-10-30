@@ -43,6 +43,9 @@ impl Args {
                         | "confirm"
                         | "stream"
                         | "refresh"
+                        | "allow-todos"
+                        | "not-delivered"
+                        | "cached-only"
                 ) {
                     switches.push(name.to_string());
                 } else if i + 1 < raw.len() && !raw[i + 1].starts_with("--") {
@@ -92,5 +95,9 @@ mod tests {
         let args = Args::parse_from(["--account=10001", "status", "--json"].map(str::to_string));
         assert_eq!(args.flag("account"), Some("10001"));
         assert_eq!(args.command, "status");
+        let args =
+            Args::parse_from(["--allow-todos", "tasks", "--not-delivered"].map(str::to_string));
+        assert_eq!(args.command, "tasks");
+        assert!(args.has("allow-todos") && args.has("not-delivered"));
     }
 }

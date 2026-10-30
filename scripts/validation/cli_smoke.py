@@ -122,6 +122,23 @@ try:
     assert run("style-packs", "--account", "10001")["activeId"] == "smoke-style"
     assert run("style-packs", "--account", "10001", "--action", "remove")["packs"] == []
     checks.append("style packs remain account-private, reject arbitrary prompts, and export no owner binding")
+    persona = run("personas", "--account", "10001", "--action", "set", "--text", "synthetic account expression")
+    assert persona["text"] == "synthetic account expression"
+    assert run("personas", "--account", "10002")["text"] == ""
+    member = run("personas", "--account", "10001", "--action", "set", "--type", "group", "--target", "20001", "--member", "11001", "--text", "synthetic member expression")
+    assert "synthetic account expression" in member["inheritedText"]
+    run("personas", "--account", "10001", "--action", "set", "--type", "private", "--target", "20001", "--member", "11001", "--text", "invalid", success=False)
+    task = run("tasks", "--account", "10001", "--action", "create", "--target", "20001", "--type", "group", "--title", "synthetic task", "--instruction", "inspect cached messages", "--allow-todos")["task"]
+    another = run("tasks", "--account", "10001", "--action", "create", "--target", "20001", "--type", "group", "--title", "independent task", "--instruction", "inspect cached messages")["task"]
+    assert task["session"]["id"] != another["session"]["id"] and task["allowTodos"]
+    assert task["state"] == "ready" and not task["messages"]
+    assert run("tasks", "--account", "10002")["tasks"] == []
+    run("tasks", "--account", "10002", "--action", "get", "--id", task["id"], success=False)
+    assert run("tasks", "--account", "10001", "--action", "cancel", "--id", task["id"])["task"]["state"] == "cancelled"
+    for entry in [task, another]:
+        assert run("tasks", "--account", "10001", "--action", "delete", "--id", entry["id"])["deletedId"] == entry["id"]
+    assert run("reply-batches", "--account", "10001") == []
+    checks.append("tasks and inherited expression preferences remain account-scoped without inference or QQ writes")
     ports = [item[key] for item in [first, second] for key in ["httpPort", "wsPort", "webuiPort"]]
     assert len(set(ports)) == 6
     assert run("accounts", "start", "--all", "--dry-run")["uins"] == ["10001", "10002"]
@@ -190,6 +207,7 @@ try:
     responses = [json.loads(line) for line in mcp.stdout.splitlines()]
     assert len(responses) == 2 and responses[0]["result"]["serverInfo"]["version"] == schema["version"]
     assert len(responses[1]["result"]["tools"]) >= 9
+    assert {"manage_tasks", "manage_personas", "manage_reply_batches", "approve_draft"}.issubset({tool["name"] for tool in responses[1]["result"]["tools"]})
     checks.append("MCP metadata and tools discovery use clean JSON-RPC stdout")
 
     document = ROOT / "extraction-fixture.txt"
@@ -198,16 +216,21 @@ try:
         {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"extract_document","arguments":{"file_path":str(document)}}},
         {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"get_system_health","arguments":{"deep":False}}},
         {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"restart_napcat","arguments":{}}},
+        {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"manage_tasks","arguments":{"request":{"operation":"list"}}}},
+        {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"manage_personas","arguments":{"request":{"operation":"get"}}}},
+        {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"manage_reply_batches","arguments":{"request":{"operation":"list"}}}},
     ]
     result = subprocess.run([str(CLI), "--account", "10001", "mcp"], input="\n".join(json.dumps(call) for call in calls)+"\n", env=ENV, capture_output=True, text=True, encoding="utf-8", timeout=20)
     assert result.returncode == 0, result.stderr
     results = [json.loads(line) for line in result.stdout.splitlines()]
-    assert [item["id"] for item in results] == [3,4,5]
+    assert [item["id"] for item in results] == [3,4,5,6,7,8]
     values = [json.loads(item["result"]["content"][0]["text"]) for item in results]
     assert values[0]["text"] == document.read_text(encoding="utf-8") and not values[0]["truncated"]
     assert not values[1]["hasFailure"] and values[1]["deep_ai_status"] == "not_probed"
     assert next(item for item in values[1]["links"] if item["link"]=="ai_provider")["health"] == "unknown"
     assert values[2]["attempted"] is False, "Read-only health and healthy recovery must not launch a protocol"
+    assert values[3]["tasks"] == [] and values[4]["text"] == "synthetic account expression" and values[5] == []
+    checks.append("MCP task, persona and receipt tools use the same fixed-account services without inference")
     checks.append("MCP local extraction never infers and passive health shares tri-state evidence")
     checks.append("MCP fault-specific recovery preserves a healthy authenticated session")
 

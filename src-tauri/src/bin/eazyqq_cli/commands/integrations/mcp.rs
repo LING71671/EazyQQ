@@ -70,6 +70,26 @@ fn tool_json_response<T: Serialize>(id: Option<Value>, data: &T) -> JsonRpcRespo
 fn mcp_tool_definitions() -> Value {
     json!([
         {
+            "name":"manage_tasks",
+            "description":"Manage fixed-account, fixed-target assistant tasks. Tools only read permitted cached materials and write task-local todos. The draft operation creates a reviewable local draft; it never sends QQ messages.",
+            "inputSchema":{"type":"object","properties":{"request":{"type":"object","properties":{"operation":{"enum":["list","get","create","run","cancel","delete","draft"]},"taskId":{"type":"string"},"targetId":{"type":"string"},"targetType":{"enum":["private","group"]},"title":{"type":"string"},"instruction":{"type":"string"},"persona":{"type":"string"},"allowTodos":{"type":"boolean"},"selectedFileIds":{"type":"array","items":{"type":"string"},"maxItems":5},"expectedRevision":{"type":"integer"}},"required":["operation"],"additionalProperties":false}},"required":["request"],"additionalProperties":false}
+        },
+        {
+            "name":"manage_personas",
+            "description":"Read, save or clear expression overrides for the fixed account, a contact, a group or a stable member within a group. Does not grant tools or send messages.",
+            "inputSchema":{"type":"object","properties":{"request":{"type":"object","properties":{"operation":{"enum":["get","set","clear"]},"targetId":{"type":"string"},"targetType":{"enum":["private","group"]},"memberUin":{"type":"string"},"text":{"type":"string","maxLength":4096}},"required":["operation"],"additionalProperties":false}},"required":["request"],"additionalProperties":false}
+        },
+        {
+            "name":"manage_reply_batches",
+            "description":"Inspect durable QQ delivery receipts. Reconcile unknown delivery only after the user has checked the target conversation; never guess or automatically resend.",
+            "inputSchema":{"type":"object","properties":{"request":{"type":"object","properties":{"operation":{"enum":["list","get","reconcile"]},"batchId":{"type":"string"},"bubbleId":{"type":"string"},"deliveredMessageId":{"type":"string"},"confirmedNotDelivered":{"type":"boolean"}},"required":["operation"],"additionalProperties":false}},"required":["request"],"additionalProperties":false}
+        },
+        {
+            "name":"approve_draft",
+            "description":"Send the specific reviewed QQ draft only with explicit approval. Bubble boundaries are preserved. Partial and unknown deliveries retain receipts and cannot blindly replay a sent prefix.",
+            "inputSchema":{"type":"object","properties":{"draftId":{"type":"string"},"finalBubbles":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":6}},"required":["draftId"],"additionalProperties":false}
+        },
+        {
             "name": "manage_style_packs",
             "description": "Manage local expression-only style packs for the fixed account. No messages are sent.",
             "inputSchema": {
@@ -197,13 +217,77 @@ async fn handle_tool_call(
     args: &Value,
 ) -> JsonRpcResponse {
     match name {
+        "manage_tasks" => {
+            match eazyqq_lib::services::workflows::tasks::manage(
+                svc.db.clone(),
+                svc.onebot.clone(),
+                svc.ai.clone(),
+                args["request"].clone(),
+            )
+            .await
+            {
+                Ok(value) => tool_json_response(id, &value),
+                Err(error) => tool_text_response(id, error, true),
+            }
+        }
+        "manage_personas" => {
+            if svc.onebot.expected_account().is_none() {
+                return tool_text_response(id, "请先绑定固定账号".into(), true);
+            }
+            match eazyqq_lib::services::ai::persona_settings::manage(
+                &svc.db,
+                args["request"].clone(),
+            ) {
+                Ok(value) => tool_json_response(id, &value),
+                Err(error) => tool_text_response(id, error, true),
+            }
+        }
+        "manage_reply_batches" => {
+            match eazyqq_lib::services::protocol::reply_workflow::manage_batches(
+                &svc.db,
+                &svc.onebot,
+                args["request"].clone(),
+            ) {
+                Ok(value) => tool_json_response(id, &value),
+                Err(error) => tool_text_response(id, error, true),
+            }
+        }
+        "approve_draft" => {
+            let Some(draft_id) = args["draftId"].as_str() else {
+                return tool_text_response(id, "缺少 draftId".into(), true);
+            };
+            let bubbles = if args["finalBubbles"].is_null() {
+                None
+            } else {
+                match serde_json::from_value::<Vec<String>>(args["finalBubbles"].clone()) {
+                    Ok(value) => Some(value),
+                    Err(_) => {
+                        return tool_text_response(id, "finalBubbles 必须是文字数组".into(), true)
+                    }
+                }
+            };
+            match eazyqq_lib::services::protocol::reply_workflow::approve_draft(
+                &svc.db,
+                &svc.onebot,
+                draft_id,
+                None,
+                bubbles,
+            )
+            .await
+            {
+                Ok(value) => tool_json_response(id, &value),
+                Err(error) => tool_text_response(id, error, true),
+            }
+        }
         "manage_style_packs" => {
             let Some(account_dir) = svc.ai.runtime_dir().parent() else {
                 return tool_text_response(id, "账号目录不可用".into(), true);
             };
             match eazyqq_lib::commands::ai::style_packs::manage_for_account(
                 account_dir,
-                args.get("operation").and_then(Value::as_str).unwrap_or("list"),
+                args.get("operation")
+                    .and_then(Value::as_str)
+                    .unwrap_or("list"),
                 args.get("pack_json").and_then(Value::as_str),
                 args.get("pack_id").and_then(Value::as_str),
                 args.get("destination").and_then(Value::as_str),
@@ -490,10 +574,23 @@ async fn handle_tool_call(
         "get_system_health" => {
             let deep = args.get("deep").and_then(|v| v.as_bool()).unwrap_or(false);
             eazyqq_lib::services::infra::runtime_config::refresh_ai(&svc.db, &svc.ai);
-            if deep { let _ = svc.ai.generate_reply(&[], "ping", "mcp_probe").await; }
-            let report = eazyqq_lib::services::chain::refresh_status(&svc.db, &svc.napcat, &svc.onebot, &svc.ai).await;
+            if deep {
+                let _ = svc.ai.generate_reply(&[], "ping", "mcp_probe").await;
+            }
+            let report = eazyqq_lib::services::chain::refresh_status(
+                &svc.db,
+                &svc.napcat,
+                &svc.onebot,
+                &svc.ai,
+            )
+            .await;
             use eazyqq_lib::services::chain::{Health, Link};
-            let verified = |target| report.links.iter().any(|link|link.link == target && link.health == Health::Ok);
+            let verified = |target| {
+                report
+                    .links
+                    .iter()
+                    .any(|link| link.link == target && link.health == Health::Ok)
+            };
             let ai_health = svc.ai.inference_health();
 
             tool_json_response(
@@ -515,9 +612,10 @@ async fn handle_tool_call(
         }
 
         "restart_napcat" => {
-            let report = eazyqq_lib::services::protocol::health::repair(&svc.napcat, &svc.onebot).await;
+            let report =
+                eazyqq_lib::services::protocol::health::repair(&svc.napcat, &svc.onebot).await;
             tool_json_response(id, &report)
-        },
+        }
 
         _ => tool_text_response(id, format!("Unknown tool '{}'", name), true),
     }

@@ -191,6 +191,22 @@ impl OneBotClient {
         target_id: &str,
         message: &str,
     ) -> Result<Value, String> {
+        self.send_msg_guarded(target_type, target_id, message, || async { Ok(true) })
+            .await?
+            .ok_or_else(|| "Message sending was cancelled before dispatch".into())
+    }
+
+    pub(crate) async fn send_msg_guarded<F, Fut>(
+        &self,
+        target_type: &str,
+        target_id: &str,
+        message: &str,
+        guard: F,
+    ) -> Result<Option<Value>, String>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<bool, String>>,
+    {
         self.require_bound_account().await?;
         let url = format!("{}/send_msg", self.http_base_url);
         let outgoing = super::native_face::outgoing_message(message)?
@@ -210,6 +226,10 @@ impl OneBotClient {
             }
         }
 
+        // The final policy check runs after account verification and immediately before dispatch.
+        if !guard().await? {
+            return Ok(None);
+        }
         let resp = self
             .client
             .post(&url)
@@ -224,7 +244,7 @@ impl OneBotClient {
             .await
             .map_err(|e| format!("Parse error: {}", e))?;
         validate_response(status, &json)?;
-        Ok(json)
+        Ok(Some(json))
     }
 
     /// List the files sitting in a group's root folder.

@@ -33,7 +33,10 @@ async fn main() -> ExitCode {
         eazyqq_lib::services::logging::init(false);
         return match commands::system::cmd_telemetry(&args) {
             Ok(()) => ExitCode::SUCCESS,
-            Err(error) => { eprintln!("错误: {error}"); ExitCode::FAILURE }
+            Err(error) => {
+                eprintln!("错误: {error}");
+                ExitCode::FAILURE
+            }
         };
     }
 
@@ -178,6 +181,9 @@ async fn main() -> ExitCode {
                 "napcat-doctor" => commands::diagnostics::cmd_napcat_doctor(&args),
                 "ai-config" => commands::ai::cmd_ai_config(&svc, &args),
                 "style-packs" => commands::style_packs::cmd_style_packs(&svc, &args),
+                "tasks" => commands::tasks::cmd_tasks(&svc, &args).await,
+                "personas" => commands::tasks::cmd_personas(&svc, &args),
+                "reply-batches" => commands::tasks::cmd_reply_batches(&svc, &args),
                 "ai-set" => commands::ai::cmd_ai_set(&svc, &args),
                 "ai-test" => commands::ai::cmd_ai_test(&svc, &args).await,
                 "ai-detect" => commands::ai::cmd_ai_detect(&svc, &args).await,
@@ -195,7 +201,11 @@ async fn main() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eazyqq_lib::services::infra::telemetry::capture_failure(&format!("cli.{}", args.command), None, None);
+            eazyqq_lib::services::infra::telemetry::capture_failure(
+                &format!("cli.{}", args.command),
+                None,
+                None,
+            );
             eprintln!("错误: {}", e);
             ExitCode::FAILURE
         }

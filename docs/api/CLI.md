@@ -1,6 +1,6 @@
 # CLI 使用与契约
 
-0.6.6 已发布；本文与本版本程序一致。源码构建：`pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli`。桌面安装包包含同名 CLI；独立压缩包还提供 `ezq.exe` 兼容名。
+0.6.6 已发布；基础命令延续该版本。当前开发增量新增 `tasks`、`personas`、`reply-batches` 和多气泡草稿参数，见[任务与回复契约](TASKS.md)，尚未进入公开安装包。源码构建：`pwsh -NoProfile -File scripts/cargo.ps1 build --bin eazyqq_cli`。桌面安装包包含同名 CLI；独立压缩包还提供 `ezq.exe` 兼容名。
 
 ## 风格包
 

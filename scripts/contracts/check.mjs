@@ -15,6 +15,7 @@ const route = new Map([...main.matchAll(/"([a-z-]+)"\s*=>\s*commands::(\w+)::(\w
 for (const match of main.matchAll(/if args\.command == "([a-z-]+)"\s*\{\s*return match commands::(\w+)::(\w+)/g)) route.set(match[1], [match[2], match[3]]);
 const map = {
   manage_style_packs: 'style-packs',
+  manage_tasks: 'tasks', manage_personas: 'personas', manage_reply_batches: 'reply-batches',
   detect_free_models: 'ai-free-models',
   cancel_free_model_detection: 'ai-free-models (Ctrl+C)',
   get_telemetry_status: 'telemetry status', test_telemetry: 'telemetry test',

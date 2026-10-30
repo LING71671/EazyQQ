@@ -1,8 +1,10 @@
 # EazyQQ
 
-> Windows QQ 助手，提供桌面端、独立 CLI 与 stdio MCP；公开版本为 0.6.6，包含会话归属、多模态正文与本地风格包。
+> Windows QQ 助手，提供桌面端、独立 CLI 与 stdio MCP；0.7.0 已进入发布准备，新增独立任务、表达偏好继承、多气泡与逐条回执。已核验公开版本为 0.6.6，0.7.0 公开产物仍待核验。
 
 支持多账号独立端点、数据库、模型会话和浏览器缓存，登录与健康诊断共用身份校验。进程恢复保留已有 QQ 会话，免费 OpenCode 模型使用原生运行时。
+
+首版智能体只检索当前会话缓存、读取明确选择的已下载群文件并维护获准的任务本地待办；不开放任意 Shell、跨会话或文件系统工具。任务候选先转草稿审核，未知送达先核对。
 
 ## 权威资料
 
@@ -10,7 +12,9 @@
 - [CLI](docs/api/CLI.md)：账号、模型、任务和诊断。
 - [命令 schema](docs/api/cli.schema.json)：自动生成的实际参数。
 - [桌面 IPC](docs/api/IPC.md)：返回封装与 DTO。
+- [任务与回复](docs/api/TASKS.md)：独立会话、有界工具、表达偏好、多气泡与核对。
 - [覆盖矩阵](docs/api/COVERAGE.md)：桌面和 CLI 映射。
 - [开发记录](docs/development/2026-10-09-physical-path-handoff.md)：决策与验收证据。
 - [发布流程](docs/release/RELEASING.md)：版本、产物和分发。
+- [0.7.0 发布说明](docs/release/v0.7.0.md)：新增范围、兼容与验收边界。
 - [智能体操作指南](llms-full.txt)：约束与入口。

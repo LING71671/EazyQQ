@@ -25,6 +25,17 @@ fn chrono_now_ms() -> i64 {
 }
 
 impl Database {
+    pub(crate) fn with_connection<T>(
+        &self,
+        operation: impl FnOnce(&mut Connection) -> Result<T>,
+    ) -> Result<T> {
+        let mut connection = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        operation(&mut connection)
+    }
+
     pub fn init<P: AsRef<Path>>(db_path: P) -> Result<Self> {
         if let Some(parent) = db_path.as_ref().parent() {
             let _ = fs::create_dir_all(parent);

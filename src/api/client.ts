@@ -30,9 +30,14 @@ import type {
   FreeModelsReport,
   FreeModelProgress,
   StylePackStatus,
+  ReplyDeliveryReport,
 } from './contracts';
+import type { TaskReport } from '@/features/tasks/types';
 
 export const api = {
+  managePersonas: (request: Record<string, unknown>): Promise<ApiResponse<{ text: string; inheritedText: string; revision: number; overrides: Array<{ targetType?: string; targetId?: string; memberUin?: string; text: string }> }>> => invoke('manage_personas', { request }),
+  manageTasks: (request: Record<string, unknown>): Promise<ApiResponse<TaskReport>> => invoke('manage_tasks', { request }),
+  manageReplyBatches: (request: Record<string, unknown>): Promise<ApiResponse<ReplyDeliveryReport>> => invoke('manage_reply_batches', { request }),
   manageStylePacks: (operation: string, packJson?: string, packId?: string, destination?: string): Promise<ApiResponse<StylePackStatus>> => invoke('manage_style_packs', { operation, packJson, packId, destination }),
   getTelemetryStatus: (): Promise<ApiResponse<TelemetryStatus>> => invoke('get_telemetry_status'),
   testTelemetry: (): Promise<ApiResponse<TelemetryTest>> => invoke('test_telemetry'),
@@ -122,8 +127,8 @@ export const api = {
   getPendingDrafts: async (): Promise<ApiResponse<PendingDraftDto[]>> => {
     return invoke('get_pending_drafts');
   },
-  sendDraft: async (draftId: string, finalContent?: string): Promise<ApiResponse<{ sentMessageId: string }>> => {
-    return invoke('send_draft', { draftId, finalContent });
+  sendDraft: async (draftId: string, finalContent?: string, expectedAccountUin?: string, finalBubbles?: string[]): Promise<ApiResponse<{ sentMessageId?: string; delivery?: ReplyDeliveryReport } | ReplyDeliveryReport>> => {
+    return invoke('send_draft', { draftId, finalContent, ...(expectedAccountUin ? { expectedAccountUin } : {}), ...(finalBubbles ? { finalBubbles } : {}) });
   },
   dismissDraft: async (draftId: string): Promise<ApiResponse<void>> => {
     return invoke('dismiss_draft', { draftId });
@@ -133,8 +138,8 @@ export const api = {
   },
 
   // Group Files
-  getGroupFiles: async (groupId: string, folderId?: string): Promise<ApiResponse<GroupFileItemDto[]>> => {
-    return invoke('get_group_files', { groupId, folderId });
+  getGroupFiles: async (groupId: string, folderId?: string, cachedOnly?: boolean): Promise<ApiResponse<GroupFileItemDto[]>> => {
+    return invoke('get_group_files', { groupId, folderId, ...(cachedOnly ? { cachedOnly } : {}) });
   },
   downloadFile: async (groupId: string, fileId: string, fileName: string): Promise<ApiResponse<{ taskId: string; localSavePath: string }>> => {
     return invoke('download_file', { groupId, fileId, fileName });

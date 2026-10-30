@@ -171,13 +171,22 @@ fn http_url(value: &str) -> Result<reqwest::Url, String> {
         || !url.username().is_empty()
         || url.password().is_some()
         || url.fragment().is_some()
-        || url.port().is_some_and(|port| port != if url.scheme() == "https" { 443 } else { 80 })
+        || url
+            .port()
+            .is_some_and(|port| port != if url.scheme() == "https" { 443 } else { 80 })
     {
         return Err("附件链接必须是无用户名密码的 HTTP(S) 地址".into());
     }
     let host = url.host_str().unwrap().to_ascii_lowercase();
-    let allowed = ["qpic.cn", "gtimg.cn", "qlogo.cn", "multimedia.nt.qq.com.cn", "ftn.qq.com"]
-        .iter().any(|domain| host == *domain || host.ends_with(&format!(".{domain}")));
+    let allowed = [
+        "qpic.cn",
+        "gtimg.cn",
+        "qlogo.cn",
+        "multimedia.nt.qq.com.cn",
+        "ftn.qq.com",
+    ]
+    .iter()
+    .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")));
     if !allowed || host.parse::<std::net::IpAddr>().is_ok() {
         return Err("附件地址不属于允许的 QQ 素材域名，未读取".into());
     }
@@ -187,32 +196,54 @@ fn http_url(value: &str) -> Result<reqwest::Url, String> {
 fn public_address(address: std::net::IpAddr) -> bool {
     match address {
         std::net::IpAddr::V4(ip) => {
-            let [a,b,c,_] = ip.octets();
-            !(matches!(a, 0 | 10 | 127 | 224..=255) || (a == 100 && (64..=127).contains(&b))
-                || (a == 169 && b == 254) || (a == 172 && (16..=31).contains(&b))
+            let [a, b, c, _] = ip.octets();
+            !(matches!(a, 0 | 10 | 127 | 224..=255)
+                || (a == 100 && (64..=127).contains(&b))
+                || (a == 169 && b == 254)
+                || (a == 172 && (16..=31).contains(&b))
                 || (a == 192 && (b == 168 || b == 0 || (b == 2)))
                 || (a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100)))
                 || (a == 203 && b == 0 && c == 113))
         }
         std::net::IpAddr::V6(ip) => {
             let parts = ip.segments();
-            parts[0] & 0xe000 == 0x2000 && parts[0] != 0x2002 && !(parts[0] == 0x2001 && (parts[1] < 0x0200 || parts[1] == 0x0db8))
+            parts[0] & 0xe000 == 0x2000
+                && parts[0] != 0x2002
+                && !(parts[0] == 0x2001 && (parts[1] < 0x0200 || parts[1] == 0x0db8))
         }
     }
 }
 
 fn attachment_client(host: &str, addresses: &[std::net::SocketAddr]) -> Result<Client, String> {
-    Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none())
-        .resolve_to_addrs(host, addresses).connect_timeout(std::time::Duration::from_secs(10))
-        .timeout(std::time::Duration::from_secs(20)).build().map_err(|_| "无法建立附件下载客户端".into())
+    Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .resolve_to_addrs(host, addresses)
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|_| "无法建立附件下载客户端".into())
 }
 
 async fn response_bytes(mut response: reqwest::Response) -> Result<Vec<u8>, String> {
-    if !response.status().is_success() { return Err("附件下载被拒绝或要求重定向，未读取正文".into()); }
-    if response.content_length().is_some_and(|size| size > MAX_FILE_BYTES as u64) { return Err("附件超过本次 8 MiB 下载上限".into()); }
+    if !response.status().is_success() {
+        return Err("附件下载被拒绝或要求重定向，未读取正文".into());
+    }
+    if response
+        .content_length()
+        .is_some_and(|size| size > MAX_FILE_BYTES as u64)
+    {
+        return Err("附件超过本次 8 MiB 下载上限".into());
+    }
     let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(|_| "附件接收中断，未读取正文")? {
-        if bytes.len().saturating_add(chunk.len()) > MAX_FILE_BYTES { return Err("附件超过本次 8 MiB 下载上限".into()); }
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| "附件接收中断，未读取正文")?
+    {
+        if bytes.len().saturating_add(chunk.len()) > MAX_FILE_BYTES {
+            return Err("附件超过本次 8 MiB 下载上限".into());
+        }
         bytes.extend_from_slice(&chunk);
     }
     Ok(bytes)
@@ -221,15 +252,34 @@ async fn response_bytes(mut response: reqwest::Response) -> Result<Vec<u8>, Stri
 async fn download_material(value: &str) -> Result<Vec<u8>, String> {
     let url = http_url(value)?;
     let host = url.host_str().ok_or("附件域名无效")?;
-    let addresses: Vec<_> = tokio::time::timeout(std::time::Duration::from_secs(5), tokio::net::lookup_host((host, url.port_or_known_default().unwrap_or(443))))
-        .await.map_err(|_| "附件域名解析超时")?.map_err(|_| "附件域名解析失败")?.collect();
-    if addresses.is_empty() || addresses.len() > 32 || addresses.iter().any(|address| !public_address(address.ip())) { return Err("附件域名指向非公开网络，未读取".into()); }
+    let addresses: Vec<_> = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::net::lookup_host((host, url.port_or_known_default().unwrap_or(443))),
+    )
+    .await
+    .map_err(|_| "附件域名解析超时")?
+    .map_err(|_| "附件域名解析失败")?
+    .collect();
+    if addresses.is_empty()
+        || addresses.len() > 32
+        || addresses
+            .iter()
+            .any(|address| !public_address(address.ip()))
+    {
+        return Err("附件域名指向非公开网络，未读取".into());
+    }
     // Pin the checked addresses and disable redirects/proxies to prevent rebinding and internal hops.
-    let response = attachment_client(host, &addresses)?.get(url.clone()).send().await.map_err(|_| "附件下载失败，未读取正文")?;
+    let response = attachment_client(host, &addresses)?
+        .get(url.clone())
+        .send()
+        .await
+        .map_err(|_| "附件下载失败，未读取正文")?;
     response_bytes(response).await
 }
 
-fn locally_resolved(data: &Value) -> bool { data["resolution"].as_str() == Some("resolved_by_bound_onebot") }
+fn locally_resolved(data: &Value) -> bool {
+    data["resolution"].as_str() == Some("resolved_by_bound_onebot")
+}
 
 fn local_source(data: &Value) -> Option<&str> {
     string_field(data, &["path", "local_path", "localPath"]).or_else(|| {
@@ -253,19 +303,40 @@ fn owned_path(root: &Path, value: &str) -> Result<PathBuf, String> {
     } else {
         root.join(path)
     };
-    if std::fs::symlink_metadata(&path).map_err(|_| "本地附件尚未下载或已不存在")?.file_type().is_symlink() { return Err("本地附件不接受符号链接".into()); }
+    if std::fs::symlink_metadata(&path)
+        .map_err(|_| "本地附件尚未下载或已不存在")?
+        .file_type()
+        .is_symlink()
+    {
+        return Err("本地附件不接受符号链接".into());
+    }
     let path = path
         .canonicalize()
         .map_err(|_| "本地附件尚未下载或已不存在")?;
-    let relative = path.strip_prefix(&root).map_err(|_| "本地附件不属于当前账号允许的素材目录，未读取")?;
-    let first = relative.components().next().and_then(|component| component.as_os_str().to_str());
-    if !matches!(first, Some("group_files" | "message-materials" | "attachments")) || !path.is_file() {
+    let relative = path
+        .strip_prefix(&root)
+        .map_err(|_| "本地附件不属于当前账号允许的素材目录，未读取")?;
+    let first = relative
+        .components()
+        .next()
+        .and_then(|component| component.as_os_str().to_str());
+    if !matches!(
+        first,
+        Some("group_files" | "message-materials" | "attachments")
+    ) || !path.is_file()
+    {
         return Err("本地附件不属于当前账号允许的素材目录，未读取".into());
     }
     let mut current = root.clone();
     for component in relative.components() {
         current.push(component);
-        if std::fs::symlink_metadata(&current).map_err(|_| "素材路径不可读取")?.file_type().is_symlink() { return Err("本地附件不接受符号链接".into()); }
+        if std::fs::symlink_metadata(&current)
+            .map_err(|_| "素材路径不可读取")?
+            .file_type()
+            .is_symlink()
+        {
+            return Err("本地附件不接受符号链接".into());
+        }
     }
     Ok(path)
 }
@@ -312,10 +383,15 @@ async fn image_url(root: &Path, data: &Value, budget: &mut Budget) -> Result<Str
         let bytes = download_material(url).await?;
         let mime = image_mime(&bytes).ok_or("图片格式未识别，未向模型发送图片")?;
         add_bytes(budget, bytes.len())?;
-        return Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)));
+        return Ok(format!(
+            "data:{mime};base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        ));
     }
     if let Some(value) = local_source(data) {
-        if !locally_resolved(data) { return Err("本地图片来源尚未经绑定协议解析，未读取".into()); }
+        if !locally_resolved(data) {
+            return Err("本地图片来源尚未经绑定协议解析，未读取".into());
+        }
         let bytes = read_owned(root, value)?;
         let mime = image_mime(&bytes).ok_or("图片格式未识别，未向模型发送图片")?;
         add_bytes(budget, bytes.len())?;
@@ -326,7 +402,9 @@ async fn image_url(root: &Path, data: &Value, budget: &mut Budget) -> Result<Str
     }
     let value = string_field(data, &["url", "file"]).ok_or("图片只有标识符，尚未取得可读取内容")?;
     if let Some(rest) = value.strip_prefix("data:") {
-        if !locally_resolved(data) { return Err("内嵌图片来源尚未经绑定协议解析，未读取".into()); }
+        if !locally_resolved(data) {
+            return Err("内嵌图片来源尚未经绑定协议解析，未读取".into());
+        }
         if value.len() > MAX_FILE_BYTES * 4 / 3 + 256 {
             return Err("图片超过本次 8 MiB 读取上限".into());
         }
@@ -350,7 +428,10 @@ async fn image_url(root: &Path, data: &Value, budget: &mut Budget) -> Result<Str
     let bytes = download_material(value).await?;
     let mime = image_mime(&bytes).ok_or("图片格式未识别，未向模型发送图片")?;
     add_bytes(budget, bytes.len())?;
-    Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+    Ok(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
 }
 
 fn file_name(data: &Value) -> String {
@@ -360,7 +441,9 @@ fn file_name(data: &Value) -> String {
 
 async fn file_bytes(root: &Path, data: &Value, _client: &Client) -> Result<Vec<u8>, String> {
     if let Some(path) = local_source(data) {
-        if !locally_resolved(data) { return Err("本地文件来源尚未经绑定协议解析，未读取".into()); }
+        if !locally_resolved(data) {
+            return Err("本地文件来源尚未经绑定协议解析，未读取".into());
+        }
         return read_owned(root, path);
     }
     let value = string_field(data, &["url"])
@@ -369,7 +452,7 @@ async fn file_bytes(root: &Path, data: &Value, _client: &Client) -> Result<Vec<u
     download_material(value).await
 }
 
-fn extract(name: &str, bytes: &[u8]) -> Result<String, String> {
+pub(crate) fn extract(name: &str, bytes: &[u8]) -> Result<String, String> {
     use crate::services::workflows::{archive, document, file_summary};
     let extension = file_summary::extension_of(name);
     if matches!(extension.as_str(), "docx" | "xlsx" | "pptx") {
@@ -390,7 +473,8 @@ fn extract(name: &str, bytes: &[u8]) -> Result<String, String> {
         }
         let mut actual_expanded = 0usize;
         for entry in entries {
-            let content = archive::read_entry_limited(bytes, &entry.name, MAX_FILE_BYTES)?.ok_or("文档内部条目不可读取")?;
+            let content = archive::read_entry_limited(bytes, &entry.name, MAX_FILE_BYTES)?
+                .ok_or("文档内部条目不可读取")?;
             actual_expanded = actual_expanded.saturating_add(content.len());
             if content.len() > MAX_FILE_BYTES || actual_expanded > MAX_TOTAL_BYTES {
                 return Err("文档实际解压内容超过本次上限".into());
@@ -568,10 +652,7 @@ mod tests {
     #[tokio::test]
     async fn historical_owner_images_and_quoted_forward_material_keep_distinct_provenance() {
         let root = account_root();
-        let owner = message(
-            "assistant",
-            vec![local_image(&root, "owner.png")],
-        );
+        let owner = message("assistant", vec![local_image(&root, "owner.png")]);
         let incoming = message(
             "user",
             vec![
@@ -597,14 +678,20 @@ mod tests {
             .filter_map(|part| part["image_url"]["url"].as_str())
             .collect();
         assert_eq!(urls.len(), 2);
-        assert!(urls.iter().all(|url| url.starts_with("data:image/png;base64,")));
+        assert!(urls
+            .iter()
+            .all(|url| url.starts_with("data:image/png;base64,")));
     }
 
     #[tokio::test]
     async fn owned_documents_are_extracted_bounded_and_unresolved_or_foreign_files_are_not_invented(
     ) {
         let root = account_root();
-        std::fs::write(root.join("attachments/notes.txt"), "已确认的材料正文".repeat(3000)).unwrap();
+        std::fs::write(
+            root.join("attachments/notes.txt"),
+            "已确认的材料正文".repeat(3000),
+        )
+        .unwrap();
         let foreign = root.parent().unwrap().join("foreign.txt");
         std::fs::write(&foreign, "must-not-be-read").unwrap();
         let incoming = message(
@@ -709,13 +796,42 @@ mod tests {
 
     #[test]
     fn attachment_urls_and_resolved_addresses_reject_internal_or_unrelated_targets() {
-        for value in ["http://127.0.0.1/file", "http://169.254.169.254/metadata", "https://gchat.qpic.cn.attacker.invalid/a", "https://user:secret@gchat.qpic.cn/a", "https://gchat.qpic.cn:8443/a", "file:///C:/private/config.json", "https://gchat.qpic.cn/a#fragment"] {
-            assert!(http_url(value).is_err(), "unexpectedly accepted an untrusted URL");
+        for value in [
+            "http://127.0.0.1/file",
+            "http://169.254.169.254/metadata",
+            "https://gchat.qpic.cn.attacker.invalid/a",
+            "https://user:secret@gchat.qpic.cn/a",
+            "https://gchat.qpic.cn:8443/a",
+            "file:///C:/private/config.json",
+            "https://gchat.qpic.cn/a#fragment",
+        ] {
+            assert!(
+                http_url(value).is_err(),
+                "unexpectedly accepted an untrusted URL"
+            );
         }
         assert!(http_url("https://gchat.qpic.cn/gchatpic_new/fixture").is_ok());
         assert!(http_url("https://multimedia.nt.qq.com.cn/download?appid=1").is_ok());
-        for address in ["127.0.0.1", "10.0.0.1", "169.254.169.254", "100.64.0.1", "172.31.1.1", "192.168.1.1", "198.18.0.1", "192.0.2.1", "224.0.0.1", "::1", "fc00::1", "fe80::1", "::ffff:127.0.0.1", "2001:db8::1"] {
-            assert!(!public_address(address.parse().unwrap()), "unexpectedly accepted {address}");
+        for address in [
+            "127.0.0.1",
+            "10.0.0.1",
+            "169.254.169.254",
+            "100.64.0.1",
+            "172.31.1.1",
+            "192.168.1.1",
+            "198.18.0.1",
+            "192.0.2.1",
+            "224.0.0.1",
+            "::1",
+            "fc00::1",
+            "fe80::1",
+            "::ffff:127.0.0.1",
+            "2001:db8::1",
+        ] {
+            assert!(
+                !public_address(address.parse().unwrap()),
+                "unexpectedly accepted {address}"
+            );
         }
         assert!(public_address("1.1.1.1".parse().unwrap()));
         assert!(public_address("2606:4700:4700::1111".parse().unwrap()));
@@ -727,42 +843,90 @@ mod tests {
         let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = server.local_addr().unwrap();
         let fixture = tokio::spawn(async move {
-            let (mut socket, _) = server.accept().await.unwrap(); let mut request = [0u8; 2048]; socket.read(&mut request).await.unwrap();
+            let (mut socket, _) = server.accept().await.unwrap();
+            let mut request = [0u8; 2048];
+            socket.read(&mut request).await.unwrap();
             socket.write_all(b"HTTP/1.1 302 Found\r\nLocation: http://169.254.169.254/metadata\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
         });
         // This direct loopback fixture exercises only the private client policy; production validates URL and DNS first.
-        let response = attachment_client("127.0.0.1", &[address]).unwrap().get(format!("http://{address}/redirect")).send().await.unwrap();
+        let response = attachment_client("127.0.0.1", &[address])
+            .unwrap()
+            .get(format!("http://{address}/redirect"))
+            .send()
+            .await
+            .unwrap();
         assert_eq!(response.status(), reqwest::StatusCode::FOUND);
-        assert!(response_bytes(response).await.unwrap_err().contains("重定向")); fixture.await.unwrap();
+        assert!(response_bytes(response)
+            .await
+            .unwrap_err()
+            .contains("重定向"));
+        fixture.await.unwrap();
     }
 
     #[tokio::test]
     async fn account_configuration_and_unattested_local_material_never_reach_the_model() {
-        let root = account_root(); std::fs::create_dir_all(root.join("config")).unwrap();
-        std::fs::write(root.join("config/private.txt"), "configuration-secret-sentinel").unwrap();
+        let root = account_root();
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        std::fs::write(
+            root.join("config/private.txt"),
+            "configuration-secret-sentinel",
+        )
+        .unwrap();
         std::fs::write(root.join("eazyqq.db"), "database-secret-sentinel").unwrap();
-        std::fs::write(root.join("attachments/unattested.txt"), "unattested-sentinel").unwrap();
-        std::fs::write(root.join("attachments/allowed.txt"), "allowed-material-body").unwrap();
-        let inputs = message("user", vec![
-            json!({"type":"file","data":{"path":"config/private.txt","name":"private.txt","resolution":"resolved_by_bound_onebot"}}),
-            json!({"type":"file","data":{"path":"eazyqq.db","name":"database.txt","resolution":"resolved_by_bound_onebot"}}),
-            json!({"type":"file","data":{"path":"attachments/unattested.txt","name":"unattested.txt"}}),
-            json!({"type":"file","data":{"path":"attachments/allowed.txt","name":"allowed.txt","resolution":"resolved_by_bound_onebot"}}),
-        ]);
-        let prepared = prepare_messages(&[inputs], &root, &Client::new()).await.unwrap(); let text = text_parts(&prepared[0]);
-        for secret in ["configuration-secret-sentinel", "database-secret-sentinel", "unattested-sentinel"] { assert!(!text.contains(secret)); }
-        assert!(text.contains("allowed-material-body")); assert!(text.contains("允许的素材目录")); assert!(text.contains("尚未经绑定协议解析"));
-        assert!(image_url(&root, &json!({"url":"data:image/png;base64,iVBORw0KGgo="}), &mut Budget::default()).await.unwrap_err().contains("尚未经绑定协议解析"));
+        std::fs::write(
+            root.join("attachments/unattested.txt"),
+            "unattested-sentinel",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("attachments/allowed.txt"),
+            "allowed-material-body",
+        )
+        .unwrap();
+        let inputs = message(
+            "user",
+            vec![
+                json!({"type":"file","data":{"path":"config/private.txt","name":"private.txt","resolution":"resolved_by_bound_onebot"}}),
+                json!({"type":"file","data":{"path":"eazyqq.db","name":"database.txt","resolution":"resolved_by_bound_onebot"}}),
+                json!({"type":"file","data":{"path":"attachments/unattested.txt","name":"unattested.txt"}}),
+                json!({"type":"file","data":{"path":"attachments/allowed.txt","name":"allowed.txt","resolution":"resolved_by_bound_onebot"}}),
+            ],
+        );
+        let prepared = prepare_messages(&[inputs], &root, &Client::new())
+            .await
+            .unwrap();
+        let text = text_parts(&prepared[0]);
+        for secret in [
+            "configuration-secret-sentinel",
+            "database-secret-sentinel",
+            "unattested-sentinel",
+        ] {
+            assert!(!text.contains(secret));
+        }
+        assert!(text.contains("allowed-material-body"));
+        assert!(text.contains("允许的素材目录"));
+        assert!(text.contains("尚未经绑定协议解析"));
+        assert!(image_url(
+            &root,
+            &json!({"url":"data:image/png;base64,iVBORw0KGgo="}),
+            &mut Budget::default()
+        )
+        .await
+        .unwrap_err()
+        .contains("尚未经绑定协议解析"));
     }
 
     #[cfg(any(windows, unix))]
     #[test]
     fn a_material_directory_link_cannot_reach_account_configuration() {
-        let root = account_root(); std::fs::create_dir_all(root.join("config")).unwrap();
+        let root = account_root();
+        std::fs::create_dir_all(root.join("config")).unwrap();
         std::fs::write(root.join("config/private.txt"), "private-sentinel").unwrap();
         let link = root.join("attachments/linked-config");
-        #[cfg(windows)] std::os::windows::fs::symlink_dir(root.join("config"), &link).unwrap();
-        #[cfg(unix)] std::os::unix::fs::symlink(root.join("config"), &link).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(root.join("config"), &link).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(root.join("config"), &link).unwrap();
         assert!(owned_path(&root, "attachments/linked-config/private.txt").is_err());
     }
 
@@ -770,11 +934,23 @@ mod tests {
     fn office_inflate_stops_at_the_actual_attachment_limit_even_when_metadata_lies() {
         use std::io::Write;
         let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-        writer.start_file("word/document.xml", zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated)).unwrap();
-        writer.write_all(&vec![b'x'; MAX_FILE_BYTES + 1]).unwrap(); let mut bytes = writer.finish().unwrap().into_inner();
-        let central = bytes.windows(4).rposition(|window| window == b"PK\x01\x02").unwrap();
+        writer
+            .start_file(
+                "word/document.xml",
+                zip::write::SimpleFileOptions::default()
+                    .compression_method(zip::CompressionMethod::Deflated),
+            )
+            .unwrap();
+        writer.write_all(&vec![b'x'; MAX_FILE_BYTES + 1]).unwrap();
+        let mut bytes = writer.finish().unwrap().into_inner();
+        let central = bytes
+            .windows(4)
+            .rposition(|window| window == b"PK\x01\x02")
+            .unwrap();
         bytes[central + 24..central + 28].copy_from_slice(&1u32.to_le_bytes());
-        assert!(extract("bounded.docx", &bytes).unwrap_err().contains("过大"));
+        assert!(extract("bounded.docx", &bytes)
+            .unwrap_err()
+            .contains("过大"));
     }
 
     #[tokio::test]
@@ -837,10 +1013,7 @@ mod tests {
             },
             root.clone(),
         );
-        let incoming = message(
-            "user",
-            vec![local_image(&root, "real.png")],
-        );
+        let incoming = message("user", vec![local_image(&root, "real.png")]);
         assert_eq!(
             service
                 .generate_context_reply(&[], &incoming, "display-only-person")
@@ -872,17 +1045,34 @@ mod tests {
                 .iter()
                 .filter_map(|message| message["content"].as_array())
                 .flatten()
-                .any(|part| part["image_url"]["url"].as_str().is_some_and(|url| url.starts_with("data:image/png;base64,"))));
-            assert!(messages.windows(2).all(|pair| pair[0]["role"] != pair[1]["role"]));
+                .any(|part| part["image_url"]["url"]
+                    .as_str()
+                    .is_some_and(|url| url.starts_with("data:image/png;base64,"))));
+            assert!(messages
+                .windows(2)
+                .all(|pair| pair[0]["role"] != pair[1]["role"]));
         }
         assert!(captured[1]["messages"][0]["content"]
             .as_str()
             .unwrap()
             .contains("上一版只是可以丢弃的候选"));
-        let revision: Value = captured[1]["messages"].as_array().unwrap().iter().flat_map(|message| {
-            if let Some(parts) = message["content"].as_array() { parts.iter().filter_map(|part| part["text"].as_str()).collect::<Vec<_>>() }
-            else { message["content"].as_str().into_iter().collect() }
-        }).filter_map(|text| serde_json::from_str::<Value>(text).ok()).find(|value| value.get("applicationRevisionRequest").is_some()).unwrap();
+        let revision: Value = captured[1]["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|message| {
+                if let Some(parts) = message["content"].as_array() {
+                    parts
+                        .iter()
+                        .filter_map(|part| part["text"].as_str())
+                        .collect::<Vec<_>>()
+                } else {
+                    message["content"].as_str().into_iter().collect()
+                }
+            })
+            .filter_map(|text| serde_json::from_str::<Value>(text).ok())
+            .find(|value| value.get("applicationRevisionRequest").is_some())
+            .unwrap();
         assert_eq!(
             revision["applicationRevisionRequest"]["candidateIsOwnerFact"],
             false

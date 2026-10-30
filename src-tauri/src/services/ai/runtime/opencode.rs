@@ -62,12 +62,29 @@ where
     F: FnMut(&str) + Send,
 {
     if api_key.trim().is_empty() {
-        complete_mode(&runtime_dir.join("no-key"), model, "", payload, true, on_chunk).await
-    } else { complete_mode(runtime_dir, model, api_key, payload, false, on_chunk).await }
+        complete_mode(
+            &runtime_dir.join("no-key"),
+            model,
+            "",
+            payload,
+            true,
+            on_chunk,
+        )
+        .await
+    } else {
+        complete_mode(runtime_dir, model, api_key, payload, false, on_chunk).await
+    }
 }
 
 pub(crate) fn anonymous_environment(command: &mut tokio::process::Command, root: &std::path::Path) {
-    for name in ["OPENCODE_API_KEY","OPENCODE_GO_API_KEY","OPENCODE_ZEN_API_KEY","OPENAI_API_KEY","ANTHROPIC_API_KEY","GOOGLE_GENERATIVE_AI_API_KEY"] {
+    for name in [
+        "OPENCODE_API_KEY",
+        "OPENCODE_GO_API_KEY",
+        "OPENCODE_ZEN_API_KEY",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GOOGLE_GENERATIVE_AI_API_KEY",
+    ] {
         command.env_remove(name);
     }
     command.env("XDG_DATA_HOME",root.join("data"))
@@ -84,8 +101,27 @@ pub(crate) fn anonymous_environment(command: &mut tokio::process::Command, root:
         }).to_string());
 }
 
-pub async fn probe_without_credentials(root: &std::path::Path, model: &str) -> Result<(),String> {
-    probe_without_credentials_cancellable(root, model, &super::free_models::Cancellation::default()).await
+fn completion_environment(
+    command: &mut tokio::process::Command,
+    root: &std::path::Path,
+    api_key: &str,
+) {
+    anonymous_environment(command, root);
+    let mut config = serde_json::json!({
+        "$schema":"https://opencode.ai/config.json",
+        "enabled_providers":["opencode"],"disabled_providers":[],
+        "permission":{"*":"ask","bash":"ask","edit":"ask","external_directory":"deny","task":"ask","skill":"ask","webfetch":"ask","websearch":"ask","question":"deny"},
+        "agent":{"build":{"permission":{"*":"ask","external_directory":"deny","question":"deny"}}}
+    });
+    if !api_key.trim().is_empty() {
+        config["provider"] = serde_json::json!({"opencode":{"options":{"apiKey":api_key}}});
+    }
+    command.env("OPENCODE_CONFIG_CONTENT", config.to_string());
+}
+
+pub async fn probe_without_credentials(root: &std::path::Path, model: &str) -> Result<(), String> {
+    probe_without_credentials_cancellable(root, model, &super::free_models::Cancellation::default())
+        .await
 }
 
 pub(crate) async fn probe_without_credentials_cancellable(
@@ -103,43 +139,76 @@ pub(crate) async fn probe_without_credentials_command(
     mut command: tokio::process::Command,
 ) -> Result<(), String> {
     std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
-    command.args(["run", "--pure", "--format", "json", "--model", &model_id(model), "--agent", "build"])
-        .current_dir(root).env("OPENCODE_DISABLE_DEFAULT_PLUGINS", "true");
+    command
+        .args([
+            "run",
+            "--pure",
+            "--format",
+            "json",
+            "--model",
+            &model_id(model),
+            "--agent",
+            "build",
+        ])
+        .current_dir(root)
+        .env("OPENCODE_DISABLE_DEFAULT_PLUGINS", "true");
     anonymous_environment(&mut command, root);
     let input = "Respond to this conversation. Preserve its role hierarchy. Output only the assistant response.\n[{\"role\":\"user\",\"content\":\"Reply only OK\"}]";
-    let output = super::free_models::run_owned_command(command, Some(input.as_bytes()), std::time::Duration::from_secs(25), cancellation, 2_000_000).await?;
-    if !output.status.success() { return Err(format!("OpenCode exited with {}", output.status)); }
+    let output = super::free_models::run_owned_command(
+        command,
+        Some(input.as_bytes()),
+        std::time::Duration::from_secs(25),
+        cancellation,
+        2_000_000,
+    )
+    .await?;
+    if !output.status.success() {
+        return Err(format!("OpenCode exited with {}", output.status));
+    }
     let mut has_text = false;
     let mut tool_requested = false;
     for line in String::from_utf8_lossy(&output.stdout).lines() {
         if let Ok(event) = serde_json::from_str::<Value>(line) {
             if event["type"] == "error" {
-                return Err(crate::services::diagnostics::redact(event["error"]["data"]["message"].as_str().unwrap_or("OpenCode inference failed"), &[]));
+                return Err(crate::services::diagnostics::redact(
+                    event["error"]["data"]["message"]
+                        .as_str()
+                        .unwrap_or("OpenCode inference failed"),
+                    &[],
+                ));
             }
             tool_requested |= event["type"] == "tool_use";
             has_text |= event_text(&event).is_some_and(|text| !text.trim().is_empty());
         }
     }
-    if has_text { Ok(()) }
-    else if tool_requested { Err("OpenCode requested a tool operation. Noninteractive tool authorization was denied".into()) }
-    else { Err("OpenCode returned no assistant text; current access is unconfirmed".into()) }
+    if has_text {
+        Ok(())
+    } else if tool_requested {
+        Err(
+            "OpenCode requested a tool operation. Noninteractive tool authorization was denied"
+                .into(),
+        )
+    } else {
+        Err("OpenCode returned no assistant text; current access is unconfirmed".into())
+    }
 }
 
-async fn complete_mode<F>(runtime_dir: &std::path::Path,model: &str,api_key: &str,payload: &Value,anonymous:bool,mut on_chunk:F) -> Result<(String,Option<String>),String>
-where F:FnMut(&str)+Send {
+async fn complete_mode<F>(
+    runtime_dir: &std::path::Path,
+    model: &str,
+    api_key: &str,
+    payload: &Value,
+    _anonymous: bool,
+    mut on_chunk: F,
+) -> Result<(String, Option<String>), String>
+where
+    F: FnMut(&str) + Send,
+{
     if model.trim().is_empty() {
         return Err("Select an available OpenCode model".into());
     }
     let cwd = runtime_dir;
     std::fs::create_dir_all(&cwd).map_err(|e| e.to_string())?;
-    let mut config = serde_json::json!({
-        "$schema":"https://opencode.ai/config.json",
-        "permission":{"*":"ask","bash":"ask","edit":"ask","external_directory":"deny","task":"ask","skill":"ask","webfetch":"ask","websearch":"ask","question":"deny"},
-        "agent":{"build":{"permission":{"*":"ask","external_directory":"deny","question":"deny"}}}
-    });
-    if !api_key.trim().is_empty() {
-        config["provider"] = serde_json::json!({"opencode":{"options":{"apiKey":api_key}}});
-    }
     let mut command = command()?;
     command
         .args([
@@ -153,14 +222,13 @@ where F:FnMut(&str)+Send {
             "build",
         ])
         .current_dir(cwd)
-        .env("OPENCODE_CONFIG_CONTENT", config.to_string())
         .env("XDG_DATA_HOME", runtime_dir.join("data"))
         .env("XDG_STATE_HOME", runtime_dir.join("state"))
         .env("OPENCODE_DISABLE_DEFAULT_PLUGINS", "true")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
-    if anonymous { anonymous_environment(&mut command,runtime_dir); }
+    completion_environment(&mut command, runtime_dir, api_key);
     let mut child = command
         .spawn()
         .map_err(|e| format!("Cannot start OpenCode: {}", e))?;
@@ -263,16 +331,32 @@ mod tests {
     use super::*;
     #[test]
     fn anonymous_probe_uses_private_identity_and_preserves_native_defaults() {
-        let root=crate::services::logging::workspace_root().join("anonymous-model-environment");
-        let mut command=tokio::process::Command::new("fixture");
-        anonymous_environment(&mut command,&root);
-        let environment:std::collections::HashMap<_,_>=command.as_std().get_envs().map(|(key,value)|(key.to_string_lossy().into_owned(),value.map(|value|value.to_string_lossy().into_owned()))).collect();
-        assert_eq!(environment.get("OPENCODE_API_KEY"),Some(&None));
-        assert_eq!(environment["OPENCODE_TEST_HOME"].as_deref(),Some(root.join("home").to_string_lossy().as_ref()));
-        let config:Value=serde_json::from_str(environment["OPENCODE_CONFIG_CONTENT"].as_ref().unwrap()).unwrap();
-        assert!(config["provider"].is_null(),"Do not replace the native anonymous provider default with an empty key");
-        assert_eq!(config["permission"]["*"],"ask");
-        assert_eq!(config["permission"]["external_directory"],"deny");
+        let root = crate::services::logging::workspace_root().join("anonymous-model-environment");
+        let mut command = tokio::process::Command::new("fixture");
+        anonymous_environment(&mut command, &root);
+        let environment: std::collections::HashMap<_, _> = command
+            .as_std()
+            .get_envs()
+            .map(|(key, value)| {
+                (
+                    key.to_string_lossy().into_owned(),
+                    value.map(|value| value.to_string_lossy().into_owned()),
+                )
+            })
+            .collect();
+        assert_eq!(environment.get("OPENCODE_API_KEY"), Some(&None));
+        assert_eq!(
+            environment["OPENCODE_TEST_HOME"].as_deref(),
+            Some(root.join("home").to_string_lossy().as_ref())
+        );
+        let config: Value =
+            serde_json::from_str(environment["OPENCODE_CONFIG_CONTENT"].as_ref().unwrap()).unwrap();
+        assert!(
+            config["provider"].is_null(),
+            "Do not replace the native anonymous provider default with an empty key"
+        );
+        assert_eq!(config["permission"]["*"], "ask");
+        assert_eq!(config["permission"]["external_directory"], "deny");
     }
     #[test]
     fn extracts_only_assistant_text_events() {
@@ -285,5 +369,47 @@ mod tests {
             None
         );
         assert_eq!(model_id("big-pickle"), "opencode/big-pickle");
+    }
+
+    #[test]
+    fn configured_completion_isolates_host_state_and_uses_only_its_explicit_key() {
+        let root =
+            crate::services::logging::workspace_root().join("explicit-completion-environment");
+        let mut command = tokio::process::Command::new("fixture");
+        completion_environment(&mut command, &root, "selected-fixture-key");
+        let environment: std::collections::HashMap<_, _> = command
+            .as_std()
+            .get_envs()
+            .map(|(key, value)| {
+                (
+                    key.to_string_lossy().into_owned(),
+                    value.map(|value| value.to_string_lossy().into_owned()),
+                )
+            })
+            .collect();
+        for key in ["OPENCODE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"] {
+            assert_eq!(environment.get(key), Some(&None));
+        }
+        for (key, folder) in [
+            ("XDG_CONFIG_HOME", "config"),
+            ("XDG_CACHE_HOME", "cache"),
+            ("OPENCODE_TEST_HOME", "home"),
+        ] {
+            assert_eq!(
+                environment[key].as_deref(),
+                Some(root.join(folder).to_string_lossy().as_ref())
+            );
+        }
+        assert_eq!(
+            environment["OPENCODE_DISABLE_PROJECT_CONFIG"].as_deref(),
+            Some("true")
+        );
+        let config: Value =
+            serde_json::from_str(environment["OPENCODE_CONFIG_CONTENT"].as_ref().unwrap()).unwrap();
+        assert_eq!(
+            config["provider"]["opencode"]["options"]["apiKey"],
+            "selected-fixture-key"
+        );
+        assert_eq!(config["enabled_providers"], serde_json::json!(["opencode"]));
     }
 }

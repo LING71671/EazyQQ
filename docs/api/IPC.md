@@ -1,6 +1,6 @@
 # 桌面 IPC 契约
 
-0.6.6 已发布；本文与本版本程序一致，不能据此宣称旧安装包已包含新功能。传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`。
+0.6.6 已发布；基础契约延续该版本。当前开发增量的任务、人设继承、多气泡与回执接口见[任务与回复契约](TASKS.md)，尚未进入公开安装包。传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`。
 
 ## 风格包与消息来源
 
@@ -90,7 +90,7 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 | 联系人 | `get_contacts({params?})` 返回 `{list,total}`；`params` 可含 `type`、`searchKeyword` |
 | 规则 | `update_rule({rule})` 返回规则；`batch_update_mode({targetIds,mode})` 返回 `{affectedCount}`；`mark_read({targetId,at?})` 返回已读时间 |
 | 消息 | `get_messages({targetId,limit,offset,targetType?})` 返回数组；`send_message({targetId,content})` 返回 `{messageId}`；`trigger_ai_reply({targetId,contextSnippet})` 返回候选文本 |
-| 草稿 | `get_pending_drafts()` 返回数组；`send_draft({draftId,finalContent?})` 返回 `{sentMessageId}`；`dismiss_draft({draftId})` 返回空；`regenerate_draft({draftId,customInstruction?})` 返回新草稿 |
+| 草稿 | `get_pending_drafts()` 返回数组；`send_draft({draftId,finalContent?,finalBubbles?})` 返回逐条 `DeliveryReport`；`dismiss_draft({draftId})` 返回空；`regenerate_draft({draftId,customInstruction?})` 返回新草稿；独立任务候选回任务工作台继续修订 |
 | 文件 | `get_group_files({groupId,folderId?})` 返回数组；`download_file({groupId,fileId,fileName})` 返回 `{taskId,localSavePath}`；`summarize_file({localFilePath})` 返回综述；`open_folder({targetPath})` 返回空 |
 | 简报 | `generate_summary` / `generate_summary_stream` 接受 `{targetId,slidingWindowHours}`；`get_summary_history({targetId?})` 返回数组；`delete_summary({id})` 返回空 |
 | 配置 | `get_config()`、`update_config({config})` 返回配置；修改接口接收完整 JSON 配置，不是服务端深度补丁合并 |

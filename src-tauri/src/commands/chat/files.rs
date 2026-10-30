@@ -8,12 +8,16 @@ pub async fn get_group_files(
     state: State<'_, AppState>,
     group_id: String,
     _folder_id: Option<String>,
+    cached_only: Option<bool>,
 ) -> Result<ApiResponse<Vec<GroupFileItemDto>>, String> {
     // Real implementation: mirror the remote list, then report local download state.
-    if let Err(e) =
-        crate::services::group_files::sync_group_files(&state.db, &state.onebot, &group_id).await
-    {
-        tracing::warn!("group file sync failed for {}: {}", group_id, e);
+    if cached_only != Some(true) {
+        if let Err(e) =
+            crate::services::group_files::sync_group_files(&state.db, &state.onebot, &group_id)
+                .await
+        {
+            tracing::warn!("group file sync failed for {}: {}", group_id, e);
+        }
     }
 
     let records = state

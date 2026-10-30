@@ -140,6 +140,8 @@ pub struct PendingDraftDto {
     pub reply_to_msg_id: String,
     pub incoming_message_snippet: String,
     pub generated_content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_plan: Option<crate::services::workflows::replies::ReplyPlan>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking_content: Option<String>,
     pub model_used: String,

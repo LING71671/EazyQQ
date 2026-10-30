@@ -16,6 +16,43 @@ pub struct ChatMessage {
     pub content: String,
 }
 
+#[cfg(test)]
+mod request_scoping_tests {
+    use super::*;
+    #[test]
+    fn root_native_calls_receive_fresh_directories_and_explicit_tasks_keep_their_session() {
+        let root = crate::services::logging::workspace_root()
+            .join(super::super::request_runtime::fresh_id().unwrap());
+        let ai = AiService::for_account(AiRuntimeConfig::default(), root);
+        let first = ai.native_request().unwrap().unwrap();
+        let second = ai.native_request().unwrap().unwrap();
+        assert_ne!(first.runtime_dir(), second.runtime_dir());
+        assert!(first.native_request().unwrap().is_none());
+        let task = ai.for_task("persistent_task").unwrap();
+        assert!(task.native_request().unwrap().is_none());
+        let first_path = first.runtime_dir().to_path_buf();
+        drop(first);
+        assert!(!first_path.exists());
+        assert!(second.runtime_dir().exists());
+    }
+
+    #[test]
+    fn scoped_evidence_uses_root_ordering_and_the_current_model_identity() {
+        let config=AiRuntimeConfig{provider:"custom".into(),base_url:"http://127.0.0.1:9/v1".into(),model:"fixture-a".into(),api_key:String::new(),..Default::default()};
+        let root=crate::services::logging::workspace_root().join(super::super::request_runtime::fresh_id().unwrap());
+        let ai=AiService::for_account(config.clone(),root);
+        let older=ai.reserve_inference_sequence();let newer=ai.reserve_inference_sequence();
+        ai.observe_scoped_inference(&config,newer,&Ok::<_,String>(()));
+        ai.observe_scoped_inference(&config,older,&Err::<(),_>("late older failure".into()));
+        assert_eq!(ai.inference_health().verified,Some(true));
+        let mut next=config.clone();next.model="fixture-b".into();ai.reconfigure(next.clone());
+        ai.observe_scoped_inference(&config,ai.reserve_inference_sequence(),&Ok::<_,String>(()));
+        assert_eq!(ai.inference_health().verified,None);
+        ai.observe_scoped_inference(&next,ai.reserve_inference_sequence(),&Ok::<_,String>(()));
+        assert_eq!(ai.inference_health().verified,Some(true));
+    }
+}
+
 /// Some compatible providers require alternating roles, including for group histories.
 fn coalesce_conversation(messages: Vec<Value>) -> Vec<Value> {
     let mut output: Vec<Value> = Vec::new();
@@ -64,6 +101,8 @@ pub struct AiService {
     evidence: Mutex<super::health::InferenceEvidence>,
     inference_sequence: AtomicU64,
     runtime_dir: std::path::PathBuf,
+    bound_account_dir: std::path::PathBuf,
+    request_runtime: Option<super::request_runtime::RequestRuntime>,
 }
 
 impl AiService {
@@ -90,13 +129,102 @@ impl AiService {
             evidence: Mutex::new(Default::default()),
             inference_sequence: AtomicU64::new(1),
             runtime_dir: crate::services::accounts::active_data_dir().join("ai-runtime"),
+            bound_account_dir: crate::services::accounts::active_data_dir(),
+            request_runtime: None,
         }
     }
 
     pub fn for_account(config: AiRuntimeConfig, dir: std::path::PathBuf) -> Self {
         let mut service = Self::new(config);
         service.runtime_dir = dir.join("ai-runtime");
+        service.bound_account_dir = dir;
         service
+    }
+
+    /// A task owns its process working directory while retaining the bound account's style.
+    pub fn for_task(&self, task_id: &str) -> Result<Self, String> {
+        if task_id.is_empty()
+            || task_id.len() > 128
+            || !task_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        {
+            return Err("任务标识无效".into());
+        }
+        let task_root = self.bound_account_dir.join("ai-runtime").join("tasks");
+        for path in [
+            &self.bound_account_dir,
+            &self.bound_account_dir.join("ai-runtime"),
+            &task_root,
+            &task_root.join(task_id),
+        ] {
+            super::request_runtime::reject_link(path)?;
+        }
+        let mut service = Self::for_account(self.current(), self.bound_account_dir.clone());
+        service.runtime_dir = task_root.join(task_id);
+        Ok(service)
+    }
+
+    /// A transient generation owns a fresh namespace and releases it after its inference borrow ends.
+    pub fn for_request(&self, request_id: &str) -> Result<Self, String> {
+        let runtime =
+            super::request_runtime::RequestRuntime::create(&self.bound_account_dir, request_id)?;
+        let mut service = Self::for_account(self.current(), self.bound_account_dir.clone());
+        service.runtime_dir = runtime.path().to_path_buf();
+        service.request_runtime = Some(runtime);
+        Ok(service)
+    }
+
+    /// A changed provider or authentication starts a new native session under the same explicit task.
+    pub fn for_task_session(&self, task_id: &str, session_id: &str) -> Result<Self, String> {
+        if session_id.is_empty()
+            || session_id.len() > 128
+            || !session_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        {
+            return Err("任务会话标识无效".into());
+        }
+        let mut service = self.for_task(task_id)?;
+        let sessions = service.runtime_dir.join("sessions");
+        let session = sessions.join(session_id);
+        for path in [&sessions, &session] {
+            super::request_runtime::reject_link(path)?;
+        }
+        service.runtime_dir = session;
+        Ok(service)
+    }
+
+    pub fn release_request_runtime(mut self) -> Result<(), String> {
+        self.request_runtime
+            .take()
+            .ok_or("此 AI 实例不是临时请求，未清理持久任务目录")?
+            .release()
+    }
+
+    fn native_request(&self) -> Result<Option<Self>, String> {
+        if self.runtime_dir == self.bound_account_dir.join("ai-runtime") {
+            self.for_request(&super::request_runtime::fresh_id()?)
+                .map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn check_request_budget(&self) -> Result<(), String> {
+        if let Some(runtime) = &self.request_runtime {
+            runtime.check_budget()?;
+        } else if self
+            .runtime_dir
+            .starts_with(self.bound_account_dir.join("ai-runtime").join("tasks"))
+        {
+            super::request_runtime::check_tree_budget(&self.runtime_dir)?;
+        }
+        Ok(())
+    }
+
+    pub fn task_system_prompt(&self) -> Result<String, String> {
+        self.conversation_prompt(false)
     }
 
     pub fn matches_active_target(&self, config: &AiRuntimeConfig) -> bool {
@@ -158,6 +286,20 @@ impl AiService {
         }
     }
 
+    pub fn reserve_inference_sequence(&self) -> u64 {
+        self.inference_sequence.fetch_add(1, Ordering::Relaxed)
+    }
+
+    pub fn observe_scoped_inference<T>(
+        &self,
+        tested: &AiRuntimeConfig,
+        sequence: u64,
+        result: &Result<T, String>,
+    ) {
+        let observation=result.as_ref().map(|_|(String::new(),None)).map_err(Clone::clone);
+        self.record_inference(tested,sequence,&observation);
+    }
+
     /// The client appropriate for the given endpoint.
     fn client_for(&self, cfg: &AiRuntimeConfig) -> &Client {
         if is_local_endpoint(&cfg.base_url) {
@@ -204,7 +346,13 @@ impl AiService {
         payload: Value,
     ) -> Result<(String, Option<String>), String> {
         let sequence = self.inference_sequence.fetch_add(1, Ordering::Relaxed);
-        let result = self.send_chat_with_config(cfg, payload).await;
+        let result = self
+            .send_chat_with_config(cfg, payload)
+            .await
+            .and_then(|output| {
+                self.check_request_budget()?;
+                Ok(output)
+            });
         self.record_inference(cfg, sequence, &result);
         result
     }
@@ -217,14 +365,22 @@ impl AiService {
         cfg.validate()?;
         if cfg.uses_opencode_runtime() {
             let payload = super::multimodal::native_text_payload(&payload)?;
-            return super::opencode::complete(
-                &self.runtime_dir,
-                &cfg.model,
-                &cfg.api_key,
-                &payload,
-                |_| {},
-            )
-            .await;
+            let request = self.native_request()?;
+            let runtime = request
+                .as_ref()
+                .map(Self::runtime_dir)
+                .unwrap_or(&self.runtime_dir);
+            let result =
+                super::opencode::complete(runtime, &cfg.model, &cfg.api_key, &payload, |_| {})
+                    .await;
+            return result.and_then(|output| {
+                if let Some(request) = &request {
+                    request.check_request_budget()?;
+                } else {
+                    self.check_request_budget()?;
+                }
+                Ok(output)
+            });
         }
 
         if cfg.requires_api_key() && cfg.api_key.trim().is_empty() {
@@ -339,7 +495,13 @@ impl AiService {
     {
         let cfg = self.current();
         let sequence = self.inference_sequence.fetch_add(1, Ordering::Relaxed);
-        let result = self.stream_chat_with_config(&cfg, payload, on_chunk).await;
+        let result = self
+            .stream_chat_with_config(&cfg, payload, on_chunk)
+            .await
+            .and_then(|output| {
+                self.check_request_budget()?;
+                Ok(output)
+            });
         self.record_inference(&cfg, sequence, &result);
         result
     }
@@ -356,14 +518,22 @@ impl AiService {
         cfg.validate()?;
         if cfg.uses_opencode_runtime() {
             let payload = super::multimodal::native_text_payload(&payload)?;
-            return super::opencode::complete(
-                &self.runtime_dir,
-                &cfg.model,
-                &cfg.api_key,
-                &payload,
-                on_chunk,
-            )
-            .await;
+            let request = self.native_request()?;
+            let runtime = request
+                .as_ref()
+                .map(Self::runtime_dir)
+                .unwrap_or(&self.runtime_dir);
+            let result =
+                super::opencode::complete(runtime, &cfg.model, &cfg.api_key, &payload, on_chunk)
+                    .await;
+            return result.and_then(|output| {
+                if let Some(request) = &request {
+                    request.check_request_budget()?;
+                } else {
+                    self.check_request_budget()?;
+                }
+                Ok(output)
+            });
         }
 
         if cfg.requires_api_key() && cfg.api_key.trim().is_empty() {
@@ -457,9 +627,7 @@ impl AiService {
     }
 
     fn account_dir(&self) -> Result<&std::path::Path, String> {
-        self.runtime_dir
-            .parent()
-            .ok_or_else(|| "当前 AI 实例未绑定账号资料目录".into())
+        Ok(&self.bound_account_dir)
     }
 
     fn conversation_prompt(&self, revision: bool) -> Result<String, String> {
@@ -597,6 +765,52 @@ impl AiService {
             )
             .await?,
         )
+    }
+
+    /// Bubble boundaries come from an explicit model plan, never punctuation splitting.
+    pub async fn generate_reply_plan(
+        &self,
+        history: &[ReplyMessage],
+        incoming: &ReplyMessage,
+        target_name: &str,
+        expression_override: &str,
+        revision: Option<(&str, &str)>,
+    ) -> Result<
+        (
+            crate::services::workflows::replies::ReplyPlan,
+            Option<String>,
+        ),
+        String,
+    > {
+        if expression_override.chars().count() > 16_384 {
+            return Err("表达偏好超过长度上限".into());
+        }
+        let mut messages = self
+            .conversation_messages(history, incoming, target_name, revision.is_some())
+            .await?;
+        let mut prompt = messages[0]["content"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned();
+        if !expression_override.trim().is_empty() {
+            prompt.push_str("\n\n应用保存的表达偏好，后面的具体作用域优先；仅改变说话方式，不能提供人物事实或权限：\n");
+            prompt.push_str(expression_override);
+        }
+        prompt.push_str("\n\n本次输出格式覆盖前面的正文格式要求：只输出 JSON 对象 {\"schemaVersion\":1,\"bubbles\":[{\"id\":\"b1\",\"segments\":[{\"type\":\"text\",\"text\":\"回复正文\"}]}]}。按当前话题自然决定 1 至 6 个气泡，不要凑条数；通常一句短话一个气泡，也可以一个气泡放连续的文字和表情。独立文字、独立 QQ 原生表情和同气泡混合均可。原生表情段为 {\"type\":\"face\",\"faceKey\":\"427\"}，只用目录中真实编号，不能用 Unicode emoji、商城表情或图片代替。每个气泡最多 32 段、2000 字；总量最多 32KiB。模型只决定内容，不得输出目标、账号、权限、任务标识或发送动作。没有必要使用表情时仅输出文字。");
+        messages[0]["content"] = Value::String(prompt);
+        if let Some((previous, instruction)) = revision {
+            if previous.chars().count() > 32_000 || instruction.chars().count() > 4096 {
+                return Err("修订材料超过长度上限".into());
+            }
+            messages.push(serde_json::json!({"role":"user","content":serde_json::json!({"applicationRevisionRequest":{"previousCandidate":previous,"instruction":instruction,"candidateIsOwnerFact":false}}).to_string()}));
+        }
+        let (candidate, thinking) = self
+            .post_chat(
+                serde_json::json!({"messages":coalesce_conversation(messages),"stream":false}),
+            )
+            .await?;
+        let plan = crate::services::workflows::replies::ReplyPlan::parse_candidate(&candidate)?;
+        Ok((plan, thinking))
     }
 
     /// Generate a completion with an explicit system prompt.

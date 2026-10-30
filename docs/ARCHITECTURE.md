@@ -2,7 +2,9 @@
 
 公开安装版为 0.6.6，包含上下文、多模态及风格包能力。开发记录中的历史路径仅用于解释旧问题，当前源码与接口以本文及 `docs/api/` 为准。
 
-## 未发布的会话增量
+## 会话与当前开发增量
+
+当前开发增量新增 `workflows/tasks/` 与 `workflows/replies/`：任务、会话、运行记录与工具预算在账号数据库中持久化，任务目录固定且互不复用；临时请求使用自有租约目录并在完成后清理。表达偏好由 `ai/runtime/persona_settings.rs` 按账号、会话、群成员与任务继承；`protocol/messaging/reply_workflow.rs` 统一草稿生成、修订、批准与来源版本检查。多气泡计划保留段顺序，逐条回执、会话发送租约与账号节流由回复服务处理，GUI/CLI/MCP 复用同一路径。接口与首版范围见[任务与回复契约](api/TASKS.md)。
 
 `protocol/messaging/context.rs` 在固定账号、目标类型与目标 ID 下装配原始消息来源；`message_sources` 保留不可丢失的发送者、段和引用数据，历史角色不再仅靠缺失的 `self_id` 推断。`ai/runtime/multimodal.rs` 为实际图片生成内容部分，为允许的文件提取受限正文。`persona.rs` 提供统一聊天规则，`style_pack.rs` 只加载绑定账号的结构化表达包；总结和文档任务继续使用各自提示词。`native_face.rs` 持有 QQ 基础表情目录与发送段校验。范围、迁移兼容及验证证据见[开发记录](development/2026-10-29-conversation-context-style-packs.md)。
 

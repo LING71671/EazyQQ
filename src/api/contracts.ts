@@ -83,10 +83,24 @@ export interface PendingDraftDto {
   replyToMsgId: string;
   incomingMessageSnippet: string;
   generatedContent: string;
+  replyPlan?: ReplyPlan | null;
+  delivery?: ReplyDeliveryReport | null;
   thinkingContent?: string;
   modelUsed: string;
   confidenceScore?: number;
   createdAt: number;
+}
+
+export interface ReplyPlan {
+  schemaVersion: 1;
+  bubbles: Array<{ id: string; segments: Array<{ type: 'text'; text: string } | { type: 'face'; faceKey: string }> }>;
+}
+
+export interface ReplyDeliveryReport {
+  batchId: string;
+  status: string;
+  receipts: Array<{ bubbleId: string; state?: string; status?: string; messageId?: string | null; error?: string | null; sentAt?: number | null }>;
+  messages: MessageItemDto[];
 }
 
 export interface GroupFileItemDto {

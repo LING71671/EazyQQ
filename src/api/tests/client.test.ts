@@ -11,3 +11,10 @@ it('includes the group destination type in the desktop send command', async () =
     targetId: '10001', content: 'Group reply', targetType: 'group',
   });
 });
+
+it('marks task file choices as cache-only while retaining the normal refresh default', async () => {
+  await api.getGroupFiles('20001', undefined, true);
+  expect(observedInvoke).toHaveBeenLastCalledWith('get_group_files', { groupId: '20001', folderId: undefined, cachedOnly: true });
+  await api.getGroupFiles('20001');
+  expect(observedInvoke).toHaveBeenLastCalledWith('get_group_files', { groupId: '20001', folderId: undefined });
+});

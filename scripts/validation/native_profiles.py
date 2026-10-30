@@ -27,6 +27,7 @@ from sentry_live_ui import validate_sentry_live
 from reliability_ui import validate_reliability
 from free_detection_ui import validate_free_detection_lifecycle
 from conversation_context_ui import validate_conversation_context, validate_style_pack_account_isolation, validate_style_pack_account_return
+from tasks_replies_ui import validate_tasks_replies
 GUI = Path(os.environ.get("EAZYQQ_TEST_GUI", PROJECT / "src-tauri/target/release/eazyqq.exe"))
 CLI = Path(os.environ.get("EAZYQQ_TEST_CLI", PROJECT / "src-tauri/target/release/eazyqq_cli.exe"))
 FIXTURES = PROJECT / ".test-runtime"
@@ -282,6 +283,7 @@ try:
     validate_free_detection_lifecycle(client, ROOT, opencode_fixture)
     validate_reliability(client, ROOT, servers)
     validate_conversation_context(client, ROOT, servers)
+    validate_tasks_replies(client, ROOT, servers)
     if os.environ.get('EAZYQQ_TEST_LIVE_TELEMETRY') == '1':
         validate_sentry_live(client, ROOT)
     assert client.evaluate("localStorage.getItem('eazyqq_profile_validation')") is None

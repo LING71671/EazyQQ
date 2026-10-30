@@ -43,7 +43,10 @@
 | `get_update_history` | `updates history` |
 | `list_accounts` | `accounts list` |
 | `logout` | `logout` |
+| `manage_personas` | `personas` |
+| `manage_reply_batches` | `reply-batches` |
 | `manage_style_packs` | `style-packs` |
+| `manage_tasks` | `tasks` |
 | `mark_read` | `mark-read` |
 | `open_folder` | `folder` |
 | `quick_login` | `quick-login` |

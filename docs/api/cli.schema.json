@@ -1,6 +1,6 @@
 {
   "name": "eazyqq_cli",
-  "version": "0.6.6",
+  "version": "0.7.0",
   "globalFlags": {
     "account": {
       "type": "string",
@@ -356,6 +356,9 @@
           "id": {
             "type": "string"
           },
+          "bubbles-json": {
+            "type": "string"
+          },
           "text": {
             "type": "string"
           }
@@ -450,6 +453,9 @@
           },
           "target": {
             "type": "string"
+          },
+          "cached-only": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -1206,6 +1212,114 @@
       }
     },
     {
+      "name": "tasks",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "action": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "instruction": {
+            "type": "string"
+          },
+          "persona": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "selected-file-ids": {
+            "type": "string"
+          },
+          "allow-todos": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "personas",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "action": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "member": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "reply-batches",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{4,19}$"
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "action": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "bubble": {
+            "type": "string"
+          },
+          "message-id": {
+            "type": "string"
+          },
+          "not-delivered": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "version",
       "inputSchema": {
         "type": "object",
@@ -1418,8 +1532,20 @@
       "cli": "logout"
     },
     {
+      "ipc": "manage_personas",
+      "cli": "personas"
+    },
+    {
+      "ipc": "manage_reply_batches",
+      "cli": "reply-batches"
+    },
+    {
       "ipc": "manage_style_packs",
       "cli": "style-packs"
+    },
+    {
+      "ipc": "manage_tasks",
+      "cli": "tasks"
     },
     {
       "ipc": "mark_read",

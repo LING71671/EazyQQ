@@ -6,6 +6,7 @@ import type {
   DependencyHealthReport, 
   SummaryIntervalType,
   ModelInfoDto,
+  ContactItemDto,
 } from '@/api/contracts';
 import { api } from '@/api/client';
 import { WindowBehaviorCard } from '@/views/settings/WindowBehaviorCard';
@@ -15,6 +16,7 @@ import { DiagnosticsCard } from '@/views/settings/DiagnosticsCard';
 import { QqPathConfigCard } from '@/views/settings/QqPathConfigCard';
 import { AppUpdateCard } from '@/views/settings/AppUpdateCard';
 import { StylePackCard } from '@/views/settings/StylePackCard';
+import { PersonaCard } from '@/views/settings/PersonaCard';
 
 interface SettingsViewProps {
   config: AppConfig;
@@ -23,6 +25,8 @@ interface SettingsViewProps {
   onCheckHealth: () => void;
   onExportDiagnostics: () => void;
   diagnosticsPath?: string;
+  accountUin?: string;
+  contacts?: ContactItemDto[];
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -32,6 +36,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onCheckHealth,
   onExportDiagnostics,
   diagnosticsPath,
+  accountUin,
+  contacts,
 }) => {
   // AI Settings
   const [provider, setProvider] = useState<AiProviderId>(
@@ -319,6 +325,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </fieldset>
 
         <StylePackCard />
+        <PersonaCard accountUin={accountUin} contacts={contacts} />
 
         {/* 4. Pre-flight Health & End-to-end Chain Diagnostics Card */}
         <DiagnosticsCard

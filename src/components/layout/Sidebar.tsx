@@ -6,12 +6,13 @@ import {
   FolderSync, 
   FileText, 
   Settings, 
-  BookOpen 
+  BookOpen,
+  ListTodo
 } from 'lucide-react';
 import { useWindowDrag } from '@/hooks/useWindowDrag';
 import logoUrl from '@/assets/logo.svg';
 
-export type NavView = 'login' | 'contacts' | 'drafts' | 'files' | 'summaries' | 'settings';
+export type NavView = 'login' | 'contacts' | 'drafts' | 'tasks' | 'files' | 'summaries' | 'settings';
 
 interface SidebarProps {
   currentView: NavView;
@@ -29,6 +30,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems = [
     { id: 'login' as NavView, label: '账号状态', icon: QrCode },
     { id: 'contacts' as NavView, label: '联系人规则', icon: Users },
+    { id: 'tasks' as NavView, label: '任务工作台', icon: ListTodo },
     { 
       id: 'drafts' as NavView, 
       label: '草稿审核', 

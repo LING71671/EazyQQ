@@ -7,6 +7,7 @@ import { BootSplash } from '@/components/common/BootSplash';
 import { LoginView } from '@/views/LoginView';
 import { ContactsView } from '@/views/ContactsView';
 import { DraftsView } from '@/views/DraftsView';
+import { TasksView } from '@/views/TasksView';
 import { FilesView } from '@/views/FilesView';
 import { SummariesView } from '@/views/SummariesView';
 import { SettingsView } from '@/views/SettingsView';
@@ -284,6 +285,8 @@ export const App: React.FC = () => {
         return '联系人与白名单管理';
       case 'drafts':
         return '人机协同草稿箱';
+      case 'tasks':
+        return '任务工作台';
       case 'files':
         return '群文件知识库';
       case 'summaries':
@@ -355,6 +358,7 @@ export const App: React.FC = () => {
               onRegenerateDraft={handleRegenerateDraft}
             />
           )}
+          {currentView === 'tasks' && <TasksView accountUin={protocolStatus.qqNumber} contacts={contacts} onDraftCreated={() => { void fetchContactsAndDrafts(); }} />}
           {currentView === 'files' && (
             <FilesView
               files={files}
@@ -388,6 +392,8 @@ export const App: React.FC = () => {
               onCheckHealth={handleCheckHealth}
               onExportDiagnostics={handleExportDiagnostics}
               diagnosticsPath={diagnosticsPath}
+              accountUin={protocolStatus.qqNumber}
+              contacts={contacts}
             />
           )}
         </main>

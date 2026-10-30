@@ -277,8 +277,14 @@ pub fn build_context_history(db: &Database, scope: &ConversationScope, current: 
 
 /// Keep database ordering (timestamp, insertion order) and compare stable IDs, including ties.
 pub fn auto_reply_snapshot(db: &Database, scope: &ConversationScope, incoming: &MessageItemDto) -> Result<Option<Vec<String>>, String> {
+    reply_snapshot_ignoring(db, scope, incoming, &[])
+}
+
+/// Confirmed bubbles from this batch do not count as new human activity.
+pub fn reply_snapshot_ignoring(db: &Database, scope: &ConversationScope, incoming: &MessageItemDto, ignored_ids: &[String]) -> Result<Option<Vec<String>>, String> {
     let mut verified = Vec::new();
     for message in db.get_messages_by_target(&scope.target_id, 101).map_err(|error| error.to_string())? {
+        if ignored_ids.contains(&message.id) { continue; }
         let source = db.get_message_source(&message.id).map_err(|error| error.to_string())?;
         if let Some(source) = source.filter(|source| scope.accepts(source)) {
             let history = source["origin"] == "history";
