@@ -117,6 +117,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test scripts/ai/*.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/ai/sync-native-faces.mjs --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run Rust regressions
         run: pnpm test:rust

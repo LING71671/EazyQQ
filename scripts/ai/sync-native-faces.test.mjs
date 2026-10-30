@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { parseNativeFaces, pinnedNativeFaces, pinnedPublicSnapshot, publicIndexSnapshot, mergeNativeFaces, SOURCE_PATH, SNAPSHOT_PATH } from './sync-native-faces.mjs';
+import { parseNativeFaces, pinnedClassicFaces, pinnedPublicSnapshot, publicIndexSnapshot, mergeNativeFaces, CLASSIC_SNAPSHOT_PATH, SNAPSHOT_PATH } from './sync-native-faces.mjs';
 
 function fixture(records) {
   const literal = JSON.stringify(records).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -21,12 +21,12 @@ test('rejects conflicting IDs, malformed records and executable arguments', () =
   assert.throws(() => parseNativeFaces(fixture([{ QSid: '2' }])), /Invalid/);
   assert.throws(() => parseNativeFaces('JSON.parse(process.exit())'), /No QSid/);
   assert.throws(() => parseNativeFaces(`JSON.parse('${JSON.stringify([{ QSid: '2', QDes: '/One' }])}' + process.exit())`), /one literal/);
-  assert.throws(() => pinnedNativeFaces(Buffer.from(fixture([{ QSid: '2', QDes: '/One' }]))), /SHA256 mismatch/);
+  assert.throws(() => pinnedClassicFaces(Buffer.from(fixture([{ QSid: '2', QDes: '/One' }]))), /SHA256 mismatch/);
 });
 
-test('generated catalog merges both pinned public sources with explicit current labels and media', () => {
+test('generated catalog merges both pinned sources without any version-specific resource directory', () => {
   const root = new URL('../../', import.meta.url);
-  const classic = pinnedNativeFaces(fs.readFileSync(new URL(SOURCE_PATH, root)));
+  const classic = pinnedClassicFaces(fs.readFileSync(new URL(CLASSIC_SNAPSHOT_PATH, root)));
   assert.equal(classic.length, 275);
   const faces = mergeNativeFaces(classic, pinnedPublicSnapshot(fs.readFileSync(new URL(SNAPSHOT_PATH, root))));
   assert.equal(faces.length, 407);

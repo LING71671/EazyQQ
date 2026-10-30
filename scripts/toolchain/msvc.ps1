@@ -22,4 +22,14 @@ function Enable-MsvcEnvironment {
             $env:LIB = "$env:LIB;$kitsLib\$sdkVersion\ucrt\x64;$kitsLib\$sdkVersion\um\x64"
         }
     }
+    # The SDK bin directory carries mt.exe, which link.exe runs to embed the
+    # application manifest. vcvars can still leave it out of PATH when SDK
+    # discovery is registry-dependent, so restore it before linking.
+    if (-not (Get-Command mt.exe -ErrorAction SilentlyContinue)) {
+        $kitsBin = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin'
+        if (Test-Path -LiteralPath $kitsBin) {
+            $sdkVersion = (Get-ChildItem -LiteralPath $kitsBin -Directory | Where-Object Name -match '^\d+\.' | Sort-Object Name -Descending | Select-Object -First 1).Name
+            if ($sdkVersion) { $env:PATH = "$env:PATH;$kitsBin\$sdkVersion\x64" }
+        }
+    }
 }

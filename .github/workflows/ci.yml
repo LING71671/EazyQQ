@@ -30,6 +30,8 @@ jobs:
       - run: pnpm contracts:check
       - run: pnpm typecheck
       - run: pnpm test
+      - run: node --test scripts/ai/*.test.mjs
+      - run: node scripts/ai/sync-native-faces.mjs --check
       - run: pnpm test:release
 
   windows:

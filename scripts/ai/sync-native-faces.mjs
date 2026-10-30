@@ -4,8 +4,12 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+// The classic labels are frozen in a local snapshot so the generator never depends on the
+// version-specific NapCat resource directory, which moves on every application release.
 export const SOURCE_PATH = 'src-tauri/resources/protocol/0.6.5/static/assets/qface-BZLvZXJ8.js';
 export const SOURCE_SHA256 = '9fee278a09655cbe79ef2e45c83487dc123b1721f1e0025fe5809edf17d80044';
+export const CLASSIC_SNAPSHOT_PATH = 'scripts/ai/data/qface-classic-BZLvZXJ8.json';
+export const CLASSIC_SNAPSHOT_SHA256 = '2f02df687a8fda663ba6ab9412d2a8b498a7d8c3f272d2f26c1273d83cf75ef8';
 export const INDEX_COMMIT = 'c96fa14ff894147ac0442dda0fce6a4523e5fcbd';
 export const INDEX_URL = `https://raw.githubusercontent.com/koishijs/QFace/${INDEX_COMMIT}/public/assets/qq_emoji/_index.v2.json`;
 export const INDEX_SHA256 = 'e69d6a0f0974b3086bc351e8b0100f1e4187822c6149936848031313a587b60d';
@@ -62,10 +66,20 @@ export function parseNativeFaces(source, { withPreviews = false } = {}) {
   return [...mapping.values()].sort((left, right) => Number(left.id) - Number(right.id));
 }
 
-export function pinnedNativeFaces(bytes) {
+export function pinnedClassicFaces(bytes) {
   const actual = crypto.createHash('sha256').update(bytes).digest('hex');
-  if (actual !== SOURCE_SHA256) throw new Error(`Pinned QQ face resource SHA256 mismatch: ${actual}`);
-  return parseNativeFaces(bytes.toString('utf8'), { withPreviews: true });
+  if (actual !== CLASSIC_SNAPSHOT_SHA256) throw new Error(`Pinned classic face snapshot SHA256 mismatch: ${actual}`);
+  const snapshot = JSON.parse(bytes.toString('utf8'));
+  if (snapshot.schemaVersion !== 1 || snapshot.upstream?.source !== SOURCE_PATH || snapshot.upstream?.sha256 !== SOURCE_SHA256 || !Array.isArray(snapshot.faces)) {
+    throw new Error('Invalid pinned classic face snapshot');
+  }
+  for (const face of snapshot.faces) {
+    if (!face || !/^(?:0|[1-9]\d*)$/.test(face.id) || typeof face.name !== 'string' || !face.name
+      || typeof face.previewUrl !== 'string' || !new RegExp(`^https://koishi\\.js\\.org/QFace/(?:static|gif)/s${face.id}\\.(?:png|gif)$`).test(face.previewUrl)) {
+      throw new Error(`Invalid classic face snapshot record: ${JSON.stringify(face)}`);
+    }
+  }
+  return snapshot.faces.map(face => ({ id: face.id, name: face.name, previewUrl: face.previewUrl }));
 }
 
 export function pinnedPublicSnapshot(bytes) {
@@ -116,13 +130,13 @@ async function main() {
     fs.mkdirSync(path.dirname(path.join(ROOT, SNAPSHOT_PATH)), { recursive: true });
     fs.writeFileSync(path.join(ROOT, SNAPSHOT_PATH), JSON.stringify(snapshot, null, 2) + '\n');
   }
-  const faces = mergeNativeFaces(pinnedNativeFaces(fs.readFileSync(path.join(ROOT, SOURCE_PATH))), pinnedPublicSnapshot(fs.readFileSync(path.join(ROOT, SNAPSHOT_PATH))));
+  const faces = mergeNativeFaces(pinnedClassicFaces(fs.readFileSync(path.join(ROOT, CLASSIC_SNAPSHOT_PATH))), pinnedPublicSnapshot(fs.readFileSync(path.join(ROOT, SNAPSHOT_PATH))));
   const content = JSON.stringify(faces, null, 2) + '\n';
   const destination = path.join(ROOT, TARGET_PATH);
   if (arguments_.includes('--check')) {
-    if (fs.readFileSync(destination, 'utf8') !== content) throw new Error('QQ face catalog differs from the pinned resource; run the generator');
+    if (fs.readFileSync(destination, 'utf8') !== content) throw new Error('QQ face catalog differs from the pinned sources; run the generator');
   } else fs.writeFileSync(destination, content, 'utf8');
-  console.log(JSON.stringify({ count: faces.length, source: SOURCE_PATH, sha256: SOURCE_SHA256, publicIndexSha256: INDEX_SHA256, checked: arguments_.includes('--check') }));
+  console.log(JSON.stringify({ count: faces.length, source: CLASSIC_SNAPSHOT_PATH, sha256: CLASSIC_SNAPSHOT_SHA256, publicIndexSha256: INDEX_SHA256, checked: arguments_.includes('--check') }));
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

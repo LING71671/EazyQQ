@@ -1,16 +1,16 @@
 # 桌面 IPC 契约
 
-0.6.5 已发布；本文同时记录尚未发布的后续源码增量，不能据此宣称公开安装包已包含新功能。传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`。
+0.6.6 已发布；本文与本版本程序一致，不能据此宣称旧安装包已包含新功能。传输方式为 Tauri `invoke(command, args)`。公共参数和 DTO 使用 `camelCase`。
 
-## 未发布增量：风格包与消息来源
+## 风格包与消息来源
 
 `manage_style_packs` 接收 `{operation, packJson?, packId?, destination?}`。操作为 `list/import/select/enable/disable/remove/export`；返回 `{enabled, activeId, packs, exportedPath?}`。包格式、容量、当前账号绑定与隐私边界见 [风格包说明](../ai/STYLE_PACKS.md)。导出只写表达包本体，不输出账号安装索引；路径必须为不存在的 JSON 文件。
 
 `trigger_ai_reply` 新增可选 `sourceMessageId/targetType`。桌面从最后一条实际来信提交来源编号，服务按编号读取并核验固定账号与会话，不能按相同文本或昵称猜作者；旧调用仅作为号主提供的上下文片段，原作者标记为未知。自动回复、草稿和重生成复用带来源的上下文链路。本轮来信按消息 ID 从历史中排除一次。
 
-## 0.6.5 候选范围
+## 0.6.5 已发布范围
 
-本轮恢复源码开发，更新回执闭环、免费检测生命周期及 GUI/CLI/MCP 诊断语义统一已落地，正在统一验收。候选新增接口及字段不能据此视为已进入公开安装包；具体实现和验收状态见 [本轮记录](../development/2026-10-28-reliability-and-lifecycle.md)。
+更新回执闭环、免费检测生命周期及 GUI/CLI/MCP 诊断语义统一已随 0.6.5 发布并保留在 0.6.6；具体实现和验收状态见 [本轮记录](../development/2026-10-28-reliability-and-lifecycle.md)。旧安装包不含 0.6.6 增量。
 
 ## 返回与错误
 
@@ -79,7 +79,7 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 
 报告字段为 `runtimeVersion`、`observedAtMs`、`catalogueIds`、`models`、`credentialsUsed` 和 `source`。每模型包含 `id`、`name`、`state`、`detail`、`observedAtMs`；状态为 `candidate`、`available`、`requires_conditions`、`retired`、`removed_from_catalogue`、`unconfirmed`。`available` 仅证明本次未借用用户账号/API Key 的请求成功，价格为零或名称含 free 不足以成立。目录移除只描述本次原生目录，不能从网络错误推出供应方永久下架。
 
-0.6.5 候选新增 `requestId`、`status`、`completed`、`total`、`catalogueRefreshed`、`error`、`cleanupError` 和 `history`。任务状态为 `completed`、`cancelled`、`failed`；部分完成结果保留在本次 `models`，历史报告位于 `history`，每项包含 `{requestId,status,observedAtMs,models}`，不能当作本次可用证据。目录刷新失败和临时目录清理失败分别呈现，不伪装为完整检测成功。
+0.6.5新增 `requestId`、`status`、`completed`、`total`、`catalogueRefreshed`、`error`、`cleanupError` 和 `history`。任务状态为 `completed`、`cancelled`、`failed`；部分完成结果保留在本次 `models`，历史报告位于 `history`，每项包含 `{requestId,status,observedAtMs,models}`，不能当作本次可用证据。目录刷新失败和临时目录清理失败分别呈现，不伪装为完整检测成功。
 
 `cancel_free_model_detection({requestId})` 返回 `ApiResponse<boolean>`，仅定位固定账号运行目录下的同编号任务。`true` 表示找到正在执行的任务并请求取消；`false` 也可能表示取消先于检测注册而暂存，不能解释为任务已完成或子进程已退出。最终状态以原检测返回的报告为准。取消、控件卸载及窗口退出纳入本次子进程回收；只清理有本次所有权标记的检测目录，不删除账号凭据、用户缓存或其他 OpenCode 会话。关窗回收的统一验收仍在进行。
 
@@ -117,9 +117,9 @@ QQ 号为 5–20 位十进制数字，不以零开头。批量操作接受 1–1
 
 ## 更新状态与事件
 
-0.6.5 候选包含尚未公开的可选诊断接口：`get_telemetry_status()`返回`{enabled,configured,component,release}`；`test_telemetry()`发送合成诊断，返回`{eventId,flushed,release}`。状态读取不发送测试，测试由用户显式操作。flushed只证明队列处理完成，服务器接收需按eventId核对。配置与隐私范围见[接入文档](../observability/SENTRY.md)。
+0.6.5包含尚未公开的可选诊断接口：`get_telemetry_status()`返回`{enabled,configured,component,release}`；`test_telemetry()`发送合成诊断，返回`{eventId,flushed,release}`。状态读取不发送测试，测试由用户显式操作。flushed只证明队列处理完成，服务器接收需按eventId核对。配置与隐私范围见[接入文档](../observability/SENTRY.md)。
 
-0.6.5 候选的 `get_update_history({})` 返回 `ApiResponse<UpdateReceipt[]>`，与 CLI `updates history` 读取同一暂存上下文的回执，按开始时间倒序最多 50 条。历史查询不创建目录、不运行安装、不改变 QQ。主程序及核心的检查、下载、校验、安装交接和部署分别留证；一次安装流程的再次检查、下载、校验和交接沿同一操作编号关联，重试创建新编号。
+0.6.5的 `get_update_history({})` 返回 `ApiResponse<UpdateReceipt[]>`，与 CLI `updates history` 读取同一暂存上下文的回执，按开始时间倒序最多 50 条。历史查询不创建目录、不运行安装、不改变 QQ。主程序及核心的检查、下载、校验、安装交接和部署分别留证；一次安装流程的再次检查、下载、校验和交接沿同一操作编号关联，重试创建新编号。
 
 回执保留 `schemaVersion=1`，字段为 `operationId`、`component=app|napcat`、`operation=check|install`、`targetVersion?`、`phase`、`startedAtMs`、`updatedAtMs`、`installerExitCode?`、`error?`、`verifiedVersion?` 和 `events`。`events` 为最多 32 项 `{phase,atMs}` 阶段记录。旧回执缺少新增字段时仍可读取，旧 `installer_succeeded` 保持“待核验版本”的含义。
 

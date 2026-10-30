@@ -1,6 +1,6 @@
 # EazyQQ 发布流程
 
-0.6.5 已公开发布。当前源码另有未发布增量；下次发布须先分配新版本并完成完整验收，禁止覆盖既有 0.6.5 标签或资产。本地程序构建不等于已经发布。
+0.6.6 已公开发布。下次发布须先分配新版本并完成完整验收，禁止覆盖既有 0.6.5、0.6.6 标签或资产。本地程序构建不等于已经发布。
 
 0.5.3 的已知 QQ 加载入口故障见 `docs/development/2026-10-09-startup-provenance.md`。0.6.0 源码修复已通过隔离真实 QQ 的跨盘模块导入与 WebUI 验收；打包、安装和分发仍须通过本流程。不能将证据收集、假引导器回归或文件存在替代真实 QQ 加载及身份确认。
 
@@ -16,13 +16,15 @@
 
 ## 必须通过的检查
 
-普通main提交与PR先运行Development checks（类型、版本、展示、契约、前端、发布驱动回归、Windows Rust与模拟CLI）。此流程不上传资产，不代表完整安装/原生发布验收通过。
+普通main提交与PR先运行Development checks（类型、版本、展示、契约、前端、AI 分析器 Node 测试与表情目录一致性、发布驱动回归、Windows Rust与模拟CLI）。此流程不上传资产，不代表完整安装/原生发布验收通过。
 
 ```powershell
 pnpm install --frozen-lockfile
 pnpm presentation:check
 pnpm typecheck
 pnpm test
+node --test scripts/ai/*.test.mjs
+node scripts/ai/sync-native-faces.mjs --check
 pnpm test:release
 pnpm test:rust
 pnpm contracts:check
@@ -33,6 +35,8 @@ pnpm test:native
 pnpm release:package
 git diff --check
 ```
+
+表情目录由 `scripts/ai/data/` 内两份受 SHA256 固定的快照生成，不读取版本相关的协议资源目录；`prepare:resources` 移动旧目录后仍可离线重现和校验。
 
 原生验收使用真实桌面和模拟协议，验证账号往返、浏览器缓存及窗口还原；不触碰真实 QQ，不需要手机登录。首次构建在本机或 CI 可能需要下载依赖。
 
@@ -55,9 +59,9 @@ git diff --check
 发布工作流由 `v*` 标签或带标签参数的手动触发启动。它确认标签与清单版本相同，准备官方协议资源，执行类型/单元/CLI/原生测试，构建及打包后才建立并发布 Release。
 
 ```powershell
-git tag -a v0.6.5 -m "Release 0.6.5"
+git tag -a v0.6.6 -m "Release 0.6.6"
 git push origin main
-git push origin v0.6.5
+git push origin v0.6.6
 gh run list --workflow release.yml
 ```
 

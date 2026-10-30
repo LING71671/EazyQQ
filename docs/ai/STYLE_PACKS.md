@@ -75,7 +75,7 @@ node scripts/ai/compile-style-profile.mjs --analysis "output/private-style-packs
 
 决策文件须包含版本/编号/名称、训练准确日期、条件模式、训练回合引用、示例选择和可选短语。`demonstrations` 使用 `turnId/situation/context/messageIndexes`；情境说明可经语义复核后泛化，回复正文从训练原文读取，不能手造“原始例子”。材料、缺失表情、未知来源、留出回合或 Unicode 图符不能悄悄变成示例。编译器只创建新输出，审计保存分析与决策 SHA256、逐例消息来源、取舍索引与变换边界。
 
-原生目录由 `node scripts/ai/sync-native-faces.mjs --check` 离线核对，合并固定协议与受 commit/SHA256 固定的公开 QFace 原生索引。只接纳有证据的原生类型与编号，预览使用真实 APNG/GIF 资源；发送保持 `face{id}`。未映射编号显示明确名称回退，不能凭缺失编号猜一个 Unicode 表情。
+原生目录由 `node scripts/ai/sync-native-faces.mjs --check` 离线核对，合并受 SHA256 固定的本地经典快照与受 commit/SHA256 固定的公开 QFace 原生索引；快照不依赖随版本移动的协议资源目录。只接纳有证据的原生类型与编号，预览使用真实 APNG/GIF 资源；发送保持 `face{id}`。未映射编号显示明确名称回退，不能凭缺失编号猜一个 Unicode 表情。
 
 ## CLI 与 MCP
 

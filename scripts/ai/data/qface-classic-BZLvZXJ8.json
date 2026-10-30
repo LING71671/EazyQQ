@@ -1,0 +1,1385 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "source": "src-tauri/resources/protocol/0.6.5/static/assets/qface-BZLvZXJ8.js",
+    "sha256": "9fee278a09655cbe79ef2e45c83487dc123b1721f1e0025fe5809edf17d80044",
+    "syncedAt": "2026-10-30"
+  },
+  "faces": [
+    {
+      "id": "0",
+      "name": "惊讶",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s0.gif"
+    },
+    {
+      "id": "1",
+      "name": "撇嘴",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s1.gif"
+    },
+    {
+      "id": "2",
+      "name": "色",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s2.gif"
+    },
+    {
+      "id": "3",
+      "name": "发呆",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s3.gif"
+    },
+    {
+      "id": "4",
+      "name": "得意",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s4.gif"
+    },
+    {
+      "id": "5",
+      "name": "流泪",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s5.gif"
+    },
+    {
+      "id": "6",
+      "name": "害羞",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s6.gif"
+    },
+    {
+      "id": "7",
+      "name": "闭嘴",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s7.gif"
+    },
+    {
+      "id": "8",
+      "name": "睡",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s8.gif"
+    },
+    {
+      "id": "9",
+      "name": "大哭",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s9.gif"
+    },
+    {
+      "id": "10",
+      "name": "尴尬",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s10.gif"
+    },
+    {
+      "id": "11",
+      "name": "发怒",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s11.gif"
+    },
+    {
+      "id": "12",
+      "name": "调皮",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s12.gif"
+    },
+    {
+      "id": "13",
+      "name": "呲牙",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s13.gif"
+    },
+    {
+      "id": "14",
+      "name": "微笑",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s14.gif"
+    },
+    {
+      "id": "15",
+      "name": "难过",
+      "previewUrl": "https://koishi.js.org/QFace/static/s15.png"
+    },
+    {
+      "id": "16",
+      "name": "酷",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s16.gif"
+    },
+    {
+      "id": "18",
+      "name": "抓狂",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s18.gif"
+    },
+    {
+      "id": "19",
+      "name": "吐",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s19.gif"
+    },
+    {
+      "id": "20",
+      "name": "偷笑",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s20.gif"
+    },
+    {
+      "id": "21",
+      "name": "可爱",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s21.gif"
+    },
+    {
+      "id": "22",
+      "name": "白眼",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s22.gif"
+    },
+    {
+      "id": "23",
+      "name": "傲慢",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s23.gif"
+    },
+    {
+      "id": "24",
+      "name": "饥饿",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s24.gif"
+    },
+    {
+      "id": "25",
+      "name": "困",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s25.gif"
+    },
+    {
+      "id": "26",
+      "name": "惊恐",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s26.gif"
+    },
+    {
+      "id": "27",
+      "name": "流汗",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s27.gif"
+    },
+    {
+      "id": "28",
+      "name": "憨笑",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s28.gif"
+    },
+    {
+      "id": "29",
+      "name": "悠闲",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s29.gif"
+    },
+    {
+      "id": "30",
+      "name": "奋斗",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s30.gif"
+    },
+    {
+      "id": "31",
+      "name": "咒骂",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s31.gif"
+    },
+    {
+      "id": "32",
+      "name": "疑问",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s32.gif"
+    },
+    {
+      "id": "33",
+      "name": "嘘",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s33.gif"
+    },
+    {
+      "id": "34",
+      "name": "晕",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s34.gif"
+    },
+    {
+      "id": "35",
+      "name": "折磨",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s35.gif"
+    },
+    {
+      "id": "36",
+      "name": "衰",
+      "previewUrl": "https://koishi.js.org/QFace/static/s36.png"
+    },
+    {
+      "id": "37",
+      "name": "骷髅",
+      "previewUrl": "https://koishi.js.org/QFace/static/s37.png"
+    },
+    {
+      "id": "38",
+      "name": "敲打",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s38.gif"
+    },
+    {
+      "id": "39",
+      "name": "再见",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s39.gif"
+    },
+    {
+      "id": "41",
+      "name": "发抖",
+      "previewUrl": "https://koishi.js.org/QFace/static/s41.png"
+    },
+    {
+      "id": "42",
+      "name": "爱情",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s42.gif"
+    },
+    {
+      "id": "43",
+      "name": "跳跳",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s43.gif"
+    },
+    {
+      "id": "46",
+      "name": "猪头",
+      "previewUrl": "https://koishi.js.org/QFace/static/s46.png"
+    },
+    {
+      "id": "49",
+      "name": "拥抱",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s49.gif"
+    },
+    {
+      "id": "53",
+      "name": "蛋糕",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s53.gif"
+    },
+    {
+      "id": "54",
+      "name": "闪电",
+      "previewUrl": "https://koishi.js.org/QFace/static/s54.png"
+    },
+    {
+      "id": "55",
+      "name": "炸弹",
+      "previewUrl": "https://koishi.js.org/QFace/static/s55.png"
+    },
+    {
+      "id": "56",
+      "name": "刀",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s56.gif"
+    },
+    {
+      "id": "57",
+      "name": "足球",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s57.gif"
+    },
+    {
+      "id": "59",
+      "name": "便便",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s59.gif"
+    },
+    {
+      "id": "60",
+      "name": "咖啡",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s60.gif"
+    },
+    {
+      "id": "61",
+      "name": "饭",
+      "previewUrl": "https://koishi.js.org/QFace/static/s61.png"
+    },
+    {
+      "id": "63",
+      "name": "玫瑰",
+      "previewUrl": "https://koishi.js.org/QFace/static/s63.png"
+    },
+    {
+      "id": "64",
+      "name": "凋谢",
+      "previewUrl": "https://koishi.js.org/QFace/static/s64.png"
+    },
+    {
+      "id": "66",
+      "name": "爱心",
+      "previewUrl": "https://koishi.js.org/QFace/static/s66.png"
+    },
+    {
+      "id": "67",
+      "name": "心碎",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s67.gif"
+    },
+    {
+      "id": "69",
+      "name": "礼物",
+      "previewUrl": "https://koishi.js.org/QFace/static/s69.png"
+    },
+    {
+      "id": "74",
+      "name": "太阳",
+      "previewUrl": "https://koishi.js.org/QFace/static/s74.png"
+    },
+    {
+      "id": "75",
+      "name": "月亮",
+      "previewUrl": "https://koishi.js.org/QFace/static/s75.png"
+    },
+    {
+      "id": "76",
+      "name": "赞",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s76.gif"
+    },
+    {
+      "id": "77",
+      "name": "踩",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s77.gif"
+    },
+    {
+      "id": "78",
+      "name": "握手",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s78.gif"
+    },
+    {
+      "id": "79",
+      "name": "胜利",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s79.gif"
+    },
+    {
+      "id": "85",
+      "name": "飞吻",
+      "previewUrl": "https://koishi.js.org/QFace/static/s85.png"
+    },
+    {
+      "id": "86",
+      "name": "怄火",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s86.gif"
+    },
+    {
+      "id": "89",
+      "name": "西瓜",
+      "previewUrl": "https://koishi.js.org/QFace/static/s89.png"
+    },
+    {
+      "id": "96",
+      "name": "冷汗",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s96.gif"
+    },
+    {
+      "id": "97",
+      "name": "擦汗",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s97.gif"
+    },
+    {
+      "id": "98",
+      "name": "抠鼻",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s98.gif"
+    },
+    {
+      "id": "99",
+      "name": "鼓掌",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s99.gif"
+    },
+    {
+      "id": "100",
+      "name": "糗大了",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s100.gif"
+    },
+    {
+      "id": "101",
+      "name": "坏笑",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s101.gif"
+    },
+    {
+      "id": "102",
+      "name": "左哼哼",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s102.gif"
+    },
+    {
+      "id": "103",
+      "name": "右哼哼",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s103.gif"
+    },
+    {
+      "id": "104",
+      "name": "哈欠",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s104.gif"
+    },
+    {
+      "id": "105",
+      "name": "鄙视",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s105.gif"
+    },
+    {
+      "id": "106",
+      "name": "委屈",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s106.gif"
+    },
+    {
+      "id": "107",
+      "name": "快哭了",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s107.gif"
+    },
+    {
+      "id": "108",
+      "name": "阴险",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s108.gif"
+    },
+    {
+      "id": "109",
+      "name": "左亲亲",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s109.gif"
+    },
+    {
+      "id": "110",
+      "name": "吓",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s110.gif"
+    },
+    {
+      "id": "111",
+      "name": "可怜",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s111.gif"
+    },
+    {
+      "id": "112",
+      "name": "菜刀",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s112.gif"
+    },
+    {
+      "id": "113",
+      "name": "啤酒",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s113.gif"
+    },
+    {
+      "id": "114",
+      "name": "篮球",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s114.gif"
+    },
+    {
+      "id": "115",
+      "name": "乒乓",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s115.gif"
+    },
+    {
+      "id": "116",
+      "name": "示爱",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s116.gif"
+    },
+    {
+      "id": "117",
+      "name": "瓢虫",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s117.gif"
+    },
+    {
+      "id": "118",
+      "name": "抱拳",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s118.gif"
+    },
+    {
+      "id": "119",
+      "name": "勾引",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s119.gif"
+    },
+    {
+      "id": "120",
+      "name": "拳头",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s120.gif"
+    },
+    {
+      "id": "121",
+      "name": "差劲",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s121.gif"
+    },
+    {
+      "id": "122",
+      "name": "爱你",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s122.gif"
+    },
+    {
+      "id": "123",
+      "name": "NO",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s123.gif"
+    },
+    {
+      "id": "124",
+      "name": "OK",
+      "previewUrl": "https://koishi.js.org/QFace/static/s124.png"
+    },
+    {
+      "id": "125",
+      "name": "转圈",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s125.gif"
+    },
+    {
+      "id": "126",
+      "name": "磕头",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s126.gif"
+    },
+    {
+      "id": "127",
+      "name": "回头",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s127.gif"
+    },
+    {
+      "id": "128",
+      "name": "跳绳",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s128.gif"
+    },
+    {
+      "id": "129",
+      "name": "挥手",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s129.gif"
+    },
+    {
+      "id": "130",
+      "name": "激动",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s130.gif"
+    },
+    {
+      "id": "131",
+      "name": "街舞",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s131.gif"
+    },
+    {
+      "id": "132",
+      "name": "献吻",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s132.gif"
+    },
+    {
+      "id": "133",
+      "name": "左太极",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s133.gif"
+    },
+    {
+      "id": "134",
+      "name": "右太极",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s134.gif"
+    },
+    {
+      "id": "136",
+      "name": "双喜",
+      "previewUrl": "https://koishi.js.org/QFace/static/s136.png"
+    },
+    {
+      "id": "137",
+      "name": "鞭炮",
+      "previewUrl": "https://koishi.js.org/QFace/static/s137.png"
+    },
+    {
+      "id": "138",
+      "name": "灯笼",
+      "previewUrl": "https://koishi.js.org/QFace/static/s138.png"
+    },
+    {
+      "id": "140",
+      "name": "K歌",
+      "previewUrl": "https://koishi.js.org/QFace/static/s140.png"
+    },
+    {
+      "id": "144",
+      "name": "喝彩",
+      "previewUrl": "https://koishi.js.org/QFace/static/s144.png"
+    },
+    {
+      "id": "145",
+      "name": "祈祷",
+      "previewUrl": "https://koishi.js.org/QFace/static/s145.png"
+    },
+    {
+      "id": "146",
+      "name": "爆筋",
+      "previewUrl": "https://koishi.js.org/QFace/static/s146.png"
+    },
+    {
+      "id": "147",
+      "name": "棒棒糖",
+      "previewUrl": "https://koishi.js.org/QFace/static/s147.png"
+    },
+    {
+      "id": "148",
+      "name": "喝奶",
+      "previewUrl": "https://koishi.js.org/QFace/static/s148.png"
+    },
+    {
+      "id": "151",
+      "name": "飞机",
+      "previewUrl": "https://koishi.js.org/QFace/static/s151.png"
+    },
+    {
+      "id": "158",
+      "name": "钞票",
+      "previewUrl": "https://koishi.js.org/QFace/static/s158.png"
+    },
+    {
+      "id": "168",
+      "name": "药",
+      "previewUrl": "https://koishi.js.org/QFace/static/s168.png"
+    },
+    {
+      "id": "169",
+      "name": "手枪",
+      "previewUrl": "https://koishi.js.org/QFace/static/s169.png"
+    },
+    {
+      "id": "171",
+      "name": "茶",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s171.gif"
+    },
+    {
+      "id": "172",
+      "name": "眨眼睛",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s172.gif"
+    },
+    {
+      "id": "173",
+      "name": "泪奔",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s173.gif"
+    },
+    {
+      "id": "174",
+      "name": "无奈",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s174.gif"
+    },
+    {
+      "id": "175",
+      "name": "卖萌",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s175.gif"
+    },
+    {
+      "id": "176",
+      "name": "小纠结",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s176.gif"
+    },
+    {
+      "id": "177",
+      "name": "喷血",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s177.gif"
+    },
+    {
+      "id": "178",
+      "name": "斜眼笑",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s178.gif"
+    },
+    {
+      "id": "179",
+      "name": "doge",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s179.gif"
+    },
+    {
+      "id": "180",
+      "name": "惊喜",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s180.gif"
+    },
+    {
+      "id": "181",
+      "name": "骚扰",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s181.gif"
+    },
+    {
+      "id": "182",
+      "name": "笑哭",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s182.gif"
+    },
+    {
+      "id": "183",
+      "name": "我最美",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s183.gif"
+    },
+    {
+      "id": "184",
+      "name": "河蟹",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s184.gif"
+    },
+    {
+      "id": "185",
+      "name": "羊驼",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s185.gif"
+    },
+    {
+      "id": "187",
+      "name": "幽灵",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s187.gif"
+    },
+    {
+      "id": "188",
+      "name": "蛋",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s188.gif"
+    },
+    {
+      "id": "190",
+      "name": "菊花",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s190.gif"
+    },
+    {
+      "id": "192",
+      "name": "红包",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s192.gif"
+    },
+    {
+      "id": "193",
+      "name": "大笑",
+      "previewUrl": "https://koishi.js.org/QFace/static/s193.png"
+    },
+    {
+      "id": "194",
+      "name": "不开心",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s194.gif"
+    },
+    {
+      "id": "197",
+      "name": "冷漠",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s197.gif"
+    },
+    {
+      "id": "198",
+      "name": "呃",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s198.gif"
+    },
+    {
+      "id": "199",
+      "name": "好棒",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s199.gif"
+    },
+    {
+      "id": "200",
+      "name": "拜托",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s200.gif"
+    },
+    {
+      "id": "201",
+      "name": "点赞",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s201.gif"
+    },
+    {
+      "id": "202",
+      "name": "无聊",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s202.gif"
+    },
+    {
+      "id": "203",
+      "name": "托脸",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s203.gif"
+    },
+    {
+      "id": "204",
+      "name": "吃",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s204.gif"
+    },
+    {
+      "id": "205",
+      "name": "送花",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s205.gif"
+    },
+    {
+      "id": "206",
+      "name": "害怕",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s206.gif"
+    },
+    {
+      "id": "207",
+      "name": "花痴",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s207.gif"
+    },
+    {
+      "id": "208",
+      "name": "小样儿",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s208.gif"
+    },
+    {
+      "id": "210",
+      "name": "飙泪",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s210.gif"
+    },
+    {
+      "id": "211",
+      "name": "我不看",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s211.gif"
+    },
+    {
+      "id": "212",
+      "name": "托腮",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s212.gif"
+    },
+    {
+      "id": "214",
+      "name": "啵啵",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s214.gif"
+    },
+    {
+      "id": "215",
+      "name": "糊脸",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s215.gif"
+    },
+    {
+      "id": "216",
+      "name": "拍头",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s216.gif"
+    },
+    {
+      "id": "217",
+      "name": "扯一扯",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s217.gif"
+    },
+    {
+      "id": "218",
+      "name": "舔一舔",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s218.gif"
+    },
+    {
+      "id": "219",
+      "name": "蹭一蹭",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s219.gif"
+    },
+    {
+      "id": "220",
+      "name": "拽炸天",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s220.gif"
+    },
+    {
+      "id": "221",
+      "name": "顶呱呱",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s221.gif"
+    },
+    {
+      "id": "222",
+      "name": "抱抱",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s222.gif"
+    },
+    {
+      "id": "223",
+      "name": "暴击",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s223.gif"
+    },
+    {
+      "id": "224",
+      "name": "开枪",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s224.gif"
+    },
+    {
+      "id": "225",
+      "name": "撩一撩",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s225.gif"
+    },
+    {
+      "id": "226",
+      "name": "拍桌",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s226.gif"
+    },
+    {
+      "id": "227",
+      "name": "拍手",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s227.gif"
+    },
+    {
+      "id": "228",
+      "name": "恭喜",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s228.gif"
+    },
+    {
+      "id": "229",
+      "name": "干杯",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s229.gif"
+    },
+    {
+      "id": "230",
+      "name": "嘲讽",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s230.gif"
+    },
+    {
+      "id": "231",
+      "name": "哼",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s231.gif"
+    },
+    {
+      "id": "232",
+      "name": "佛系",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s232.gif"
+    },
+    {
+      "id": "233",
+      "name": "掐一掐",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s233.gif"
+    },
+    {
+      "id": "234",
+      "name": "惊呆",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s234.gif"
+    },
+    {
+      "id": "235",
+      "name": "颤抖",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s235.gif"
+    },
+    {
+      "id": "236",
+      "name": "啃头",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s236.gif"
+    },
+    {
+      "id": "237",
+      "name": "偷看",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s237.gif"
+    },
+    {
+      "id": "238",
+      "name": "扇脸",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s238.gif"
+    },
+    {
+      "id": "239",
+      "name": "原谅",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s239.gif"
+    },
+    {
+      "id": "240",
+      "name": "喷脸",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s240.gif"
+    },
+    {
+      "id": "241",
+      "name": "生日快乐",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s241.gif"
+    },
+    {
+      "id": "242",
+      "name": "头撞击",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s242.gif"
+    },
+    {
+      "id": "243",
+      "name": "甩头",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s243.gif"
+    },
+    {
+      "id": "244",
+      "name": "扔狗",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s244.gif"
+    },
+    {
+      "id": "245",
+      "name": "加油必胜",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s245.gif"
+    },
+    {
+      "id": "246",
+      "name": "加油抱抱",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s246.gif"
+    },
+    {
+      "id": "247",
+      "name": "口罩护体",
+      "previewUrl": "https://koishi.js.org/QFace/static/s247.png"
+    },
+    {
+      "id": "260",
+      "name": "搬砖中",
+      "previewUrl": "https://koishi.js.org/QFace/static/s260.png"
+    },
+    {
+      "id": "261",
+      "name": "忙到飞起",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s261.gif"
+    },
+    {
+      "id": "262",
+      "name": "脑阔疼",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s262.gif"
+    },
+    {
+      "id": "263",
+      "name": "沧桑",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s263.gif"
+    },
+    {
+      "id": "264",
+      "name": "捂脸",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s264.gif"
+    },
+    {
+      "id": "265",
+      "name": "辣眼睛",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s265.gif"
+    },
+    {
+      "id": "266",
+      "name": "哦哟",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s266.gif"
+    },
+    {
+      "id": "267",
+      "name": "头秃",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s267.gif"
+    },
+    {
+      "id": "268",
+      "name": "问号脸",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s268.gif"
+    },
+    {
+      "id": "269",
+      "name": "暗中观察",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s269.gif"
+    },
+    {
+      "id": "270",
+      "name": "emm",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s270.gif"
+    },
+    {
+      "id": "271",
+      "name": "吃瓜",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s271.gif"
+    },
+    {
+      "id": "272",
+      "name": "呵呵哒",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s272.gif"
+    },
+    {
+      "id": "273",
+      "name": "我酸了",
+      "previewUrl": "https://koishi.js.org/QFace/static/s273.png"
+    },
+    {
+      "id": "274",
+      "name": "太南了",
+      "previewUrl": "https://koishi.js.org/QFace/static/s274.png"
+    },
+    {
+      "id": "276",
+      "name": "辣椒酱",
+      "previewUrl": "https://koishi.js.org/QFace/static/s276.png"
+    },
+    {
+      "id": "277",
+      "name": "汪汪",
+      "previewUrl": "https://koishi.js.org/QFace/static/s277.png"
+    },
+    {
+      "id": "278",
+      "name": "汗",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s278.gif"
+    },
+    {
+      "id": "279",
+      "name": "打脸",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s279.gif"
+    },
+    {
+      "id": "280",
+      "name": "击掌",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s280.gif"
+    },
+    {
+      "id": "281",
+      "name": "无眼笑",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s281.gif"
+    },
+    {
+      "id": "282",
+      "name": "敬礼",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s282.gif"
+    },
+    {
+      "id": "283",
+      "name": "狂笑",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s283.gif"
+    },
+    {
+      "id": "284",
+      "name": "面无表情",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s284.gif"
+    },
+    {
+      "id": "285",
+      "name": "摸鱼",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s285.gif"
+    },
+    {
+      "id": "286",
+      "name": "魔鬼笑",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s286.gif"
+    },
+    {
+      "id": "287",
+      "name": "哦",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s287.gif"
+    },
+    {
+      "id": "288",
+      "name": "请",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s288.gif"
+    },
+    {
+      "id": "289",
+      "name": "睁眼",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s289.gif"
+    },
+    {
+      "id": "290",
+      "name": "敲开心",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s290.gif"
+    },
+    {
+      "id": "291",
+      "name": "震惊",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s291.gif"
+    },
+    {
+      "id": "292",
+      "name": "让我康康",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s292.gif"
+    },
+    {
+      "id": "293",
+      "name": "摸锦鲤",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s293.gif"
+    },
+    {
+      "id": "294",
+      "name": "期待",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s294.gif"
+    },
+    {
+      "id": "295",
+      "name": "拿到红包",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s295.gif"
+    },
+    {
+      "id": "296",
+      "name": "真好",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s296.gif"
+    },
+    {
+      "id": "297",
+      "name": "拜谢",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s297.gif"
+    },
+    {
+      "id": "298",
+      "name": "元宝",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s298.gif"
+    },
+    {
+      "id": "299",
+      "name": "牛啊",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s299.gif"
+    },
+    {
+      "id": "300",
+      "name": "胖三斤",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s300.gif"
+    },
+    {
+      "id": "301",
+      "name": "好闪",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s301.gif"
+    },
+    {
+      "id": "302",
+      "name": "左拜年",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s302.gif"
+    },
+    {
+      "id": "303",
+      "name": "右拜年",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s303.gif"
+    },
+    {
+      "id": "304",
+      "name": "红包包",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s304.gif"
+    },
+    {
+      "id": "305",
+      "name": "右亲亲",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s305.gif"
+    },
+    {
+      "id": "306",
+      "name": "牛气冲天",
+      "previewUrl": "https://koishi.js.org/QFace/static/s306.png"
+    },
+    {
+      "id": "307",
+      "name": "喵喵",
+      "previewUrl": "https://koishi.js.org/QFace/static/s307.png"
+    },
+    {
+      "id": "308",
+      "name": "求红包",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s308.gif"
+    },
+    {
+      "id": "309",
+      "name": "谢红包",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s309.gif"
+    },
+    {
+      "id": "310",
+      "name": "新年烟花",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s310.gif"
+    },
+    {
+      "id": "311",
+      "name": "打call",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s311.gif"
+    },
+    {
+      "id": "312",
+      "name": "变形",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s312.gif"
+    },
+    {
+      "id": "313",
+      "name": "嗑到了",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s313.gif"
+    },
+    {
+      "id": "314",
+      "name": "仔细分析",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s314.gif"
+    },
+    {
+      "id": "315",
+      "name": "加油",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s315.gif"
+    },
+    {
+      "id": "316",
+      "name": "我没事",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s316.gif"
+    },
+    {
+      "id": "317",
+      "name": "菜狗",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s317.gif"
+    },
+    {
+      "id": "318",
+      "name": "崇拜",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s318.gif"
+    },
+    {
+      "id": "319",
+      "name": "比心",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s319.gif"
+    },
+    {
+      "id": "320",
+      "name": "庆祝",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s320.gif"
+    },
+    {
+      "id": "321",
+      "name": "老色痞",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s321.gif"
+    },
+    {
+      "id": "322",
+      "name": "拒绝",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s322.gif"
+    },
+    {
+      "id": "323",
+      "name": "嫌弃",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s323.gif"
+    },
+    {
+      "id": "324",
+      "name": "吃糖",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s324.gif"
+    },
+    {
+      "id": "325",
+      "name": "惊吓",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s325.gif"
+    },
+    {
+      "id": "326",
+      "name": "生气",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s326.gif"
+    },
+    {
+      "id": "327",
+      "name": "加一",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s327.gif"
+    },
+    {
+      "id": "328",
+      "name": "错号",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s328.gif"
+    },
+    {
+      "id": "329",
+      "name": "对号",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s329.gif"
+    },
+    {
+      "id": "330",
+      "name": "完成",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s330.gif"
+    },
+    {
+      "id": "331",
+      "name": "明白",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s331.gif"
+    },
+    {
+      "id": "332",
+      "name": "举牌牌",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s332.gif"
+    },
+    {
+      "id": "333",
+      "name": "烟花",
+      "previewUrl": "https://koishi.js.org/QFace/static/s333.png"
+    },
+    {
+      "id": "334",
+      "name": "虎虎生威",
+      "previewUrl": "https://koishi.js.org/QFace/static/s334.png"
+    },
+    {
+      "id": "336",
+      "name": "豹富",
+      "previewUrl": "https://koishi.js.org/QFace/static/s336.png"
+    },
+    {
+      "id": "337",
+      "name": "花朵脸",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s337.gif"
+    },
+    {
+      "id": "338",
+      "name": "我想开了",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s338.gif"
+    },
+    {
+      "id": "339",
+      "name": "舔屏",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s339.gif"
+    },
+    {
+      "id": "340",
+      "name": "热化了",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s340.gif"
+    },
+    {
+      "id": "341",
+      "name": "打招呼",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s341.gif"
+    },
+    {
+      "id": "342",
+      "name": "酸Q",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s342.gif"
+    },
+    {
+      "id": "343",
+      "name": "我方了",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s343.gif"
+    },
+    {
+      "id": "344",
+      "name": "大怨种",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s344.gif"
+    },
+    {
+      "id": "345",
+      "name": "红包多多",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s345.gif"
+    },
+    {
+      "id": "346",
+      "name": "你真棒棒",
+      "previewUrl": "https://koishi.js.org/QFace/gif/s346.gif"
+    },
+    {
+      "id": "347",
+      "name": "大展宏兔",
+      "previewUrl": "https://koishi.js.org/QFace/static/s347.png"
+    },
+    {
+      "id": "348",
+      "name": "福萝卜",
+      "previewUrl": "https://koishi.js.org/QFace/static/s348.png"
+    }
+  ]
+}

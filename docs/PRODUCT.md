@@ -2,7 +2,7 @@
 
 <!-- impeccable:product-schema 1 -->
 
-公开版本为 0.6.5；当前源码另有未发布增量，不能据此认为公开安装包已包含新功能。接口细节以 [接口文档](API_SPECIFICATION.md) 和生成的 CLI schema 为准。
+公开版本为 0.6.6；本文描述与该安装包一致的能力。接口细节以 [接口文档](API_SPECIFICATION.md) 和生成的 CLI schema 为准。
 
 未发布源码支持账号独立的[聊天风格包](ai/STYLE_PACKS.md)、消息归属与引用来源、实际图片和受限文件正文、独立 QQ 原生表情和同条混排。新用户优先配置 DeepSeek 官方，NVIDIA/AMD 为需 Key 且受限额约束的开发试用预设，OpenCode 推荐顺序调低；已有模型与密钥保持本人选择。
 
